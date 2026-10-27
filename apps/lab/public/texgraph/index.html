@@ -1,1 +1,57 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TexGraph projects · STEX Suite</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/living.css"></head><body><main><header><a href="/" class="back">← STEX Suite</a><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div><p class="wordmark">TexGraph</p><h1>Begin a book</h1><p class="lede">Select a poetry collection already in the Suite, or create its context before you typeset the first page.</p></header><section id="projects" class="projects"><div><p class="eyebrow">Poetry collections</p><h2>Project context</h2><p class="section-lede">A project records the editorial intention, design language, and source notes that accompany every page-level conversation.</p></div><form id="project-form"><label>Collection title<input name="title" required maxlength="140" placeholder="Title of the poetry collection"></label><label>Editorial intention<textarea name="editorialIntent" rows="3" placeholder="What is this collection trying to make possible?"></textarea></label><label>Page and book design<textarea name="bookDesign" rows="3" placeholder="Lineation, type, margins, sequence, page-turn concerns…"></textarea></label><label>Source notes<textarea name="sourceNotes" rows="3" placeholder="Relevant vault notes, constraints, influences, or materials."></textarea></label><button>Create poetry project →</button></form><div id="project-list" class="project-list"></div></section></main><script type="module" src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TexGraph projects · STEX Suite</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/living.css"><link rel="stylesheet" href="/brief.css">
+  </head>
+  <body><main>
+    <header>
+      <a href="/" class="back">← STEX Suite</a>
+      <div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="wordmark">TexGraph</p><h1>Begin a book</h1>
+      <p class="lede">Select a project already in the Suite, or establish the book-level context before you typeset its first page.</p>
+    </header>
+    <section id="projects" class="projects">
+      <div>
+        <p class="eyebrow">Book project</p><h2>Global settings</h2>
+        <p class="section-lede">These choices follow every page: they guide the conversation, source structure, and LuaLaTeX build.</p>
+        <aside class="playground">
+          <p class="eyebrow">Briefing playground</p><h3>Not sure yet?</h3>
+          <p>Answer three provisional questions. We’ll fill only untouched fields; every suggestion remains editable.</p>
+          <label>How should the book move?<select id="play-sequence"><option value="lyric">Lyric sequence</option><option value="narrative">Narrative arc</option><option value="fragment">Fragmentary / modular</option></select></label>
+          <label>How should it feel in the hand?<select id="play-object"><option value="intimate">Intimate chapbook</option><option value="standard">Standard collection</option><option value="archive">Archive / anthology</option></select></label>
+          <label>What should the page privilege?<select id="play-page"><option value="air">White space and lineation</option><option value="density">Dense reading and annotation</option><option value="voice">Dramatic / performative voice</option></select></label>
+          <button id="apply-playground" type="button" class="quiet-button">Suggest global settings</button>
+        </aside>
+      </div>
+      <form id="project-form">
+        <fieldset><legend>Book identity</legend>
+          <label>Collection title<input name="title" required maxlength="140" placeholder="Title of the poetry collection"></label>
+          <label>Author or editor<input name="author" maxlength="160" placeholder="Author"></label>
+          <div class="form-grid">
+            <label>Book type<select name="bookType"><option value="poetry-collection">Poetry collection</option><option value="chapbook">Chapbook</option><option value="anthology">Anthology</option><option value="prose-poetry">Prose poetry</option><option value="hybrid">Hybrid book</option><option value="trade-book">Trade book</option></select></label>
+            <label>Language<input name="language" value="English"></label>
+          </div>
+        </fieldset>
+        <fieldset><legend>Physical page</legend><div class="form-grid">
+          <label>Trim size<select name="trimSize"><option>5.5 × 8.5 in</option><option>6 × 9 in</option><option>5 × 7 in</option><option>8.5 × 11 in</option></select></label>
+          <label>Binding<select name="binding"><option value="perfect-bound">Perfect bound</option><option value="saddle-stitched">Saddle stitched</option><option value="case-bound">Case bound</option><option value="digital-only">Digital only</option></select></label>
+          <label>Page goal<input name="pageCountGoal" inputmode="numeric" placeholder="e.g. 72"></label><label>Margins<input name="margins" value="0.85 in"></label>
+        </div></fieldset>
+        <fieldset><legend>Typography</legend><p id="font-source" class="field-note">Loading font catalog…</p><div class="form-grid">
+          <label>Reading font<input name="bodyFont" list="font-list" value="Crimson Pro"></label><label>Display font<input name="displayFont" list="font-list" value="Cormorant Garamond"></label>
+          <label>Text size<input name="fontSize" value="11 pt"></label><label>Leading<input name="leading" value="15 pt"></label>
+        </div><datalist id="font-list"></datalist></fieldset>
+        <fieldset><legend>Editorial context</legend>
+          <label>Editorial intention<textarea name="editorialIntent" rows="3" placeholder="What is this collection trying to make possible?"></textarea></label>
+          <label>Page and book design<textarea name="bookDesign" rows="3" placeholder="Lineation, type, margins, sequence, page-turn concerns…"></textarea></label>
+          <label>Source notes<textarea name="sourceNotes" rows="3" placeholder="Relevant vault notes, constraints, influences, or materials."></textarea></label>
+        </fieldset>
+        <button type="submit">Create poetry project →</button>
+      </form>
+      <div id="project-list" class="project-list"></div>
+    </section>
+  </main><script type="module" src="/app.js"></script></body>
+</html>

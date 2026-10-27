@@ -18,11 +18,14 @@ test('creates a poetry project with TexGraph context', async (context) => {
     child.stdout.on('data', (data) => { if (data.toString().includes('ready')) { clearTimeout(timeout); resolve(); } });
     child.on('error', reject);
   });
-  const response = await fetch(`http://127.0.0.1:${port}/api/projects`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Field Notes', editorialIntent: 'A book of observant lyric poems.', bookDesign: 'Spacious pages.' }) });
+  const response = await fetch(`http://127.0.0.1:${port}/api/projects`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Field Notes', author: 'A. Poet', bookType: 'chapbook', trimSize: '5 × 7 in', bodyFont: 'Crimson Pro', editorialIntent: 'A book of observant lyric poems.', bookDesign: 'Spacious pages.' }) });
   assert.equal(response.status, 201);
   const project = await response.json();
   const book = JSON.parse(await readFile(path.join(root, project.id, 'texgraph', 'book.json'), 'utf8'));
   assert.equal(book.title, 'Field Notes');
   assert.equal(book.context.editorialIntent, 'A book of observant lyric poems.');
+  assert.equal(book.author, 'A. Poet');
+  assert.equal(book.settings.bookType, 'chapbook');
+  assert.equal(book.settings.trimSize, '5 × 7 in');
   assert.equal(book.pages[0].id, 'page-001');
 });

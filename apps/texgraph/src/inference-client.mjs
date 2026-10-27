@@ -21,7 +21,7 @@ export async function requestPageRevision({ book, page, turns, message }) {
       },
       body: JSON.stringify({
         contract: 'stex.texgraph.page-turn.v1',
-        book: { title: book.title, author: book.author, design: book.design, context: book.context || {} },
+        book: { title: book.title, author: book.author, design: book.design, settings: book.settings || {}, context: book.context || {} },
         page: { id: page.id, title: page.title, source: page.source, sourceHash: page.hash },
         turns: turns.slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
