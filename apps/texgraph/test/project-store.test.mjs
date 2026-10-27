@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { BookStore, sourceHash } from '../src/project-store.mjs';
-import { validatePageSource } from '../src/lualatex.mjs';
+import { previewDocument, validatePageSource } from '../src/lualatex.mjs';
 
 async function temporaryStore() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-'));
@@ -58,4 +58,16 @@ test('rejects unsafe page-level TeX setup commands', () => {
   assert.equal(validatePageSource('A safe paragraph with \\emph{emphasis}.'), null);
   assert.match(validatePageSource('\\input{secrets.tex}'), /file access/i);
   assert.match(validatePageSource('\\directlua{os.execute("bad")}'), /Lua execution/i);
+});
+
+test('renders a trimmed POD preview with validated settings only', () => {
+  const document = previewDocument({ trimSize: '6 × 9 in', margins: '0.5 in', fontSize: '10.5 pt', bodyFont: 'Crimson Pro' });
+  assert.match(document, /paperwidth=6in,paperheight=9in/);
+  assert.match(document, /inner=0.5in,outer=0.5in/);
+  assert.match(document, /\\IfFontExistsTF\{Crimson Pro\}/);
+  const fallback = previewDocument({ trimSize: 'not a size', margins: '0in', fontSize: '100pt', bodyFont: '\\input{bad}' });
+  assert.match(fallback, /paperwidth=6in,paperheight=9in/);
+  assert.match(fallback, /inner=0.5in/);
+  assert.match(fallback, /\\IfFontExistsTF\{Latin Modern Roman\}/);
+  assert.doesNotMatch(fallback, /input\{bad\}/);
 });

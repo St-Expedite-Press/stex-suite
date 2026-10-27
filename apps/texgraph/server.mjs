@@ -96,8 +96,8 @@ async function api(request, response, url, store) {
     return json(response, 200, await store.rejectProposal(id, payload.proposalId));
   }
   if (request.method === 'POST' && url.pathname.endsWith('/build')) {
-    const page = await store.page(id);
-    const result = await buildPage(store, page);
+    const [page, book] = await Promise.all([store.page(id), store.book()]);
+    const result = await buildPage(store, page, book);
     return json(response, result.ok ? 200 : 422, await store.recordBuild(id, result, page.hash));
   }
   return false;

@@ -17,6 +17,7 @@ try {
     if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
   }
 } catch { /* Deployment supplies secrets through its managed environment. */ }
+
 const curatedFonts = ['Crimson Pro', 'EB Garamond', 'Literata', 'Source Serif 4', 'Cormorant Garamond', 'Libre Baskerville', 'Spectral', 'Alegreya', 'Noto Serif', 'Fraunces', 'Inter', 'Source Sans 3'];
 let fontsCache = null;
 
@@ -24,9 +25,27 @@ function idFor(title) {
   const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'poetry-collection';
   return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`;
 }
-async function atomic(file, content) { const temp = `${file}.${process.pid}.tmp`; await writeFile(temp, content, 'utf8'); await rename(temp, file); }
-function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
-async function body(request) { let raw = ''; for await (const part of request) { raw += part; if (raw.length > 50_000) throw new Error('Request too large.'); } return raw ? JSON.parse(raw) : {}; }
+
+async function atomic(file, content) {
+  const temp = `${file}.${process.pid}.tmp`;
+  await writeFile(temp, content, 'utf8');
+  await rename(temp, file);
+}
+
+function send(response, status, value) {
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  response.end(JSON.stringify(value));
+}
+
+async function body(request) {
+  let raw = '';
+  for await (const part of request) {
+    raw += part;
+    if (raw.length > 50_000) throw new Error('Request too large.');
+  }
+  return raw ? JSON.parse(raw) : {};
+}
+
 async function projects() {
   await mkdir(projectsDirectory, { recursive: true });
   const entries = await readdir(projectsDirectory, { withFileTypes: true });
@@ -35,20 +54,62 @@ async function projects() {
   }));
   return records.filter(Boolean).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
+
+function setting(payload, name, fallback, max = 80) {
+  return String(payload[name] || fallback).trim().slice(0, max);
+}
+
 async function createProject(payload) {
   const title = String(payload.title || '').trim();
   if (!title || title.length > 140) throw new Error('A collection title is required.');
-  const id = idFor(title); const root = path.join(projectsDirectory, id); const now = new Date().toISOString();
+  const id = idFor(title);
+  const root = path.join(projectsDirectory, id);
+  const now = new Date().toISOString();
   const settings = {
-    bookType: String(payload.bookType || 'poetry-collection'), author: String(payload.author || 'Author').trim().slice(0, 160), language: String(payload.language || 'English').trim().slice(0, 80), trimSize: String(payload.trimSize || '5.5 × 8.5 in'), binding: String(payload.binding || 'perfect-bound'), pageCountGoal: String(payload.pageCountGoal || '').trim().slice(0, 20), bodyFont: String(payload.bodyFont || 'Crimson Pro').trim().slice(0, 120), displayFont: String(payload.displayFont || 'Cormorant Garamond').trim().slice(0, 120), fontSize: String(payload.fontSize || '11 pt'), leading: String(payload.leading || '15 pt'), margins: String(payload.margins || '0.85 in'), engine: 'lualatex',
+    bookType: setting(payload, 'bookType', 'poetry-collection'),
+    author: setting(payload, 'author', 'Author', 160),
+    language: setting(payload, 'language', 'English'),
+    podProfile: setting(payload, 'podProfile', 'cross-pod'),
+    format: setting(payload, 'format', 'paperback'),
+    trimSize: setting(payload, 'trimSize', '6 × 9 in', 40),
+    binding: setting(payload, 'binding', 'perfect-bound'),
+    interiorInk: setting(payload, 'interiorInk', 'black-white'),
+    paperStock: setting(payload, 'paperStock', 'white'),
+    bleed: setting(payload, 'bleed', 'no-bleed'),
+    pageCountGoal: setting(payload, 'pageCountGoal', '', 20),
+    margins: setting(payload, 'margins', '0.5 in', 30),
+    coverFinish: setting(payload, 'coverFinish', 'matte'),
+    isbnPlan: setting(payload, 'isbnPlan', 'unassigned'),
+    proofPlan: setting(payload, 'proofPlan', 'order-proof'),
+    coverPlan: setting(payload, 'coverPlan', 'separate-wrap-cover'),
+    printerNotes: setting(payload, 'printerNotes', '', 4000),
+    bodyFont: setting(payload, 'bodyFont', 'Crimson Pro', 120),
+    displayFont: setting(payload, 'displayFont', 'Cormorant Garamond', 120),
+    fontSize: setting(payload, 'fontSize', '11 pt', 30),
+    leading: setting(payload, 'leading', '15 pt', 30),
+    engine: 'lualatex',
   };
-  const project = { id, title, kind: settings.bookType, createdAt: now, updatedAt: now, settings, context: { editorialIntent: String(payload.editorialIntent || '').trim().slice(0, 4000), bookDesign: String(payload.bookDesign || '').trim().slice(0, 4000), sourceNotes: String(payload.sourceNotes || '').trim().slice(0, 4000) } };
+  const context = {
+    editorialIntent: setting(payload, 'editorialIntent', '', 4000),
+    bookDesign: setting(payload, 'bookDesign', '', 4000),
+    sourceNotes: setting(payload, 'sourceNotes', '', 4000),
+  };
+  const project = { id, title, kind: settings.bookType, createdAt: now, updatedAt: now, settings, context };
   await mkdir(path.join(root, 'texgraph', 'pages'), { recursive: true });
   await atomic(path.join(root, 'project.json'), `${JSON.stringify(project, null, 2)}\n`);
-  await atomic(path.join(root, 'texgraph', 'book.json'), `${JSON.stringify({ title, author: settings.author, design: project.context.bookDesign || 'A poetry collection with deliberate lineation, generous white space, and attentive page turns.', settings, context: project.context, pages: [{ id: 'page-001', title: 'Opening page' }] }, null, 2)}\n`);
+  const book = {
+    title,
+    author: settings.author,
+    design: context.bookDesign || 'A poetry collection with deliberate lineation, generous white space, and attentive page turns.',
+    settings,
+    context,
+    pages: [{ id: 'page-001', title: 'Opening page' }],
+  };
+  await atomic(path.join(root, 'texgraph', 'book.json'), `${JSON.stringify(book, null, 2)}\n`);
   await atomic(path.join(root, 'texgraph', 'pages', 'page-001.tex'), `% ${title}\n\n`);
   return project;
 }
+
 async function fonts(query) {
   const normalized = String(query || '').trim().toLowerCase();
   if (!fontsCache && process.env.GOOGLE_FONTS_API_KEY) {
@@ -60,7 +121,14 @@ async function fonts(query) {
   const source = fontsCache || curatedFonts;
   return source.filter((font) => !normalized || font.toLowerCase().includes(normalized)).slice(0, 60);
 }
-async function staticFile(response, file) { try { await access(file); response.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' }); createReadStream(file).pipe(response); } catch { send(response, 404, { error: 'Not found.' }); } }
+
+async function staticFile(response, file) {
+  try {
+    await access(file);
+    response.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' });
+    createReadStream(file).pipe(response);
+  } catch { send(response, 404, { error: 'Not found.' }); }
+}
 
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);

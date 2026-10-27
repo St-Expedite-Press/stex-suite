@@ -10,20 +10,21 @@
     <header>
       <a href="/" class="back">← STEX Suite</a>
       <div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <p class="wordmark">TexGraph</p><h1>Begin a book</h1>
-      <p class="lede">Select a project already in the Suite, or establish the book-level context before you typeset its first page.</p>
+      <p class="wordmark">TexGraph</p><h1>Begin a print-ready book</h1>
+      <p class="lede">Choose a POD route and set the book-level production brief before typesetting its first page.</p>
     </header>
     <section id="projects" class="projects">
       <div>
-        <p class="eyebrow">Book project</p><h2>Global settings</h2>
-        <p class="section-lede">These choices follow every page: they guide the conversation, source structure, and LuaLaTeX build.</p>
+        <p class="eyebrow">Book project</p><h2>Production brief</h2>
+        <p class="section-lede">These choices follow every page, guide the conversation, and give the LuaLaTeX preview a real trim size and safe margins.</p>
         <aside class="playground">
           <p class="eyebrow">Briefing playground</p><h3>Not sure yet?</h3>
-          <p>Answer three provisional questions. We’ll fill only untouched fields; every suggestion remains editable.</p>
+          <p>Answer four provisional questions. We fill only untouched fields; every suggestion remains editable and should be confirmed against your printer’s current upload checker.</p>
           <label>How should the book move?<select id="play-sequence"><option value="lyric">Lyric sequence</option><option value="narrative">Narrative arc</option><option value="fragment">Fragmentary / modular</option></select></label>
           <label>How should it feel in the hand?<select id="play-object"><option value="intimate">Intimate chapbook</option><option value="standard">Standard collection</option><option value="archive">Archive / anthology</option></select></label>
           <label>What should the page privilege?<select id="play-page"><option value="air">White space and lineation</option><option value="density">Dense reading and annotation</option><option value="voice">Dramatic / performative voice</option></select></label>
-          <button id="apply-playground" type="button" class="quiet-button">Suggest global settings</button>
+          <label>Where should it travel?<select id="play-pod"><option value="cross-pod">Amazon + wide distribution</option><option value="amazon-kdp">Amazon KDP only</option><option value="ingramspark">IngramSpark / bookstores</option><option value="lulu">Lulu Direct</option></select></label>
+          <button id="apply-playground" type="button" class="quiet-button">Suggest production settings</button>
         </aside>
       </div>
       <form id="project-form">
@@ -35,11 +36,26 @@
             <label>Language<input name="language" value="English"></label>
           </div>
         </fieldset>
-        <fieldset><legend>Physical page</legend><div class="form-grid">
-          <label>Trim size<select name="trimSize"><option>5.5 × 8.5 in</option><option>6 × 9 in</option><option>5 × 7 in</option><option>8.5 × 11 in</option></select></label>
+        <fieldset><legend>Print route and interior</legend><p class="field-note">A cross-POD route keeps decisions portable; the production PDF must still pass the chosen service’s preflight.</p><div class="form-grid">
+          <label>Primary POD route<select name="podProfile"><option value="cross-pod">Amazon + wide distribution</option><option value="amazon-kdp">Amazon KDP</option><option value="ingramspark">IngramSpark</option><option value="lulu">Lulu Direct</option></select></label>
+          <label>Format<select name="format"><option value="paperback">Paperback</option><option value="hardcover">Hardcover</option><option value="digital-only">Digital only</option></select></label>
+          <label>Trim size<select name="trimSize"><option>6 × 9 in</option><option>5.5 × 8.5 in</option><option>5 × 8 in</option><option>5 × 7 in</option><option>8.5 × 11 in</option></select></label>
           <label>Binding<select name="binding"><option value="perfect-bound">Perfect bound</option><option value="saddle-stitched">Saddle stitched</option><option value="case-bound">Case bound</option><option value="digital-only">Digital only</option></select></label>
-          <label>Page goal<input name="pageCountGoal" inputmode="numeric" placeholder="e.g. 72"></label><label>Margins<input name="margins" value="0.85 in"></label>
+          <label>Interior ink<select name="interiorInk"><option value="black-white">Black &amp; white</option><option value="standard-color">Standard color</option><option value="premium-color">Premium color</option></select></label>
+          <label>Paper<select name="paperStock"><option value="white">White</option><option value="cream">Cream</option><option value="groundwood">Groundwood</option></select></label>
+          <label>Interior bleed<select name="bleed"><option value="no-bleed">No bleed</option><option value="full-bleed">Full bleed</option></select></label>
+          <label>Page goal<input name="pageCountGoal" inputmode="numeric" placeholder="e.g. 72"></label>
+          <label>Safe margin<input name="margins" value="0.5 in" aria-describedby="margin-note"></label>
+          <p id="margin-note" class="field-note span-two">Use a conservative safe margin while writing. Final gutter and bleed vary with page count and must be checked at upload.</p>
         </div></fieldset>
+        <fieldset><legend>Cover, identifier, proof</legend><div class="form-grid">
+          <label>Cover finish<select name="coverFinish"><option value="matte">Matte</option><option value="gloss">Gloss</option><option value="unassigned">Choose later</option></select></label>
+          <label>ISBN plan<select name="isbnPlan"><option value="own-isbn">Publisher-owned ISBN</option><option value="platform-isbn">Platform-provided ISBN</option><option value="unassigned">Decide later</option></select></label>
+          <label>Proof plan<select name="proofPlan"><option value="order-proof">Order and review a physical proof</option><option value="digital-preflight">Digital preflight first</option><option value="unassigned">Decide later</option></select></label>
+          <label>Cover production<select name="coverPlan"><option value="separate-wrap-cover">Separate wrap cover after final page count</option><option value="interior-only">Interior only for now</option></select></label>
+        </div>
+          <label>Printer notes<textarea name="printerNotes" rows="3" placeholder="Distribution needs, image bleed, bookstore requirements, cover-template notes…"></textarea></label>
+        </fieldset>
         <fieldset><legend>Typography</legend><p id="font-source" class="field-note">Loading font catalog…</p><div class="form-grid">
           <label>Reading font<input name="bodyFont" list="font-list" value="Crimson Pro"></label><label>Display font<input name="displayFont" list="font-list" value="Cormorant Garamond"></label>
           <label>Text size<input name="fontSize" value="11 pt"></label><label>Leading<input name="leading" value="15 pt"></label>
@@ -49,7 +65,7 @@
           <label>Page and book design<textarea name="bookDesign" rows="3" placeholder="Lineation, type, margins, sequence, page-turn concerns…"></textarea></label>
           <label>Source notes<textarea name="sourceNotes" rows="3" placeholder="Relevant vault notes, constraints, influences, or materials."></textarea></label>
         </fieldset>
-        <button type="submit">Create poetry project →</button>
+        <button type="submit">Create POD poetry project →</button>
       </form>
       <div id="project-list" class="project-list"></div>
     </section>
