@@ -44,7 +44,7 @@ http.createServer(async (request, response) => {
   try {
     if (url.pathname === '/api/projects' && request.method === 'GET') return send(response, 200, await projects());
     if (url.pathname === '/api/projects' && request.method === 'POST') return send(response, 201, await createProject(await body(request)));
-    const target = url.pathname === '/' ? '/index.html' : url.pathname;
+    const target = url.pathname === '/' ? '/suite.html' : url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
     const file = path.resolve(publicDirectory, `.${target}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });
     await staticFile(response, file);
