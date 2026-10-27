@@ -1,3 +1,5 @@
+import { startScreenlabPalette } from './palette.js';
+startScreenlabPalette();
 const state = { book: null, page: null, proposal: null, sourceDirty: false };
 const $ = (selector) => document.querySelector(selector);
 const project = new URLSearchParams(window.location.search).get('project');

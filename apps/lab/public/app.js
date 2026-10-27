@@ -1,3 +1,5 @@
+import { startScreenlabPalette } from './palette.js';
+startScreenlabPalette();
 const list = document.querySelector('#project-list');
 async function api(path, options = {}) { const response = await fetch(path, { headers: { 'content-type': 'application/json' }, ...options }); const value = await response.json(); if (!response.ok) throw new Error(value.error || 'Request failed.'); return value; }
 function render(projects) { list.replaceChildren(...projects.map((project) => { const card = document.createElement('article'); card.className = 'project'; const intent = project.context.editorialIntent || project.context.bookDesign || 'Context is ready for page-by-page work.'; card.innerHTML = `<h3></h3><p></p><a>Open in TexGraph →</a>`; card.querySelector('h3').textContent = project.title; card.querySelector('p').textContent = intent; card.querySelector('a').href = `http://127.0.0.1:4310/?project=${encodeURIComponent(project.id)}`; return card; })); }
