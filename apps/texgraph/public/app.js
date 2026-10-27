@@ -1,8 +1,10 @@
 const state = { book: null, page: null, proposal: null, sourceDirty: false };
 const $ = (selector) => document.querySelector(selector);
+const project = new URLSearchParams(window.location.search).get('project');
+const apiUrl = (pathname) => project ? `${pathname}${pathname.includes('?') ? '&' : '?'}project=${encodeURIComponent(project)}` : pathname;
 
 async function request(url, options = {}) {
-  const response = await fetch(url, { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
+  const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || 'Request failed.');
   return payload;
@@ -58,7 +60,7 @@ function renderBuild(build) {
   $('#build-state').textContent = ready ? `Built ${new Date(build.completedAt).toLocaleTimeString()}` : build?.error || 'Not built';
   $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.';
   if (ready || build?.lastSuccessful) {
-    $('#pdf').src = `/api/pages/${state.page.id}/preview?at=${Date.now()}`;
+    $('#pdf').src = apiUrl(`/api/pages/${state.page.id}/preview?at=${Date.now()}`);
     $('#pdf').classList.remove('hidden');
     $('#empty-preview').classList.add('hidden');
   } else {

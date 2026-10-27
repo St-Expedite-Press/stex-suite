@@ -9,7 +9,8 @@
     "pnpm": ">=9.15.9"
   },
   "scripts": {
-    "dev:texgraph": "pnpm --dir apps/texgraph dev",
-    "test:texgraph": "pnpm --dir apps/texgraph test"
+    "dev:lab": "corepack pnpm --dir apps/lab dev",
+    "dev:texgraph": "corepack pnpm --dir apps/texgraph dev",
+    "test:texgraph": "corepack pnpm --dir apps/texgraph test"
   }
 }
