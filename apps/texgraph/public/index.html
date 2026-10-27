@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TexGraph Studio</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  </head>
+  <body>
+    <main class="studio-shell">
+      <aside class="navigator" aria-label="Book pages">
+        <div class="brand"><span class="brand-mark">T</span><span>TexGraph</span></div>
+        <section class="book-card">
+          <p class="eyebrow">Active book</p>
+          <h1 id="book-title">Loading…</h1>
+          <p id="book-author"></p>
+        </section>
+        <nav id="page-list" class="page-list"></nav>
+        <button id="new-page" class="new-page" type="button">+ New page</button>
+        <p class="navigator-note">One page at a time. Source changes only when you save or accept a proposal.</p>
+      </aside>
+
+      <section class="conversation" aria-label="Writing conversation">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Page conversation</p>
+            <h2 id="conversation-title">Opening page</h2>
+          </div>
+          <span id="gateway-state" class="status-pill">Checking gateway</span>
+        </header>
+
+        <div id="turns" class="turns" aria-live="polite"></div>
+
+        <section id="proposal" class="proposal hidden" aria-live="polite"></section>
+
+        <form id="turn-form" class="composer">
+          <label for="message">Ask about this page</label>
+          <textarea id="message" rows="4" placeholder="Develop the opening image, tighten this paragraph, or suggest a typographic treatment…"></textarea>
+          <div class="composer-footer"><span>Only this page, book design, and recent turns are sent to the gateway.</span><button type="submit">Send</button></div>
+        </form>
+
+        <details class="source-editor">
+          <summary>Page source <span id="source-hash"></span></summary>
+          <textarea id="source" spellcheck="false" aria-label="LaTeX page source"></textarea>
+          <div class="source-actions"><span id="save-state"></span><button id="save-source" type="button" class="quiet-button">Save source</button></div>
+        </details>
+      </section>
+
+      <section class="preview" aria-label="LuaLaTeX preview">
+        <header class="panel-header preview-header">
+          <div>
+            <p class="eyebrow">LuaLaTeX preview</p>
+            <h2 id="preview-title">Current page</h2>
+          </div>
+          <button id="build" type="button" class="build-button">Build preview</button>
+        </header>
+        <p id="build-description" class="build-description">A build compiles the saved source only. It does not send a model request.</p>
+        <div id="pdf-wrap" class="pdf-wrap">
+          <div id="empty-preview" class="empty-preview">
+            <span class="empty-glyph">⌘</span>
+            <h3>No preview yet</h3>
+            <p>Build this page with LuaLaTeX to create its local PDF preview.</p>
+          </div>
+          <iframe id="pdf" title="Current page PDF preview" class="hidden"></iframe>
+        </div>
+        <section class="build-log-section">
+          <div class="log-heading"><span>Build state</span><span id="build-state">Not built</span></div>
+          <pre id="build-log">The last successful preview is kept if a newer build fails.</pre>
+        </section>
+      </section>
+    </main>
+    <template id="turn-template">
+      <article class="turn"><span class="turn-role"></span><p class="turn-text"></p></article>
+    </template>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

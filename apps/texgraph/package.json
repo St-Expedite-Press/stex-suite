@@ -1,0 +1,14 @@
+{
+  "name": "@stex/texgraph",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
