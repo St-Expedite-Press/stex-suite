@@ -1,0 +1,11 @@
+{
+  "name": "stex",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local monorepo for the STEX graph applications",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.13.0",
+    "pnpm": ">=9.15.9"
+  }
+}
