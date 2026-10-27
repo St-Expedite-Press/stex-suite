@@ -15,15 +15,14 @@ Read [MONOREPO.md](MONOREPO.md) for the architecture being rebuilt and
 
 ## Current migration state
 
-The checked-in ScreenLab code and the TexGraph/NovelGraph repositories under
-`texgraph_integration/` are migration inputs. Their existing development
-instructions and test suites remain authoritative until each module has moved
-behind a tested replacement boundary. This avoids converting a repository move
-into a claim that the application still works.
+This is a clean-slate repository. The legacy cluster is deliberately excluded:
+its source, history, credentials, and runtime assumptions are not part of this
+repository and are not authoritative here. Recover a legacy capability only
+through an explicit, evidence-based migration decision.
 
 The initial workspace is declared in `pnpm-workspace.yaml`. It is intentionally
-non-destructive: no package installation, cloud provisioning, OpenRouter call,
-or Replit publication is part of setup.
+minimal: no package installation, cloud provisioning, OpenRouter call, or
+Replit publication is part of setup.
 
 ## Direction
 
