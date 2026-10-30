@@ -9,6 +9,14 @@ import { requestPageRevision } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
+const appEnvironment = new Set(['STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR']);
+try {
+  const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
+  for (const line of localEnv.split(/\r?\n/)) {
+    const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
+    if (match && appEnvironment.has(match[1]) && !process.env[match[1]]) process.env[match[1]] = match[2];
+  }
+} catch { /* The host may provide application-safe configuration directly. */ }
 const projectDirectory = path.resolve(process.env.TEXGRAPH_PROJECT_DIR || path.join(directory, '.local-book'));
 const projectsDirectory = path.resolve(process.env.TEXGRAPH_PROJECTS_DIR || path.join(directory, '..', 'lab', '.local-projects'));
 const defaultStore = new BookStore(projectDirectory);

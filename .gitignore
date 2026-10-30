@@ -18,3 +18,4 @@ coverage/
 apps/texgraph/.local-book/
 apps/lab/.local-projects/
 .playwright-mcp/
+services/inference/.state/

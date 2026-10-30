@@ -11,6 +11,7 @@
   "scripts": {
     "dev:lab": "corepack pnpm --dir apps/lab dev",
     "dev:texgraph": "corepack pnpm --dir apps/texgraph dev",
+    "dev:inference": "corepack pnpm --dir services/inference dev",
     "test:texgraph": "corepack pnpm --dir apps/texgraph test"
   }
 }
