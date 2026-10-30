@@ -1,7 +1,7 @@
 import { startScreenlabPalette } from './palette.js';
 startScreenlabPalette();
 const $ = (selector) => document.querySelector(selector);
-const answers = {}; const transcript = []; let step = -1;
+const answers = {}; const transcript = []; let step = -1; let selectedBook = null; let bookIndex = new Map();
 
 const interview = [
   { id: 'title', question: 'What is the working title of this book?', hint: 'A working title is enough; it can change later.' },
@@ -54,15 +54,37 @@ function beginInterview() { Object.keys(answers).forEach((key) => delete answers
 
 function selectBook(id) {
   document.querySelectorAll('.book-card').forEach((card) => card.classList.toggle('selected', card.dataset.id === id)); const selected = document.querySelector(`.book-card[data-id="${id}"]`); if (!selected) return; const title = selected.querySelector('h3').textContent; setState('Book selected');
+  selectedBook = bookIndex.get(id) || { id, title }; $('#source-pack').classList.remove('hidden'); $('#source-pack-title').textContent = `${title} source pack`; $('#upload-status').textContent = 'No documents selected.'; $('#documents').value = ''; $('#upload-documents').disabled = true; loadDocuments(id).catch((error) => { $('#upload-status').textContent = error.message; });
   if ($('#interview-empty').classList.contains('hidden')) return;
   $('#interview-empty').innerHTML = `<span class="empty-glyph">✓</span><h2>${title} is selected.</h2><p>This lobby has preserved its manuscript tree. The next TexGraph build will map its Programme, node types, print rules, and source/editorial boundaries before opening the composition surface.</p><button id="start-interview" type="button">Create another book →</button>`;
   $('#start-interview').addEventListener('click', beginInterview);
 }
 
 async function loadBooks() {
-  const records = await api('/api/books'); const list = $('#book-list'); if (!records.length) { list.textContent = 'No books yet. Begin the interview to create one.'; return; }
+  const records = await api('/api/books'); bookIndex = new Map(records.map((book) => [book.id, book])); const list = $('#book-list'); if (!records.length) { list.textContent = 'No books yet. Begin the interview to create one.'; return; }
   list.replaceChildren(...records.map((book) => { const card = document.createElement('article'); card.className = 'book-card'; card.dataset.id = book.id; card.innerHTML = '<div><p class="book-state"></p><h3></h3><p class="book-description"></p><small></small></div><button type="button">Select</button>'; card.querySelector('.book-state').textContent = book.state === 'manuscript-detected' ? 'Manuscript detected' : book.state === 'configured' ? 'TexGraph vault' : 'Project folder'; card.querySelector('h3').textContent = book.title; card.querySelector('.book-description').textContent = book.description; card.querySelector('small').textContent = `${book.manuscriptNodes} manuscript nodes${book.programme ? ' · Programme found' : ''}${book.settingsTicket ? ' · Ticket accepted' : ''}`; card.querySelector('button').addEventListener('click', () => selectBook(book.id)); return card; }));
 }
 
+function renderDocuments(records) {
+  const list = $('#document-list');
+  if (!records.length) { list.replaceChildren(); return; }
+  list.replaceChildren(...records.map((record) => { const item = document.createElement('li'); item.textContent = `${record.name} · ${record.contextState === 'ready' ? 'ready for model context' : 'awaiting text extraction'}`; return item; }));
+}
+
+async function loadDocuments(id) { renderDocuments(await api(`/api/books/${encodeURIComponent(id)}/documents`)); }
+
+async function uploadDocuments() {
+  if (!selectedBook) return;
+  const files = [...$('#documents').files]; if (!files.length) return;
+  const button = $('#upload-documents'); button.disabled = true; $('#upload-status').textContent = 'Uploading…';
+  try {
+    const documents = await Promise.all(files.map(async (file) => ({ name: file.name, mimeType: file.type || 'application/octet-stream', contentBase64: (await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.readAsDataURL(file); })) })));
+    const created = await api(`/api/books/${encodeURIComponent(selectedBook.id)}/documents`, { method: 'POST', body: JSON.stringify({ documents }) });
+    $('#upload-status').textContent = `${created.length} document${created.length === 1 ? '' : 's'} added.`; $('#documents').value = ''; await loadDocuments(selectedBook.id);
+  } catch (error) { $('#upload-status').textContent = error.message; } finally { button.disabled = !$('#documents').files.length; }
+}
+
 $('#start-interview').addEventListener('click', beginInterview); $('#new-book').addEventListener('click', beginInterview); $('#interview-composer').addEventListener('submit', (event) => { event.preventDefault(); answer($('#interview-answer').value); });
+$('#documents').addEventListener('change', () => { const count = $('#documents').files.length; $('#upload-documents').disabled = !count; $('#upload-status').textContent = count ? `${count} document${count === 1 ? '' : 's'} selected.` : 'No documents selected.'; });
+$('#upload-documents').addEventListener('click', uploadDocuments);
 loadBooks().catch((error) => { $('#book-list').textContent = error.message; });

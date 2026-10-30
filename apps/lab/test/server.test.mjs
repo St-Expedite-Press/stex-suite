@@ -51,4 +51,11 @@ test('accepts an interview ticket and creates a structured project vault', async
   assert.match(markdown, /\[\[\.\.\/manuscript\/Programme\|Programme\]\]/);
   assert.match(await readFile(path.join(rootPath, 'manuscript', 'Programme.md'), 'utf8'), /canonical reading sequence/);
   assert.equal((await readFile(path.join(rootPath, '.texgraph', 'interview.jsonl'), 'utf8')).split('\n').filter(Boolean).length, 2);
+  const upload = await fetch(`http://127.0.0.1:4398/api/books/${book.id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ documents: [{ name: 'context.md', mimeType: 'text/markdown', contentBase64: Buffer.from('# Context\n\nKeep this close.\n').toString('base64') }] }) });
+  assert.equal(upload.status, 201);
+  const [document] = await upload.json();
+  assert.equal(document.contextState, 'ready');
+  const manifest = await fetch(`http://127.0.0.1:4398/api/books/${book.id}/documents`);
+  assert.equal((await manifest.json()).length, 1);
+  await assert.rejects(() => fetch(`http://127.0.0.1:4398/api/books/${book.id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ documents: [{ name: '../../bad.md', contentBase64: 'eA==' }] }) }).then((result) => { if (!result.ok) throw new Error('Rejected unsafe filename.'); }), /Rejected unsafe filename/);
 });

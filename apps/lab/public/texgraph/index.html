@@ -18,6 +18,13 @@
         <div class="section-heading"><div><p class="eyebrow">Existing books</p><h2>Your manuscript library</h2></div><button id="new-book" type="button" class="quiet-button">+ New book</button></div>
         <p class="section-lede">TexGraph reads the Programme and manuscript hierarchy first. Existing books are never rewritten merely by selecting them.</p>
         <div id="book-list" class="book-list" aria-live="polite"></div>
+        <section id="source-pack" class="source-pack hidden" aria-live="polite">
+          <p class="eyebrow">Selected book · model context</p><h3 id="source-pack-title">Source pack</h3>
+          <p>Attach project documents for the model. Markdown, text, TeX, CSV, and JSON become available as bounded context; PDFs and DOCX files are kept for the extraction step.</p>
+          <input id="documents" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx">
+          <div><button id="upload-documents" type="button" disabled>Add to source pack</button><span id="upload-status"></span></div>
+          <ul id="document-list" class="document-list"></ul>
+        </section>
       </section>
       <section class="interview-panel" aria-label="New book interview">
         <header class="interview-header"><p class="eyebrow">TexGraph interview</p><span id="interview-state" class="status-pill">Ready</span></header>

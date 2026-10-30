@@ -19,7 +19,7 @@ async function atomic(file, content) { const temporary = `${file}.${process.pid}
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
 async function textIfPresent(file) { try { return await readFile(file, 'utf8'); } catch { return ''; } }
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
-async function body(request) { let raw = ''; for await (const part of request) { raw += part; if (raw.length > 100_000) throw new Error('Request too large.'); } try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); } }
+async function body(request) { let raw = ''; for await (const part of request) { raw += part; if (raw.length > 12_000_000) throw new Error('Request too large.'); } try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); } }
 
 async function markdownCount(root) {
   let total = 0;
@@ -86,6 +86,49 @@ async function createBook(payload) {
   return bookSummary(id);
 }
 
+const documentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
+const directlyReadableExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
+
+function documentPath(id, name) {
+  const supplied = String(name || '');
+  const base = path.basename(supplied);
+  const extension = path.extname(base).toLowerCase();
+  if (!base || base !== supplied || !documentExtensions.has(extension)) throw new Error('Unsupported document name or type.');
+  const safeName = base.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160);
+  return { extension, safeName };
+}
+
+async function documentManifest(root) {
+  try {
+    const value = JSON.parse(await readFile(path.join(root, '.texgraph', 'documents.json'), 'utf8'));
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+}
+
+async function addDocuments(id, payload) {
+  const root = bookRoot(id);
+  if (!(await exists(root))) throw new Error('Book not found.');
+  const uploads = Array.isArray(payload.documents) ? payload.documents : [];
+  if (!uploads.length || uploads.length > 10) throw new Error('Choose between one and ten documents.');
+  const manifest = await documentManifest(root);
+  const created = [];
+  for (const upload of uploads) {
+    const { extension, safeName } = documentPath(id, upload?.name);
+    if (typeof upload?.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Document content is missing or too large.');
+    const bytes = Buffer.from(upload.contentBase64, 'base64');
+    if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each document must be between 1 byte and 8 MB.');
+    const storedAs = `${Date.now()}-${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}-${safeName}`;
+    const destination = path.join(root, 'sources', storedAs);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, bytes, { flag: 'wx' });
+    const record = { id: createHash('sha256').update(`${storedAs}-${Date.now()}`).digest('hex').slice(0, 16), name: safeName, storedAs, mimeType: setting(upload, 'mimeType', 'application/octet-stream', 160), bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: directlyReadableExtensions.has(extension) ? 'ready' : 'awaiting-extraction' };
+    manifest.push(record); created.push(record);
+  }
+  await mkdir(path.join(root, '.texgraph'), { recursive: true });
+  await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  return created;
+}
+
 async function staticFile(response, file) { try { await access(file); response.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' }); createReadStream(file).pipe(response); } catch { send(response, 404, { error: 'Not found.' }); } }
 
 http.createServer(async (request, response) => {
@@ -93,6 +136,9 @@ http.createServer(async (request, response) => {
   try {
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
+    const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
+    if (documentMatch && request.method === 'GET') return send(response, 200, await documentManifest(bookRoot(documentMatch[1])));
+    if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));
     const target = url.pathname === '/' ? '/suite.html' : url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
     const file = path.resolve(publicDirectory, `.${target}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });
