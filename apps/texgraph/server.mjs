@@ -4,7 +4,9 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BookStore } from './src/project-store.mjs';
+import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage } from './src/lualatex.mjs';
+import { buildBook } from './src/book-assembler.mjs';
 import { requestPageRevision } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +21,7 @@ try {
 } catch { /* The host may provide application-safe configuration directly. */ }
 const projectDirectory = path.resolve(process.env.TEXGRAPH_PROJECT_DIR || path.join(directory, '.local-book'));
 const projectsDirectory = path.resolve(process.env.TEXGRAPH_PROJECTS_DIR || path.join(directory, '..', 'lab', '.local-projects'));
+const booksDirectory = path.resolve(process.env.TEXGRAPH_BOOKS_DIR || path.join(directory, 'books'));
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(process.env.TEXGRAPH_PORT || 4310);
@@ -55,6 +58,15 @@ async function serveFile(response, file) {
 }
 
 async function storeFor(url) {
+  const bookId = url.searchParams.get('book');
+  if (bookId) {
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(bookId)) throw new Error('Invalid book id.');
+    const bookRoot = path.resolve(booksDirectory, bookId);
+    if (!bookRoot.startsWith(`${booksDirectory}${path.sep}`)) throw new Error('Invalid book path.');
+    try { await access(path.join(bookRoot, 'manuscript', 'Programme.md')); } catch { throw new Error('Book project not found.'); }
+    if (!projectStores.has(`book:${bookId}`)) projectStores.set(`book:${bookId}`, new ProjectStore(bookRoot));
+    const store = projectStores.get(`book:${bookId}`); await store.initialize(); return store;
+  }
   const projectId = url.searchParams.get('project');
   if (!projectId) return defaultStore;
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(projectId)) throw new Error('Invalid project id.');
@@ -67,7 +79,41 @@ async function storeFor(url) {
   return store;
 }
 
+function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:\/|$)/)?.[1] || null; }
+
+async function vaultApi(request, response, url, store) {
+  const id = nodeId(url);
+  if (request.method === 'GET' && url.pathname === '/api/project/graph') return json(response, 200, await store.graph({ refresh: true }));
+  if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
+  if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
+  if (request.method === 'GET' && url.pathname === '/api/project/build') return json(response, 200, await store.buildStatus());
+  if (request.method === 'GET' && url.pathname === '/api/project/page-map') {
+    try { return json(response, 200, JSON.parse(await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8'))); } catch { return json(response, 200, null); }
+  }
+  if (request.method === 'POST' && url.pathname === '/api/project/build') {
+    const result = await buildBook(store); return json(response, result.ok ? 200 : 422, await store.recordBuild(result));
+  }
+  if (!id) return false;
+  if (request.method === 'GET' && url.pathname.endsWith('/turns')) return json(response, 200, await store.turns(id));
+  if (request.method === 'GET' && url.pathname.endsWith('/proposal')) return json(response, 200, await store.proposal(id));
+  if (request.method === 'GET' && url.pathname === `/api/nodes/${id}`) return json(response, 200, await store.node(id));
+  if (request.method === 'PUT' && url.pathname === `/api/nodes/${id}`) { const payload = await body(request); return json(response, 200, await store.updateNode(id, payload.source, payload.baseHash)); }
+  if (request.method === 'POST' && url.pathname.endsWith('/turn')) {
+    const payload = await body(request); if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+    const userTurn = await store.appendTurn(id, { role: 'user', message: payload.message.trim() });
+    const [node, graph, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.node(id), store.graph({ refresh: true }), store.turns(id), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    const result = await requestPageRevision({ book: { title: path.basename(store.root), design: 'Programme-led manuscript vault', graph, settings }, page: node, approvedSourceExcerpts, turns: priorTurns, message: userTurn.message });
+    const assistantTurn = await store.appendTurn(id, { role: 'assistant', commentary: result.commentary, availability: result.availability });
+    const proposal = result.proposal ? await store.createProposal(id, result.proposal) : null;
+    return json(response, 200, { userTurn, assistantTurn, proposal, availability: result.availability });
+  }
+  if (request.method === 'POST' && url.pathname.endsWith('/proposal/accept')) { const payload = await body(request); return json(response, 200, await store.acceptProposal(id, payload.proposalId)); }
+  if (request.method === 'POST' && url.pathname.endsWith('/proposal/reject')) { const payload = await body(request); return json(response, 200, await store.rejectProposal(id, payload.proposalId)); }
+  return false;
+}
+
 async function api(request, response, url, store) {
+  if (store instanceof ProjectStore) return vaultApi(request, response, url, store);
   const id = pageId(url);
   if (request.method === 'GET' && url.pathname === '/api/health') return json(response, 200, { ok: true, projectDirectory });
   if (request.method === 'GET' && url.pathname === '/api/book') return json(response, 200, await store.book());

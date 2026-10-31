@@ -121,12 +121,28 @@ async function addDocuments(id, payload) {
     const destination = path.join(root, 'sources', storedAs);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, bytes, { flag: 'wx' });
-    const record = { id: createHash('sha256').update(`${storedAs}-${Date.now()}`).digest('hex').slice(0, 16), name: safeName, storedAs, mimeType: setting(upload, 'mimeType', 'application/octet-stream', 160), bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: directlyReadableExtensions.has(extension) ? 'ready' : 'awaiting-extraction' };
+    const documentId = createHash('sha256').update(`${storedAs}-${Date.now()}`).digest('hex').slice(0, 16);
+    const record = { id: documentId, name: safeName, storedAs, mimeType: setting(upload, 'mimeType', 'application/octet-stream', 160), bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
+    if (directlyReadableExtensions.has(extension)) {
+      const extraction = `extractions/${documentId}.txt`;
+      await mkdir(path.join(root, '.texgraph', 'extractions'), { recursive: true });
+      await atomic(path.join(root, '.texgraph', extraction), bytes.toString('utf8').slice(0, 200_000));
+      record.extraction = extraction; record.contextState = 'pending-review'; record.extractedAt = new Date().toISOString();
+    }
     manifest.push(record); created.push(record);
   }
   await mkdir(path.join(root, '.texgraph'), { recursive: true });
   await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return created;
+}
+
+async function reviewDocument(id, documentId, payload) {
+  const root = bookRoot(id); const manifest = await documentManifest(root); const document = manifest.find((entry) => entry.id === documentId);
+  if (!document) throw new Error('Document not found.');
+  if (payload.approved !== true) { document.contextState = 'rejected'; document.reviewedAt = new Date().toISOString(); }
+  else if (document.contextState === 'pending-review' && document.extraction) { document.contextState = 'approved'; document.reviewedAt = new Date().toISOString(); }
+  else throw new Error('This document has no reviewed extraction to approve.');
+  await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return document;
 }
 
 async function staticFile(response, file) { try { await access(file); response.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' }); createReadStream(file).pipe(response); } catch { send(response, 404, { error: 'Not found.' }); } }
@@ -139,6 +155,8 @@ http.createServer(async (request, response) => {
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
     if (documentMatch && request.method === 'GET') return send(response, 200, await documentManifest(bookRoot(documentMatch[1])));
     if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));
+    const reviewMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents\/([a-f0-9]{16})\/review$/.exec(url.pathname);
+    if (reviewMatch && request.method === 'POST') return send(response, 200, await reviewDocument(reviewMatch[1], reviewMatch[2], await body(request)));
     const target = url.pathname === '/' ? '/suite.html' : url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
     const file = path.resolve(publicDirectory, `.${target}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });

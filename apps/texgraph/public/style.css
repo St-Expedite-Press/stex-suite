@@ -15,6 +15,11 @@ h1 { font-family: Georgia, serif; font-size: 23px; line-height: 1.12; margin-bot
 h2 { font-family: Georgia, serif; font-size: 22px; margin: 0; font-weight: 500; }
 #book-author { color: #aca99b; font-size: 13px; }
 .page-list { display: grid; gap: 4px; }
+.navigator-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: -8px 0 10px; font-size: 10px; color: #dcb55d; }
+.navigator-toolbar .quiet-button { padding: 5px 7px; color: #e6d8ad; border-color: #69695f; }
+.printed-pages { display: flex; gap: 5px; overflow: auto; padding-bottom: 3px; }
+.printed-pages .page-button { flex: 0 0 auto; color: #5b594f; border: 1px solid #cbc7bb; background: #f4f2eb; font-size: 10px; padding: 6px 8px; }
+.printed-pages .page-button.active { background: #404238; color: #f4ecd8; border-color: #404238; }
 .new-page { margin-top: 12px; color: #e6d8ad; background: transparent; border: 1px dashed #69695f; text-align: left; }
 .new-page:hover { background: #30312b; }
 .page-button { border: 0; background: transparent; padding: 10px; text-align: left; color: #bbb7aa; display: flex; gap: 10px; align-items: baseline; border-radius: 4px; }

@@ -17,5 +17,6 @@ coverage/
 *.tsbuildinfo
 apps/texgraph/.local-book/
 apps/lab/.local-projects/
+apps/texgraph/books/*/.texgraph/
 .playwright-mcp/
 services/inference/.state/

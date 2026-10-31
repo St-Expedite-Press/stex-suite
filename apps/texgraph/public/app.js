@@ -1,155 +1,27 @@
 import { startScreenlabPalette } from './palette.js';
 startScreenlabPalette();
-const state = { book: null, page: null, proposal: null, sourceDirty: false };
 const $ = (selector) => document.querySelector(selector);
-const project = new URLSearchParams(window.location.search).get('project');
-const apiUrl = (pathname) => project ? `${pathname}${pathname.includes('?') ? '&' : '?'}project=${encodeURIComponent(project)}` : pathname;
-
-async function request(url, options = {}) {
-  const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || 'Request failed.');
-  return payload;
+const book = new URLSearchParams(location.search).get('book');
+const state = { graph: null, node: null, proposal: null, sourceDirty: false, pageMap: null };
+const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
+async function request(url, options = {}) { const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || 'Request failed.'); return payload; }
+function label(node) { return `${node.kind.replaceAll('-', ' ')} · ${node.title}`; }
+function renderNodes() {
+  const order = state.graph.readingOrder; const byId = new Map(state.graph.nodes.map((node) => [node.id, node])); const unordered = state.graph.nodes.filter((node) => !order.includes(node.id) && node.kind !== 'programme');
+  $('#node-list').replaceChildren(...[...order.map((id) => byId.get(id)), ...unordered].filter(Boolean).map((node, index) => { const button = document.createElement('button'); button.className = `page-button ${node.id === state.node?.id ? 'active' : ''}`; button.title = node.relativePath; button.innerHTML = `<span class="page-number">${String(index + 1).padStart(2, '0')}</span><span>${label(node)}${node.changedOnDisk ? ' • changed' : ''}</span>`; button.addEventListener('click', () => loadNode(node.id)); return button; }));
+  const diagnosticCount = state.graph.diagnostics.length; $('#diagnostics').textContent = diagnosticCount ? `${diagnosticCount} diagnostic${diagnosticCount === 1 ? '' : 's'}` : 'Graph healthy';
 }
-
-function safeText(value) { return String(value || ''); }
-
-function renderPages() {
-  $('#page-list').replaceChildren(...state.book.pages.map((page, index) => {
-    const button = document.createElement('button');
-    button.className = `page-button ${page.id === state.page?.id ? 'active' : ''}`;
-    button.innerHTML = `<span class="page-number">${String(index + 1).padStart(2, '0')}</span><span>${page.title}</span>`;
-    button.addEventListener('click', () => loadPage(page.id));
-    return button;
-  }));
-}
-
-function renderTurns(turns) {
-  const container = $('#turns');
-  container.replaceChildren(...turns.map((turn) => {
-    const node = $('#turn-template').content.firstElementChild.cloneNode(true);
-    node.classList.add(turn.role || 'system');
-    node.querySelector('.turn-role').textContent = turn.role === 'assistant' ? 'TexGraph' : turn.role === 'user' ? 'You' : 'Studio';
-    node.querySelector('.turn-text').textContent = turn.message || turn.commentary || (turn.kind === 'proposal-accepted' ? 'Accepted the proposed revision.' : '');
-    return node;
-  }));
-  container.scrollTop = container.scrollHeight;
-}
-
-function renderProposal() {
-  const container = $('#proposal');
-  const proposal = state.proposal;
-  if (!proposal || proposal.status !== 'pending') { container.classList.add('hidden'); container.replaceChildren(); return; }
-  container.classList.remove('hidden');
-  container.innerHTML = `<h3>Proposed page revision</h3><p></p><pre></pre><div class="proposal-actions"><button class="accept">Accept revision</button><button class="reject">Reject</button></div>`;
-  container.querySelector('p').textContent = proposal.commentary || 'Review the proposed source before accepting.';
-  container.querySelector('pre').textContent = proposal.source;
-  container.querySelector('.accept').addEventListener('click', acceptProposal);
-  container.querySelector('.reject').addEventListener('click', rejectProposal);
-}
-
-function renderPage() {
-  $('#conversation-title').textContent = state.page.title;
-  $('#preview-title').textContent = state.page.title;
-  $('#source').value = state.page.source;
-  $('#source-hash').textContent = state.page.hash.slice(0, 12);
-  $('#save-state').textContent = 'Saved source';
-  renderPages();
-}
-
-function renderBuild(build) {
-  const ready = build?.ok === true;
-  $('#build-state').textContent = ready ? `Built ${new Date(build.completedAt).toLocaleTimeString()}` : build?.error || 'Not built';
-  $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.';
-  if (ready || build?.lastSuccessful) {
-    $('#pdf').src = apiUrl(`/api/pages/${state.page.id}/preview?at=${Date.now()}`);
-    $('#pdf').classList.remove('hidden');
-    $('#empty-preview').classList.add('hidden');
-  } else {
-    $('#pdf').removeAttribute('src');
-    $('#pdf').classList.add('hidden');
-    $('#empty-preview').classList.remove('hidden');
-  }
-}
-
-async function loadPage(id) {
-  if (state.sourceDirty && state.page?.id !== id && !window.confirm('Discard unsaved source changes for this page?')) return;
-  const [page, turns, proposal, build] = await Promise.all([
-    request(`/api/pages/${id}`), request(`/api/pages/${id}/turns`), request(`/api/pages/${id}/proposal`), request(`/api/pages/${id}/build`),
-  ]);
-  state.page = page; state.proposal = proposal;
-  state.sourceDirty = false;
-  renderPage(); renderTurns(turns); renderProposal(); renderBuild(build);
-}
-
-async function saveSource() {
-  const button = $('#save-source');
-  button.disabled = true;
-  try {
-    state.page = await request(`/api/pages/${state.page.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.page.hash }) });
-    $('#source-hash').textContent = state.page.hash.slice(0, 12);
-    $('#save-state').textContent = 'Saved just now';
-    state.sourceDirty = false;
-  } catch (error) { $('#save-state').textContent = error.message; }
-  finally { button.disabled = false; }
-}
-
-async function sendTurn(event) {
-  event.preventDefault();
-  const input = $('#message'); const button = $('#turn-form button'); const message = input.value.trim();
-  if (!message) return;
-  button.disabled = true;
-  try {
-    const result = await request(`/api/pages/${state.page.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
-    input.value = '';
-    state.proposal = result.proposal;
-    const turns = await request(`/api/pages/${state.page.id}/turns`);
-    renderTurns(turns); renderProposal();
-    const pill = $('#gateway-state'); pill.textContent = result.availability === 'available' ? 'Gateway connected' : 'Gateway unavailable'; pill.className = `status-pill ${result.availability === 'available' ? 'available' : 'unavailable'}`;
-  } catch (error) { $('#save-state').textContent = error.message; }
-  finally { button.disabled = false; }
-}
-
-async function acceptProposal() {
-  try {
-    state.page = await request(`/api/pages/${state.page.id}/proposal/accept`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) });
-    state.proposal = null; renderPage(); renderProposal(); renderTurns(await request(`/api/pages/${state.page.id}/turns`));
-  } catch (error) { $('#save-state').textContent = error.message; }
-}
-
-async function rejectProposal() {
-  try { await request(`/api/pages/${state.page.id}/proposal/reject`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.proposal = null; renderProposal(); }
-  catch (error) { $('#save-state').textContent = error.message; }
-}
-
-async function build() {
-  if (!window.confirm(`Build “${state.page.title}” with LuaLaTeX? This uses the saved local source and does not contact a model.`)) return;
-  const button = $('#build'); button.disabled = true; button.textContent = 'Building…';
-  try { renderBuild(await request(`/api/pages/${state.page.id}/build`, { method: 'POST', body: '{}' })); }
-  catch (error) { $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.'; }
-  finally { button.disabled = false; button.textContent = 'Build preview'; }
-}
-
-async function createPage() {
-  const title = window.prompt('Title for the new page');
-  if (title === null) return;
-  try {
-    const page = await request('/api/pages', { method: 'POST', body: JSON.stringify({ title }) });
-    state.book = await request('/api/book');
-    await loadPage(page.id);
-  } catch (error) { $('#save-state').textContent = error.message; }
-}
-
-async function bootstrap() {
-  state.book = await request('/api/book');
-  $('#book-title').textContent = safeText(state.book.title);
-  $('#book-author').textContent = safeText(state.book.author);
-  await loadPage(state.book.pages[0].id);
-  $('#turn-form').addEventListener('submit', sendTurn);
-  $('#save-source').addEventListener('click', saveSource);
-  $('#build').addEventListener('click', build);
-  $('#new-page').addEventListener('click', createPage);
-  $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved source changes'; });
-}
-
+function renderTurns(turns) { const box = $('#turns'); box.replaceChildren(...turns.map((turn) => { const node = $('#turn-template').content.firstElementChild.cloneNode(true); node.classList.add(turn.role || 'system'); node.querySelector('.turn-role').textContent = turn.role === 'assistant' ? 'Hermes' : turn.role === 'user' ? 'You' : 'Vault'; node.querySelector('.turn-text').textContent = turn.message || turn.commentary || (turn.kind === 'proposal-accepted' ? 'Accepted the proposed Markdown revision.' : ''); return node; })); box.scrollTop = box.scrollHeight; }
+function renderProposal() { const box = $('#proposal'); const proposal = state.proposal; if (!proposal || proposal.status !== 'pending') { box.classList.add('hidden'); box.replaceChildren(); return; } box.classList.remove('hidden'); box.innerHTML = '<h3>Proposed Markdown revision</h3><p></p><pre></pre><div class="proposal-actions"><button class="accept">Accept revision</button><button class="reject">Reject</button></div>'; box.querySelector('p').textContent = proposal.commentary || 'Review this complete node replacement before accepting.'; box.querySelector('pre').textContent = proposal.source; box.querySelector('.accept').addEventListener('click', acceptProposal); box.querySelector('.reject').addEventListener('click', rejectProposal); }
+function renderNode() { $('#conversation-title').textContent = state.node.title; $('#source').value = state.node.source; $('#source-hash').textContent = state.node.hash.slice(0, 12); $('#save-state').textContent = `manuscript/${state.node.relativePath}`; renderNodes(); renderPages(); }
+function renderPages() { const pages = state.pageMap?.pages || []; $('#printed-pages').replaceChildren(...pages.map((page) => { const button = document.createElement('button'); const selected = page.nodeIds.includes(state.node?.id); button.className = `page-button ${selected ? 'active' : ''}`; button.textContent = `p. ${page.logicalPage} · ${page.kind}`; button.addEventListener('click', () => loadNode(page.nodeIds[0])); return button; })); }
+function renderBuild(build) { const ready = build?.ok === true; $('#build-state').textContent = ready ? `Built ${new Date(build.completedAt).toLocaleTimeString()}` : build?.error || 'Not built'; $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.'; if (ready || build?.lastSuccessful) { $('#pdf').src = apiUrl(`/api/project/preview&at=${Date.now()}`); $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden'); } }
+async function loadNode(id) { if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return; const [node, turns, proposal] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/nodes/${id}/turns`), request(`/api/nodes/${id}/proposal`)]); state.node = node; state.proposal = proposal; state.sourceDirty = false; renderNode(); renderTurns(turns); renderProposal(); }
+async function saveSource() { const button = $('#save-source'); button.disabled = true; try { state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; renderNode(); } catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; } }
+async function sendTurn(event) { event.preventDefault(); const input = $('#message'); const button = $('#turn-form button'); const message = input.value.trim(); if (!message || !state.node) return; button.disabled = true; try { const result = await request(`/api/nodes/${state.node.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) }); input.value = ''; state.proposal = result.proposal; renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); renderProposal(); const pill = $('#gateway-state'); pill.textContent = result.availability === 'available' ? 'Hermes connected' : 'Hermes unavailable'; pill.className = `status-pill ${result.availability === 'available' ? 'available' : 'unavailable'}`; } catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; } }
+async function acceptProposal() { try { state.node = await request(`/api/nodes/${state.node.id}/proposal/accept`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.graph = await request('/api/project/graph'); state.proposal = null; renderNode(); renderProposal(); renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); } catch (error) { $('#save-state').textContent = error.message; } }
+async function rejectProposal() { try { await request(`/api/nodes/${state.node.id}/proposal/reject`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.proposal = null; renderProposal(); } catch (error) { $('#save-state').textContent = error.message; } }
+async function build() { if (!confirm('Build the Programme-ordered book with LuaLaTeX? This is local, explicit, and does not send a model request.')) return; const button = $('#build'); button.disabled = true; button.textContent = 'Building…'; try { renderBuild(await request('/api/project/build', { method: 'POST', body: '{}' })); state.pageMap = await request('/api/project/page-map'); renderPages(); } catch (error) { $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.'; } finally { button.disabled = false; button.textContent = 'Build preview'; } }
+async function refresh() { state.graph = await request('/api/project/refresh', { method: 'POST', body: '{}' }); renderNodes(); if (state.node) await loadNode(state.node.id); }
+async function bootstrap() { if (!book) throw new Error('Choose a project from the STEX Suite home first.'); state.graph = await request('/api/project/graph'); $('#book-title').textContent = book.replaceAll('-', ' '); state.pageMap = await request('/api/project/page-map'); renderNodes(); const first = state.graph.readingOrder[0] || state.graph.nodes.find((node) => node.kind !== 'programme')?.id; if (first) await loadNode(first); renderBuild(await request('/api/project/build')); $('#turn-form').addEventListener('submit', sendTurn); $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', build); $('#refresh').addEventListener('click', refresh); $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; }); }
 bootstrap().catch((error) => { document.body.textContent = `TexGraph could not start: ${error.message}`; });

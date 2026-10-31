@@ -4,7 +4,7 @@ function assistantResult(commentary, availability = 'available') {
   return { commentary, availability, proposal: null };
 }
 
-export async function requestPageRevision({ book, page, turns, message }) {
+export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) {
     return assistantResult('The inference gateway is not configured. Your message was saved, but no revision was proposed.', 'unconfigured');
@@ -23,6 +23,8 @@ export async function requestPageRevision({ book, page, turns, message }) {
         contract: 'stex.texgraph.page-turn.v1',
         book: { title: book.title, author: book.author, design: book.design, settings: book.settings || {}, context: book.context || {} },
         page: { id: page.id, title: page.title, source: page.source, sourceHash: page.hash },
+        graph: book.graph || null,
+        approvedSourceExcerpts: approvedSourceExcerpts.map((entry) => ({ id: entry.id, name: entry.name, excerpt: String(entry.excerpt || '').slice(0, 6000) })).slice(0, 8),
         turns: turns.slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
       }),
