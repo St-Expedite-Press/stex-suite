@@ -9,8 +9,8 @@ let step = -1;
 const interview = [
   ['title', 'What is the working title of this book?', 'A working title is enough.'],
   ['author', 'Whose name belongs on the title page?', 'An author, editor, collective, or imprint is fine.'],
-  ['editorialIntent', 'What is this book trying to do for a reader?', 'A few ordinary sentences are perfect.'],
-  ['bookType', 'What form is it taking?', 'poetry-collection'],
+  ['editorialIntent', 'What form is it taking for a reader?', 'poetry collection'],
+  ['bookType', 'What is the book form?', 'poetry-collection'],
 ];
 
 async function api(path, options = {}) {
@@ -22,9 +22,10 @@ async function api(path, options = {}) {
 
 async function openInObsidian(id) {
   const opened = await api(`/api/books/${encodeURIComponent(id)}/open-in-obsidian`, { method: 'POST', body: '{}' });
-  return opened.registered
-    ? 'Obsidian registered this project as a local vault and opened its Programme.'
-    : 'Obsidian opened this project’s Programme.';
+  // This user gesture is a browser-level fallback; the local server also
+  // invokes Windows' registered Obsidian protocol handler.
+  if (opened.uri) window.location.assign(opened.uri);
+  return opened.registered ? 'Opening the new local Obsidian vault…' : 'Opening Obsidian…';
 }
 
 function addMessage(role, message) {
@@ -39,6 +40,7 @@ function addMessage(role, message) {
 
 function askNext() {
   step += 1;
+  while (interview[step] && answers[interview[step][0]]) step += 1;
   const current = interview[step];
   if (!current) return finishInterview();
   addMessage('assistant', current[1]);
@@ -70,18 +72,14 @@ function finishInterview() {
   panel.querySelector('.accept-ticket').addEventListener('click', async () => {
     const button = panel.querySelector('.accept-ticket');
     button.disabled = true;
-    try {
-      const created = await api('/api/books', { method: 'POST', body: JSON.stringify({ ticket: draft, transcript }) });
-      $('#interview-state').textContent = await openInObsidian(created.id);
-    } catch (error) {
-      button.disabled = false;
-      alert(error.message);
-    }
+    button.textContent = 'Opening Obsidian…';
+    try { $('#interview-state').textContent = await openInObsidian((await api('/api/books', { method: 'POST', body: JSON.stringify({ ticket: draft, transcript }) })).id); }
+    catch (error) { button.disabled = false; button.textContent = 'Create and open in Obsidian →'; alert(error.message); }
   });
   panel.querySelector('.restart-ticket').addEventListener('click', beginInterview);
 }
 
-function beginInterview() {
+function beginInterview(initialMessage = '') {
   Object.keys(answers).forEach((key) => delete answers[key]);
   transcript.length = 0;
   step = -1;
@@ -91,14 +89,20 @@ function beginInterview() {
   $('#ticket').classList.add('hidden');
   $('#interview-composer').classList.remove('hidden');
   $('#interview-state').textContent = 'Conversation';
-  addMessage('assistant', 'Tell me a little about the book. We can keep the starting assumptions light and revise them later.');
+  if (initialMessage) {
+    answers.editorialIntent = initialMessage;
+    addMessage('user', initialMessage);
+    addMessage('assistant', 'That is a strong beginning. I will hold onto it while we find the title and form.');
+  } else {
+    addMessage('assistant', 'Start anywhere. A title, a line, an image, or a worry about the book is enough.');
+  }
   askNext();
 }
 
 async function loadBooks() {
   const books = await api('/api/books');
   const list = $('#book-list');
-  if (!books.length) { list.textContent = 'No books yet. Begin a conversation to create one.'; return; }
+  if (!books.length) { list.textContent = 'No books yet. Begin with a message on the right.'; return; }
   list.replaceChildren(...books.map((book) => {
     const card = document.createElement('article');
     card.className = 'book-card';
@@ -110,15 +114,24 @@ async function loadBooks() {
     const button = card.querySelector('.open-book');
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { button.textContent = await openInObsidian(book.id); }
-      catch (error) { button.disabled = false; alert(error.message); }
+      button.textContent = 'Opening…';
+      try { await openInObsidian(book.id); button.textContent = 'Opening Obsidian…'; }
+      catch (error) { button.disabled = false; button.textContent = 'Open in Obsidian →'; alert(error.message); }
     });
     return card;
   }));
 }
 
-$('#start-interview').addEventListener('click', beginInterview);
-$('#new-book').addEventListener('click', beginInterview);
+$('#new-book').addEventListener('click', () => $('#starter-answer').focus());
+$('#starter-composer').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const value = $('#starter-answer').value.trim();
+  if (value) beginInterview(value);
+});
+document.querySelectorAll('[data-starter]').forEach((button) => button.addEventListener('click', () => {
+  $('#starter-answer').value = button.dataset.starter;
+  $('#starter-answer').focus();
+}));
 $('#interview-composer').addEventListener('submit', (event) => {
   event.preventDefault();
   const value = $('#interview-answer').value.trim();
@@ -134,7 +147,5 @@ loadBooks().catch((error) => { $('#book-list').textContent = error.message; });
 const requestedBook = new URLSearchParams(location.search).get('open');
 if (requestedBook) {
   $('#interview-state').textContent = 'Opening Obsidian…';
-  openInObsidian(requestedBook)
-    .then((message) => { $('#interview-state').textContent = message; })
-    .catch((error) => { $('#interview-state').textContent = error.message; });
+  openInObsidian(requestedBook).then((message) => { $('#interview-state').textContent = message; }).catch((error) => { $('#interview-state').textContent = error.message; });
 }

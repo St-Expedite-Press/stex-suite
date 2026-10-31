@@ -88,17 +88,23 @@ async function obsidianVaultForBook(id) {
 }
 async function launchObsidian(uri) {
   if (process.env.STEX_OBSIDIAN_NO_LAUNCH === '1') return;
-  const executable = process.env.STEX_OBSIDIAN_EXECUTABLE || (process.platform === 'win32' ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Obsidian', 'Obsidian.exe') : 'obsidian');
-  if (process.platform === 'win32' && !(await exists(executable))) throw new Error('Obsidian is not installed at the configured local application path.');
-  const child = spawn(executable, [uri], { detached: true, stdio: 'ignore', windowsHide: true });
-  child.unref();
+  // Obsidian is a URI-protocol application. Passing its URI to Obsidian.exe
+  // does not reliably forward an open request to an already running instance;
+  // invoke the registered protocol handler instead.
+  const command = process.platform === 'win32' ? 'rundll32.exe' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', uri] : [uri];
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.once('error', reject);
+    child.once('spawn', () => { child.unref(); resolve(); });
+  });
 }
 async function openInObsidian(id) {
   const { vault, programme, registered } = await obsidianVaultForBook(id);
   const file = path.relative(vault.path, programme).replaceAll('\\', '/');
   const uri = `obsidian://open?vault=${encodeURIComponent(vault.id)}&file=${encodeURIComponent(file)}`;
   await launchObsidian(uri);
-  return { opened: true, registered, vaultId: vault.id, programme: file };
+  return { opened: true, registered, vaultId: vault.id, programme: file, uri };
 }
 
 function acceptedTicket(payload, id) {

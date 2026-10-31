@@ -35,7 +35,9 @@ test('discovers a manuscript graph without changing it', async (context) => {
   assert.equal(await readFile(path.join(manuscript, 'Poem.md'), 'utf8'), '# A poem\n');
   const opened = await fetch('http://127.0.0.1:4397/api/books/existing-book/open-in-obsidian', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   assert.equal(opened.status, 200);
-  assert.equal((await opened.json()).registered, true);
+  const openedBook = await opened.json();
+  assert.equal(openedBook.registered, true);
+  assert.match(openedBook.uri, /^obsidian:\/\/open\?vault=/);
   const obsidian = JSON.parse(await readFile(path.join(root, 'obsidian.json'), 'utf8'));
   assert.equal(Object.values(obsidian.vaults)[0].path, path.join(root, 'existing-book'));
 });
