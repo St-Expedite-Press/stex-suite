@@ -1,5 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
@@ -11,7 +10,6 @@ const publicDirectory = path.join(directory, 'public');
 const booksDirectory = path.resolve(process.env.STEX_BOOKS_DIR || path.join(directory, '..', 'texgraph', 'books'));
 const port = Number(process.env.STEX_LAB_PORT || 4300);
 const mime = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
-const obsidianConfig = process.env.STEX_OBSIDIAN_CONFIG || path.join(process.env.APPDATA || '', 'obsidian', 'obsidian.json');
 
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
 function requireBookId(id) { if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id)) throw new Error('Invalid book id.'); return id; }
@@ -19,7 +17,7 @@ function bookRoot(id) { const root = path.resolve(booksDirectory, requireBookId(
 function setting(source, name, fallback, maximum = 4000) { return String(source[name] || fallback).trim().slice(0, maximum); }
 async function atomic(file, content) {
   await mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporary, content, 'utf8');
   try {
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -63,48 +61,6 @@ async function books() {
   const entries = await readdir(booksDirectory, { withFileTypes: true });
   const records = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => bookSummary(entry.name).catch(() => null)));
   return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
-}
-
-function comparablePath(value) { return path.resolve(value).replace(/[\\/]+$/, '').toLowerCase(); }
-function vaultContaining(vaults, target) {
-  const targetPath = comparablePath(target);
-  return Object.entries(vaults || {})
-    .map(([id, vault]) => ({ id, ...vault, root: comparablePath(vault?.path || '') }))
-    .filter((vault) => vault.root && (targetPath === vault.root || targetPath.startsWith(`${vault.root}${path.sep.toLowerCase()}`)))
-    .sort((left, right) => right.root.length - left.root.length)[0] || null;
-}
-async function obsidianVaultForBook(id) {
-  const root = bookRoot(id);
-  const programme = path.join(root, 'manuscript', 'Programme.md');
-  let configuration = { vaults: {} };
-  try { configuration = JSON.parse(await readFile(obsidianConfig, 'utf8')); } catch { /* Obsidian writes this after its first launch. */ }
-  configuration.vaults ||= {};
-  const existing = vaultContaining(configuration.vaults, programme);
-  if (existing) return { vault: existing, programme, registered: false };
-  const vaultId = randomBytes(8).toString('hex');
-  configuration.vaults[vaultId] = { path: root, ts: Date.now() };
-  await atomic(obsidianConfig, `${JSON.stringify(configuration, null, 2)}\n`);
-  return { vault: { id: vaultId, path: root, root: comparablePath(root) }, programme, registered: true };
-}
-async function launchObsidian(uri) {
-  if (process.env.STEX_OBSIDIAN_NO_LAUNCH === '1') return;
-  // Obsidian is a URI-protocol application. Passing its URI to Obsidian.exe
-  // does not reliably forward an open request to an already running instance;
-  // invoke the registered protocol handler instead.
-  const command = process.platform === 'win32' ? 'rundll32.exe' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', uri] : [uri];
-  await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
-    child.once('error', reject);
-    child.once('spawn', () => { child.unref(); resolve(); });
-  });
-}
-async function openInObsidian(id) {
-  const { vault, programme, registered } = await obsidianVaultForBook(id);
-  const file = path.relative(vault.path, programme).replaceAll('\\', '/');
-  const uri = `obsidian://open?vault=${encodeURIComponent(vault.id)}&file=${encodeURIComponent(file)}`;
-  await launchObsidian(uri);
-  return { opened: true, registered, vaultId: vault.id, programme: file, uri };
 }
 
 function acceptedTicket(payload, id) {
@@ -209,8 +165,6 @@ http.createServer(async (request, response) => {
   try {
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
-    const openMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/open-in-obsidian$/.exec(url.pathname);
-    if (openMatch && request.method === 'POST') return send(response, 200, await openInObsidian(openMatch[1]));
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
     if (documentMatch && request.method === 'GET') return send(response, 200, await documentManifest(bookRoot(documentMatch[1])));
     if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function startLab(root, port, context) {
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_LAB_PORT: String(port), STEX_BOOKS_DIR: root, STEX_OBSIDIAN_CONFIG: path.join(root, 'obsidian.json'), STEX_OBSIDIAN_NO_LAUNCH: '1' } });
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_LAB_PORT: String(port), STEX_BOOKS_DIR: root } });
   context.after(async () => { child.kill(); await rm(root, { recursive: true, force: true }); });
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Lab server did not start.')), 5_000);
@@ -33,13 +33,6 @@ test('discovers a manuscript graph without changing it', async (context) => {
   assert.equal(book.state, 'manuscript-detected');
   assert.equal(book.manuscriptNodes, 2);
   assert.equal(await readFile(path.join(manuscript, 'Poem.md'), 'utf8'), '# A poem\n');
-  const opened = await fetch('http://127.0.0.1:4397/api/books/existing-book/open-in-obsidian', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(opened.status, 200);
-  const openedBook = await opened.json();
-  assert.equal(openedBook.registered, true);
-  assert.match(openedBook.uri, /^obsidian:\/\/open\?vault=/);
-  const obsidian = JSON.parse(await readFile(path.join(root, 'obsidian.json'), 'utf8'));
-  assert.equal(Object.values(obsidian.vaults)[0].path, path.join(root, 'existing-book'));
 });
 
 test('accepts an interview ticket and creates a structured project vault', async (context) => {

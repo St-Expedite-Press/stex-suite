@@ -6,6 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 const answers = {};
 const transcript = [];
 let step = -1;
+const studioUrl = (id) => `http://127.0.0.1:4310/?book=${encodeURIComponent(id)}`;
 const interview = [
   ['title', 'What is the working title of this book?', 'A working title is enough.'],
   ['author', 'Whose name belongs on the title page?', 'An author, editor, collective, or imprint is fine.'],
@@ -20,13 +21,7 @@ async function api(path, options = {}) {
   return result;
 }
 
-async function openInObsidian(id) {
-  const opened = await api(`/api/books/${encodeURIComponent(id)}/open-in-obsidian`, { method: 'POST', body: '{}' });
-  // This user gesture is a browser-level fallback; the local server also
-  // invokes Windows' registered Obsidian protocol handler.
-  if (opened.uri) window.location.assign(opened.uri);
-  return opened.registered ? 'Opening the new local Obsidian vault…' : 'Opening Obsidian…';
-}
+function openVaultStudio(id) { location.assign(studioUrl(id)); }
 
 function addMessage(role, message) {
   transcript.push({ role, message, at: new Date().toISOString() });
@@ -66,15 +61,15 @@ function finishInterview() {
   addMessage('assistant', `I have a workable starting ticket for “${draft.title}.” You can create the book now and continue inside Obsidian.`);
   const panel = $('#ticket');
   panel.classList.remove('hidden');
-  panel.innerHTML = '<p class="eyebrow">Book starting point</p><h2></h2><p></p><div class="ticket-actions"><button class="accept-ticket">Create and open in Obsidian →</button><button class="restart-ticket quiet-button">Start over</button></div>';
+  panel.innerHTML = '<p class="eyebrow">Book starting point</p><h2></h2><p></p><div class="ticket-actions"><button class="accept-ticket">Create book studio →</button><button class="restart-ticket quiet-button">Start over</button></div>';
   panel.querySelector('h2').textContent = draft.title;
   panel.querySelector('p:not(.eyebrow)').textContent = draft.editorialIntent || 'A new manuscript.';
   panel.querySelector('.accept-ticket').addEventListener('click', async () => {
     const button = panel.querySelector('.accept-ticket');
     button.disabled = true;
-    button.textContent = 'Opening Obsidian…';
-    try { $('#interview-state').textContent = await openInObsidian((await api('/api/books', { method: 'POST', body: JSON.stringify({ ticket: draft, transcript }) })).id); }
-    catch (error) { button.disabled = false; button.textContent = 'Create and open in Obsidian →'; alert(error.message); }
+    button.textContent = 'Opening studio…';
+    try { openVaultStudio((await api('/api/books', { method: 'POST', body: JSON.stringify({ ticket: draft, transcript }) })).id); }
+    catch (error) { button.disabled = false; button.textContent = 'Create book studio →'; alert(error.message); }
   });
   panel.querySelector('.restart-ticket').addEventListener('click', beginInterview);
 }
@@ -106,7 +101,7 @@ async function loadBooks() {
   list.replaceChildren(...books.map((book) => {
     const card = document.createElement('article');
     card.className = 'book-card';
-    card.innerHTML = '<div><p class="book-state"></p><h3></h3><p class="book-description"></p><small></small></div><button class="open-book" type="button">Open in Obsidian →</button>';
+    card.innerHTML = '<div><p class="book-state"></p><h3></h3><p class="book-description"></p><small></small></div><button class="open-book" type="button">Enter vault studio →</button>';
     card.querySelector('.book-state').textContent = book.state === 'manuscript-detected' ? 'Manuscript detected' : 'TexGraph vault';
     card.querySelector('h3').textContent = book.title;
     card.querySelector('.book-description').textContent = book.description;
@@ -114,9 +109,8 @@ async function loadBooks() {
     const button = card.querySelector('.open-book');
     button.addEventListener('click', async () => {
       button.disabled = true;
-      button.textContent = 'Opening…';
-      try { await openInObsidian(book.id); button.textContent = 'Opening Obsidian…'; }
-      catch (error) { button.disabled = false; button.textContent = 'Open in Obsidian →'; alert(error.message); }
+      button.textContent = 'Opening studio…';
+      openVaultStudio(book.id);
     });
     return card;
   }));
@@ -143,9 +137,3 @@ $('#interview-composer').addEventListener('submit', (event) => {
 });
 
 loadBooks().catch((error) => { $('#book-list').textContent = error.message; });
-
-const requestedBook = new URLSearchParams(location.search).get('open');
-if (requestedBook) {
-  $('#interview-state').textContent = 'Opening Obsidian…';
-  openInObsidian(requestedBook).then((message) => { $('#interview-state').textContent = message; }).catch((error) => { $('#interview-state').textContent = error.message; });
-}

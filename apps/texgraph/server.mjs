@@ -188,13 +188,6 @@ await defaultStore.initialize();
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
   try {
-    if (request.method === 'GET' && url.pathname === '/' && url.searchParams.has('book')) {
-      const bookId = url.searchParams.get('book');
-      if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(bookId)) throw new Error('Invalid book id.');
-      response.writeHead(302, { location: `http://127.0.0.1:4300/texgraph/?open=${encodeURIComponent(bookId)}`, 'cache-control': 'no-store' });
-      response.end();
-      return;
-    }
     if (url.pathname.startsWith('/api/')) {
       const activeStore = await storeFor(url);
       const handled = await api(request, response, url, activeStore);
