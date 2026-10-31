@@ -2,6 +2,7 @@ import { startScreenlabPalette } from './palette.js';
 startScreenlabPalette();
 const $ = (selector) => document.querySelector(selector);
 const answers = {}; const transcript = []; let step = -1; let selectedBook = null; let bookIndex = new Map();
+const studioUrl = (id) => `http://127.0.0.1:4310/?book=${encodeURIComponent(id)}`;
 
 const interview = [
   { id: 'title', question: 'What is the working title of this book?', hint: 'A working title is enough; it can change later.' },
@@ -57,6 +58,7 @@ function selectBook(id) {
   selectedBook = bookIndex.get(id) || { id, title }; $('#source-pack').classList.remove('hidden'); $('#source-pack-title').textContent = `${title} source pack`; $('#upload-status').textContent = 'No documents selected.'; $('#documents').value = ''; $('#upload-documents').disabled = true; loadDocuments(id).catch((error) => { $('#upload-status').textContent = error.message; });
   if ($('#interview-empty').classList.contains('hidden')) return;
   $('#interview-empty').innerHTML = `<span class="empty-glyph">✓</span><h2>${title} is selected.</h2><p>This lobby has preserved its manuscript tree. The next TexGraph build will map its Programme, node types, print rules, and source/editorial boundaries before opening the composition surface.</p><button id="start-interview" type="button">Create another book →</button>`;
+  const open = document.createElement('a'); open.className = 'open-studio'; open.href = studioUrl(id); open.textContent = 'Open TexGraph Studio →'; $('#interview-empty').insertBefore(open, $('#start-interview'));
   $('#start-interview').addEventListener('click', beginInterview);
 }
 
