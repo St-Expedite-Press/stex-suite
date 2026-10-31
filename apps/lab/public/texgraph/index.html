@@ -11,31 +11,20 @@
       <a href="/" class="back">← STEX Suite</a>
       <div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <p class="wordmark">TexGraph</p><h1>Enter a book</h1>
-      <p class="lede">Select an existing manuscript graph, or begin a new book with a production interview.</p>
+      <p class="lede">Open a manuscript directly in its living Obsidian graph, or begin a new book in conversation.</p>
     </header>
     <section class="book-lobby">
       <section class="book-picker" aria-label="Book selection">
         <div class="section-heading"><div><p class="eyebrow">Existing books</p><h2>Your manuscript library</h2></div><button id="new-book" type="button" class="quiet-button">+ New book</button></div>
-        <p class="section-lede">TexGraph reads the Programme and manuscript hierarchy first. Existing books are never rewritten merely by selecting them.</p>
+        <p class="section-lede">Choose a manuscript to enter its graph. Nothing is changed merely by opening it.</p>
         <div id="book-list" class="book-list" aria-live="polite"></div>
-        <section id="source-pack" class="source-pack hidden" aria-live="polite">
-          <p class="eyebrow">Selected book · model context</p><h3 id="source-pack-title">Source pack</h3>
-          <p>Attach project documents for the model. Markdown, text, TeX, CSV, and JSON become available as bounded context; PDFs and DOCX files are kept for the extraction step.</p>
-          <input id="documents" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx">
-          <div><button id="upload-documents" type="button" disabled>Add to source pack</button><span id="upload-status"></span></div>
-          <ul id="document-list" class="document-list"></ul>
-        </section>
       </section>
       <section class="interview-panel" aria-label="New book interview">
-        <header class="interview-header"><p class="eyebrow">TexGraph interview</p><span id="interview-state" class="status-pill">Ready</span></header>
-        <div id="interview-empty" class="interview-empty"><span class="empty-glyph">T</span><h2>Start with the book, not the form.</h2><p>TexGraph will ask about the manuscript, reading order, and physical edition. At the end, you accept a Global Settings Ticket and instantiate the project vault.</p><button id="start-interview" type="button">Begin interview →</button></div>
+        <header class="interview-header"><p class="eyebrow">New book conversation</p><span id="interview-state" class="status-pill">Ready</span></header>
+        <div id="interview-empty" class="interview-empty"><span class="empty-glyph">T</span><h2>Start with the book, not the form.</h2><p>Describe what you are making. TexGraph will ask the few questions needed to start a working manuscript.</p><button id="start-interview" type="button">Begin conversation →</button></div>
         <div id="chat" class="chat hidden" aria-live="polite"></div>
         <section id="ticket" class="ticket hidden" aria-live="polite"></section>
-        <form id="interview-composer" class="interview-composer hidden">
-          <label for="interview-answer">Your response</label>
-          <textarea id="interview-answer" rows="3" placeholder="Write naturally; TexGraph will use this in the book brief."></textarea>
-          <div><span id="answer-hint">Press Send to continue.</span><button type="submit">Send</button></div>
-        </form>
+        <form id="interview-composer" class="interview-composer hidden"><label for="interview-answer">Your response</label><textarea id="interview-answer" rows="3" placeholder="Write naturally."></textarea><div><span id="answer-hint">Press Send to continue.</span><button type="submit">Send</button></div></form>
       </section>
     </section>
   </main><template id="message-template"><article class="chat-message"><span class="chat-role"></span><p class="chat-text"></p></article></template><script type="module" src="/app.js"></script></body>

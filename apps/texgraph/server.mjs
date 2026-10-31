@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,7 @@ async function body(request) {
   let raw = '';
   for await (const chunk of request) {
     raw += chunk;
-    if (raw.length > 250_000) throw new Error('Request is too large.');
+    if (raw.length > 12_000_000) throw new Error('Request is too large.');
   }
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); }
 }
@@ -81,8 +82,34 @@ async function storeFor(url) {
 
 function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:\/|$)/)?.[1] || null; }
 
+const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
+const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
+async function attachmentManifest(store) { try { const value = JSON.parse(await readFile(path.join(store.stateDirectory, 'documents.json'), 'utf8')); return Array.isArray(value) ? value : []; } catch { return []; } }
+async function saveAttachments(store, payload) {
+  const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
+  if (!uploads.length || uploads.length > 10) throw new Error('Attach between one and ten files.');
+  const manifest = await attachmentManifest(store); const created = [];
+  for (const upload of uploads) {
+    const name = path.basename(String(upload?.name || '')); const extension = path.extname(name).toLowerCase();
+    if (!name || name !== upload.name || !attachmentExtensions.has(extension)) throw new Error('Unsupported attachment type or filename.');
+    if (typeof upload.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Attachment is missing or too large.');
+    const bytes = Buffer.from(upload.contentBase64, 'base64'); if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each attachment must be between 1 byte and 8 MB.');
+    const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16); const safeName = name.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160); const storedAs = `${Date.now()}-${id}-${safeName}`;
+    const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
+    const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
+    if (readableAttachmentExtensions.has(extension)) { const extraction = `extractions/${id}.txt`; await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true }); await writeFile(path.join(store.stateDirectory, extraction), bytes.toString('utf8').slice(0, 200_000), 'utf8'); record.extraction = extraction; record.contextState = 'pending-review'; }
+    manifest.push(record); created.push(record);
+  }
+  await mkdir(store.stateDirectory, { recursive: true }); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return created;
+}
+async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
+
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
+  const attachmentId = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/approve$/)?.[1];
+  if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await attachmentManifest(store));
+  if (request.method === 'POST' && url.pathname === '/api/project/attachments') return json(response, 201, await saveAttachments(store, await body(request)));
+  if (request.method === 'POST' && attachmentId) return json(response, 200, await reviewAttachment(store, attachmentId));
   if (request.method === 'GET' && url.pathname === '/api/project/graph') return json(response, 200, await store.graph({ refresh: true }));
   if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());

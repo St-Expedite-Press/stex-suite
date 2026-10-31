@@ -5,15 +5,15 @@
     <main class="studio-shell">
       <aside class="navigator" aria-label="Manuscript graph">
         <div class="brand"><span class="brand-mark">T</span><span>TexGraph</span></div>
-        <section class="book-card"><p class="eyebrow">Live manuscript vault</p><h1 id="book-title">Loading…</h1><p id="book-author">Programme-led reading order</p></section>
+        <section class="book-card"><p class="eyebrow">Obsidian manuscript graph</p><h1 id="book-title">Loading…</h1><p id="book-author">Programme-led reading order</p></section>
         <div class="navigator-toolbar"><button id="refresh" class="quiet-button" type="button">Refresh vault</button><span id="diagnostics"></span></div>
         <nav id="node-list" class="page-list"></nav>
-        <p class="navigator-note">Programme.md is the reading authority. Metadata refreshes here never rewrite manuscript files.</p>
+        <p class="navigator-note">Programme.md is the reading authority. Opening a book never rewrites its manuscript.</p>
       </aside>
-      <section class="conversation" aria-label="Hermes conversation and Markdown editor">
-        <header class="panel-header"><div><p class="eyebrow">Hermes · selected manuscript node</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Hermes bridge</span></header>
+      <section class="conversation" aria-label="Conversation and Markdown editor">
+        <header class="panel-header"><div><p class="eyebrow">Conversation · selected manuscript node</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Hermes bridge</span></header>
         <div id="turns" class="turns" aria-live="polite"></div><section id="proposal" class="proposal hidden" aria-live="polite"></section>
-        <form id="turn-form" class="composer"><label for="message">Ask about this node, its sequence, or its printed page</label><textarea id="message" rows="4" placeholder="Develop this poem, diagnose its role in the sequence, or suggest a page treatment…"></textarea><div class="composer-footer"><span>Only this node, its graph neighborhood, approved sources, and recent turns reach Hermes.</span><button type="submit">Send</button></div></form>
+        <form id="turn-form" class="composer"><label for="message">Message TexGraph</label><textarea id="message" rows="4" placeholder="Ask, revise, sequence, or typeset…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><div><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><button id="attach" type="button" class="quiet-button">Attach files</button><span id="attachment-state"></span></div><button type="submit">Send</button></div></form>
         <details class="source-editor" open><summary>Canonical Markdown <span id="source-hash"></span></summary><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source"></textarea><div class="source-actions"><span id="save-state"></span><button id="save-source" type="button" class="quiet-button">Save Markdown</button></div></details>
       </section>
       <section class="preview" aria-label="LuaLaTeX full-book preview">
@@ -24,7 +24,6 @@
         <section class="build-log-section"><div class="log-heading"><span>Build state</span><span id="build-state">Not built</span></div><pre id="build-log">The last successful preview is kept if a newer build fails.</pre></section>
       </section>
     </main>
-    <template id="turn-template"><article class="turn"><span class="turn-role"></span><p class="turn-text"></p></article></template>
-    <script type="module" src="/app.js"></script>
+    <template id="turn-template"><article class="turn"><span class="turn-role"></span><p class="turn-text"></p></article></template><script type="module" src="/app.js"></script>
   </body>
 </html>
