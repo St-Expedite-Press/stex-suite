@@ -15,6 +15,7 @@ async function vault() {
 test('maps Programme order without rewriting the manuscript and records diagnostics', async (context) => {
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true })); const graph = await store.graph();
   assert.equal(graph.readingOrder.length, 2); assert.equal(graph.nodes.find((node) => node.id === graph.readingOrder[0]).relativePath, '02/Second.md'); assert.ok(graph.diagnostics.some((entry) => entry.code === 'unresolved-programme-link')); assert.ok(graph.diagnostics.some((entry) => entry.code === 'editorial-block'));
+  assert.equal(graph.book.kind, 'book'); assert.equal(graph.book.nodeIds.length, 2); assert.equal(graph.book.sections.length, 2); assert.equal((await store.scope(graph.readingOrder[0])).buildThroughNodeId, graph.readingOrder[0]);
   assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /Editorial Includability/);
 });
 test('coalesces simultaneous graph refreshes so a vault sidecar is written once', async (context) => {
@@ -32,4 +33,11 @@ test('rejects stale graph proposals and keeps acceptance history in sidecar stat
 test('assembles Programme order and leaves editorial blocks out of derived TeX', async (context) => {
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true })); const assembled = await assembleBook(store);
   assert.ok(assembled.document.indexOf('Second') < assembled.document.indexOf('First')); assert.doesNotMatch(assembled.document, /Not print/); assert.equal(assembled.pageMap[0].sourcePaths[0], 'manuscript/02/Second.md');
+});
+test('build scope keeps the complete preamble through the selected manuscript node', async (context) => {
+  const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true })); const graph = await store.graph();
+  const partial = await assembleBook(store, { scopeId: graph.readingOrder[0] });
+  assert.deepEqual(partial.includedNodeIds, [graph.readingOrder[0]]);
+  assert.match(partial.document, /Second/); assert.doesNotMatch(partial.document, /First/);
+  assert.match(partial.document, /documentclass/);
 });

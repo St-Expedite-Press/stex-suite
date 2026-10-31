@@ -64,6 +64,38 @@ function diagnosticsFor(relative, source) {
   return diagnostics;
 }
 
+function canonicalBook(root, nodes, readingOrder) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const ordered = readingOrder.map((id) => byId.get(id)).filter(Boolean);
+  const programme = nodes.find((node) => node.kind === 'programme');
+  const sections = [];
+  let current = null;
+  const sectionName = (node) => {
+    const folder = node.relativePath.split('/')[0] || 'Manuscript';
+    return folder.replace(/^\d+[_-]?/, '').replaceAll('_', ' ').replaceAll('-', ' ').trim() || 'Manuscript';
+  };
+  const startSection = (node, title, kind = 'section', folder = '') => {
+    current = { id: `scope-${node.id}`, kind, title, folder, anchorNodeId: node.id, nodeIds: [], buildThroughNodeId: node.id };
+    sections.push(current);
+  };
+  for (const node of ordered) {
+    const folder = node.relativePath.split('/')[0] || '';
+    if (!current || current.folder !== folder) {
+      const title = node.kind === 'front-matter' ? 'Front matter' : node.kind === 'back-matter' ? 'Back matter' : sectionName(node);
+      const kind = node.kind === 'back-matter' ? 'back-matter' : node.kind === 'front-matter' ? 'front-matter' : 'section';
+      startSection(node, title, kind, folder);
+    }
+    current.nodeIds.push(node.id);
+    current.buildThroughNodeId = node.id;
+  }
+  const title = path.basename(root).replaceAll(/[-_]/g, ' ');
+  return {
+    id: 'book', kind: 'book', title, programmeNodeId: programme?.id || null,
+    nodeIds: ordered.map((node) => node.id), anchorNodeId: programme?.id || ordered[0]?.id || null,
+    buildThroughNodeId: ordered.at(-1)?.id || null, sections,
+  };
+}
+
 export class ProjectStore {
   constructor(root) {
     this.root = path.resolve(root);
@@ -84,7 +116,8 @@ export class ProjectStore {
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
     await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true })]);
-    return this.graph();
+    const graph = await this.graph();
+    return graph.schemaVersion >= 3 ? graph : this.refreshGraph();
   }
 
   async refreshGraph() {
@@ -126,9 +159,11 @@ export class ProjectStore {
       if (!node) diagnostics.push({ code: 'unresolved-programme-link', nodePath: programmeRelative, target, message: `Programme link does not resolve: ${target}` });
       else if (!order.includes(node.id)) order.push(node.id);
     }
+    const book = canonicalBook(this.root, nodes, order);
     const graph = {
-      schemaVersion: 1, generatedAt: new Date().toISOString(), programmePath: `manuscript/${programmeRelative}`,
+      schemaVersion: 3, generatedAt: new Date().toISOString(), programmePath: `manuscript/${programmeRelative}`,
       nodes, readingOrder: order, diagnostics,
+      book,
       rendered: prior?.rendered || { pages: [], spreads: [], buildId: null },
     };
     await writeAtomic(this.graphPath, `${JSON.stringify(graph, null, 2)}\n`);
@@ -136,6 +171,15 @@ export class ProjectStore {
   }
 
   async graph({ refresh = false } = {}) { return refresh || !(await exists(this.graphPath)) ? this.refreshGraph() : JSON.parse(await readFile(this.graphPath, 'utf8')); }
+  async scope(id = 'book') {
+    const graph = await this.graph();
+    if (id === 'book') return graph.book;
+    const section = graph.book?.sections?.find((entry) => entry.id === id);
+    if (section) return section;
+    const node = graph.nodes.find((entry) => entry.id === this.nodePath(id));
+    if (!node) throw new Error('Graph scope not found.');
+    return { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id };
+  }
   async settingsTicket() { try { return JSON.parse(await readFile(path.join(this.root, 'texgraph', 'settings.json'), 'utf8')); } catch { return {}; } }
   async node(id) {
     const graph = await this.graph();

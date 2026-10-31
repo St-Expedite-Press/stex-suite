@@ -118,7 +118,8 @@ async function vaultApi(request, response, url, store) {
     try { return json(response, 200, JSON.parse(await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8'))); } catch { return json(response, 200, null); }
   }
   if (request.method === 'POST' && url.pathname === '/api/project/build') {
-    const result = await buildBook(store); return json(response, result.ok ? 200 : 422, await store.recordBuild(result));
+    const payload = await body(request);
+    const result = await buildBook(store, { scopeId: payload.scopeId || 'book' }); return json(response, result.ok ? 200 : 422, await store.recordBuild(result));
   }
   if (!id) return false;
   if (request.method === 'GET' && url.pathname.endsWith('/turns')) return json(response, 200, await store.turns(id));
@@ -127,11 +128,12 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'PUT' && url.pathname === `/api/nodes/${id}`) { const payload = await body(request); return json(response, 200, await store.updateNode(id, payload.source, payload.baseHash)); }
   if (request.method === 'POST' && url.pathname.endsWith('/turn')) {
     const payload = await body(request); if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+    const scope = await store.scope(payload.scopeId || id);
     const userTurn = await store.appendTurn(id, { role: 'user', message: payload.message.trim() });
     const [node, graph, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.node(id), store.graph({ refresh: true }), store.turns(id), store.approvedSourceExcerpts(), store.settingsTicket()]);
-    const result = await requestPageRevision({ book: { title: path.basename(store.root), design: 'Programme-led manuscript vault', graph, settings }, page: node, approvedSourceExcerpts, turns: priorTurns, message: userTurn.message });
+    const result = await requestPageRevision({ book: { title: path.basename(store.root), design: 'Programme-led manuscript vault', graph, settings, context: { scope } }, page: node, approvedSourceExcerpts, turns: priorTurns, message: userTurn.message });
     const assistantTurn = await store.appendTurn(id, { role: 'assistant', commentary: result.commentary, availability: result.availability });
-    const proposal = result.proposal ? await store.createProposal(id, result.proposal) : null;
+    const proposal = scope.kind === 'node' && result.proposal ? await store.createProposal(id, result.proposal) : null;
     return json(response, 200, { userTurn, assistantTurn, proposal, availability: result.availability });
   }
   if (request.method === 'POST' && url.pathname.endsWith('/proposal/accept')) { const payload = await body(request); return json(response, 200, await store.acceptProposal(id, payload.proposalId)); }

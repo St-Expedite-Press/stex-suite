@@ -17,6 +17,12 @@ h2 { font-family: Georgia, serif; font-size: 22px; margin: 0; font-weight: 500; 
 .page-list { display: grid; gap: 4px; }
 .navigator-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: -8px 0 10px; font-size: 10px; color: #dcb55d; }
 .navigator-toolbar .quiet-button { padding: 5px 7px; color: #e6d8ad; border-color: #69695f; }
+.scope-heading { margin: 8px 5px 5px; }
+.scope-list { display: grid; gap: 3px; margin-bottom: 12px; }
+.scope-button { border: 0; border-left: 2px solid #626258; border-radius: 0; padding: 7px 9px; text-align: left; background: #2d2e29; color: #d9d5c9; font-size: 11px; font-weight: 600; }
+.scope-button:hover { background: #35362f; }
+.scope-button.active { border-left-color: #e3b95e; background: #414239; color: #fff7df; }
+.scope-button.book { border-left-width: 3px; color: #f0d68f; }
 .printed-pages { display: flex; gap: 5px; overflow: auto; padding-bottom: 3px; }
 .printed-pages .page-button { flex: 0 0 auto; color: #5b594f; border: 1px solid #cbc7bb; background: #f4f2eb; font-size: 10px; padding: 6px 8px; }
 .printed-pages .page-button.active { background: #404238; color: #f4ecd8; border-color: #404238; }

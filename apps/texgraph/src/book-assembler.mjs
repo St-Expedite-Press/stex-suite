@@ -25,10 +25,17 @@ function manuscriptBody(markdown, kind) {
   return chunks.join('\n');
 }
 
-export async function assembleBook(store) {
+export async function assembleBook(store, { scopeId = 'book' } = {}) {
   const graph = await store.graph({ refresh: true });
-  const nodes = graph.readingOrder.map((id) => graph.nodes.find((node) => node.id === id)).filter(Boolean);
-  if (!nodes.length) throw new Error('Programme.md has no resolvable manuscript links to assemble.');
+  const allNodes = graph.readingOrder.map((id) => graph.nodes.find((node) => node.id === id)).filter(Boolean);
+  if (!allNodes.length) throw new Error('Programme.md has no resolvable manuscript links to assemble.');
+  const scope = await store.scope(scopeId);
+  const cutoff = allNodes.findIndex((node) => node.id === scope.buildThroughNodeId);
+  if (cutoff < 0) throw new Error('The selected scope does not resolve to a Programme node.');
+  // A page/section preview is still a valid book document: it includes every
+  // Programme node before the chosen cutoff so its preamble and pagination are
+  // evaluated exactly as they are in the complete book.
+  const nodes = allNodes.slice(0, cutoff + 1);
   const settings = {};
   const sections = []; const pageMap = []; let logicalPage = 1;
   for (const node of nodes) {
@@ -41,7 +48,7 @@ export async function assembleBook(store) {
     logicalPage += 1;
   }
   const document = previewDocument(settings).replace('\\input{page.tex}', sections.join('\n'));
-  return { document, pageMap, graph, settings };
+  return { document, pageMap, graph, settings, scope, includedNodeIds: nodes.map((node) => node.id) };
 }
 
 function runLuaLaTex(directory) {
@@ -56,14 +63,14 @@ function runLuaLaTex(directory) {
   });
 }
 
-export async function buildBook(store) {
-  const assembled = await assembleBook(store);
+export async function buildBook(store, { scopeId = 'book' } = {}) {
+  const assembled = await assembleBook(store, { scopeId });
   const directory = path.join(store.buildDirectory(), `run-${Date.now()}-${randomUUID()}`);
   await mkdir(directory, { recursive: true }); await writeFile(path.join(directory, 'document.tex'), assembled.document, 'utf8');
   const result = await runLuaLaTex(directory);
   try {
     if (!result.ok) return result;
-    const manifest = { schemaVersion: 1, builtAt: new Date().toISOString(), programmePath: assembled.graph.programmePath, pages: assembled.pageMap, spreads: assembled.pageMap.filter((entry) => entry.logicalPage % 2 === 1).map((entry) => ({ spread: Math.ceil(entry.logicalPage / 2), pageNumbers: [entry.logicalPage, entry.logicalPage + 1], nodeIds: entry.nodeIds })) };
+    const manifest = { schemaVersion: 2, builtAt: new Date().toISOString(), programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, pages: assembled.pageMap, spreads: assembled.pageMap.filter((entry) => entry.logicalPage % 2 === 1).map((entry) => ({ spread: Math.ceil(entry.logicalPage / 2), pageNumbers: [entry.logicalPage, entry.logicalPage + 1], nodeIds: entry.nodeIds })) };
     await writeAtomic(path.join(directory, 'page-map.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await store.activateBuild(directory, manifest);
     return { ok: true, log: result.log, pageMap: manifest };
