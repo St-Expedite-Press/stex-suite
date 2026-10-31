@@ -84,6 +84,9 @@ button:disabled { opacity: .55; cursor: wait; }
 .quiet-button:hover { background: #ebf2ed; }
 .build-button { background: #a45c2b; }
 .build-button:hover { background: #86481f; }
+.production-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.production-actions .quiet-button { font-size: 11px; padding: 8px 10px; }
+.live-build-state { margin: -7px 0 0; color: #5d665e; font-size: 11px; line-height: 1.45; }
 .build-description { color: #64625a; font-size: 13px; margin: -8px 0 0; }
 .pdf-wrap { flex: 1; min-height: 390px; position: relative; overflow: hidden; background: #d8d5cc; box-shadow: inset 0 0 0 1px #cfcbc0; }
 .pdf-wrap iframe { width: 100%; height: 100%; min-height: 390px; border: 0; background: white; }

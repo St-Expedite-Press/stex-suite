@@ -1,7 +1,7 @@
 const MAX_CONTEXT_TURNS = 10;
 
-function assistantResult(commentary, availability = 'available') {
-  return { commentary, availability, proposal: null };
+function assistantResult(commentary, availability = 'available', graphSuggestions = []) {
+  return { commentary, availability, proposal: null, graphSuggestions };
 }
 
 export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {
@@ -33,9 +33,12 @@ export async function requestPageRevision({ book, page, approvedSourceExcerpts =
     if (!response.ok) return assistantResult(`The inference gateway returned ${response.status}. Your message was saved; no source was changed.`, 'unavailable');
     const payload = await response.json();
     const commentary = typeof payload.commentary === 'string' ? payload.commentary : 'The gateway returned no commentary.';
-    if (payload.noChange === true) return assistantResult(commentary);
+    const graphSuggestions = Array.isArray(payload.graphSuggestions)
+      ? payload.graphSuggestions.filter((entry) => entry && typeof entry.message === 'string').slice(0, 12)
+      : [];
+    if (payload.noChange === true) return assistantResult(commentary, 'available', graphSuggestions);
     if (typeof payload.proposal?.source === 'string') {
-      return { commentary, availability: 'available', proposal: { source: payload.proposal.source, commentary } };
+      return { commentary, availability: 'available', proposal: { source: payload.proposal.source, commentary }, graphSuggestions };
     }
     return assistantResult(`${commentary}\n\nNo valid source proposal was returned.`, 'invalid-response');
   } catch (error) {

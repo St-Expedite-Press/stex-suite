@@ -90,10 +90,22 @@ function canonicalBook(root, nodes, readingOrder) {
   }
   const title = path.basename(root).replaceAll(/[-_]/g, ' ');
   return {
-    id: 'book', kind: 'book', title, programmeNodeId: programme?.id || null,
+    id: 'book', kind: 'book', title,
+    // The example calls its table of contents Programme.md. Keep the legacy
+    // field for sidecar compatibility, but expose the product concept plainly.
+    tableOfContentsNodeId: programme?.id || null, programmeNodeId: programme?.id || null,
     nodeIds: ordered.map((node) => node.id), anchorNodeId: programme?.id || ordered[0]?.id || null,
     buildThroughNodeId: ordered.at(-1)?.id || null, sections,
   };
+}
+
+function scopeFromGraph(graph, id = 'book') {
+  if (id === 'book') return graph.book;
+  const section = graph.book?.sections?.find((entry) => entry.id === id);
+  if (section) return section;
+  const node = graph.nodes.find((entry) => entry.id === id);
+  if (!node) throw new Error('Graph scope not found.');
+  return { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id };
 }
 
 export class ProjectStore {
@@ -105,6 +117,7 @@ export class ProjectStore {
     this.conversationsDirectory = path.join(this.stateDirectory, 'conversations');
     this.proposalsDirectory = path.join(this.stateDirectory, 'proposals');
     this.buildsDirectory = path.join(this.stateDirectory, 'builds');
+    this.liveBuildsDirectory = path.join(this.stateDirectory, 'live-builds');
     this.refreshing = null;
   }
 
@@ -115,9 +128,9 @@ export class ProjectStore {
 
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
-    await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true })]);
+    await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
     const graph = await this.graph();
-    return graph.schemaVersion >= 3 ? graph : this.refreshGraph();
+    return graph.schemaVersion >= 4 ? graph : this.refreshGraph();
   }
 
   async refreshGraph() {
@@ -133,7 +146,7 @@ export class ProjectStore {
   async #refreshGraph() {
     const programmeRelative = 'Programme.md';
     const programmeFile = this.sourcePath(programmeRelative);
-    if (!(await exists(programmeFile))) throw new Error('manuscript/Programme.md is required as the reading-order authority.');
+    if (!(await exists(programmeFile))) throw new Error('This example needs its Table of Contents (manuscript/Programme.md) to establish reading order.');
     let prior = null;
     try { prior = JSON.parse(await readFile(this.graphPath, 'utf8')); } catch { /* first map */ }
     const priorNodes = new Map((prior?.nodes || []).map((node) => [node.relativePath, node]));
@@ -156,12 +169,13 @@ export class ProjectStore {
     const order = [];
     for (const target of programmeLinks(programme, programmeRelative)) {
       const node = byPath.get(target);
-      if (!node) diagnostics.push({ code: 'unresolved-programme-link', nodePath: programmeRelative, target, message: `Programme link does not resolve: ${target}` });
+      if (!node) diagnostics.push({ code: 'unresolved-table-of-contents-link', nodePath: programmeRelative, target, message: `Table-of-contents link does not resolve: ${target}` });
       else if (!order.includes(node.id)) order.push(node.id);
     }
     const book = canonicalBook(this.root, nodes, order);
     const graph = {
-      schemaVersion: 3, generatedAt: new Date().toISOString(), programmePath: `manuscript/${programmeRelative}`,
+      schemaVersion: 4, generatedAt: new Date().toISOString(),
+      tableOfContentsPath: `manuscript/${programmeRelative}`, programmePath: `manuscript/${programmeRelative}`,
       nodes, readingOrder: order, diagnostics,
       book,
       rendered: prior?.rendered || { pages: [], spreads: [], buildId: null },
@@ -173,12 +187,7 @@ export class ProjectStore {
   async graph({ refresh = false } = {}) { return refresh || !(await exists(this.graphPath)) ? this.refreshGraph() : JSON.parse(await readFile(this.graphPath, 'utf8')); }
   async scope(id = 'book') {
     const graph = await this.graph();
-    if (id === 'book') return graph.book;
-    const section = graph.book?.sections?.find((entry) => entry.id === id);
-    if (section) return section;
-    const node = graph.nodes.find((entry) => entry.id === this.nodePath(id));
-    if (!node) throw new Error('Graph scope not found.');
-    return { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id };
+    return scopeFromGraph(graph, id === 'book' ? id : this.nodePath(id));
   }
   async settingsTicket() { try { return JSON.parse(await readFile(path.join(this.root, 'texgraph', 'settings.json'), 'utf8')); } catch { return {}; } }
   async node(id) {
@@ -234,4 +243,28 @@ export class ProjectStore {
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
   async recordBuild(result) { const record = { completedAt: new Date().toISOString(), lastSuccessful: await exists(this.previewPath()), ...result, log: String(result.log || '').slice(-60000) }; await writeAtomic(path.join(this.buildsDirectory, 'last.json'), `${JSON.stringify(record, null, 2)}\n`); return record; }
+  async liveBuildStatus() { try { return JSON.parse(await readFile(path.join(this.liveBuildsDirectory, 'latest.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  async queueLiveBuild(scopeId = 'book') {
+    const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
+    const scope = scopeFromGraph(graph, scopeId);
+    if (!proof?.ok || proof.targetScope?.id !== scope.id) {
+      const error = new Error('Create a successful proof for this exact scope before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
+    }
+    for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
+      if (graph.nodes.find((node) => node.id === nodeId)?.hash !== hash) {
+        const error = new Error('The manuscript changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
+      }
+    }
+    if (!Object.keys(proof.sourceHashes || {}).length) {
+      const error = new Error('This proof has no source manifest. Typeset it again before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
+    }
+    const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };
+    await copyFile(this.previewPath(), path.join(this.liveBuildsDirectory, artifact.pdf));
+    await writeAtomic(path.join(this.liveBuildsDirectory, artifact.pageMap), `${JSON.stringify(proof.pageMap || {}, null, 2)}\n`);
+    const record = { schemaVersion: 1, id, status: 'queued-locally', queuedAt: new Date().toISOString(), targetScope: scope, sourceHashes: proof.sourceHashes, proofCompletedAt: proof.completedAt, artifact, note: 'A verified local proof is staged for the configured live-build delivery adapter. No remote build was claimed or started.' };
+    await writeAtomic(path.join(this.liveBuildsDirectory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`);
+    await writeAtomic(path.join(this.liveBuildsDirectory, 'latest.json'), `${JSON.stringify(record, null, 2)}\n`);
+    return record;
+  }
 }

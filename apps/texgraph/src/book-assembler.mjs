@@ -17,7 +17,7 @@ function manuscriptBody(markdown, kind) {
   const lines = source.split(/\r?\n/); const chunks = [];
   for (const raw of lines) {
     const heading = /^(#{1,6})\s+(.+)$/.exec(raw);
-    if (heading) { chunks.push(`\\${heading[1].length < 2 ? 'section*' : 'subsection*'}{${escapeTeX(heading[2])}`); continue; }
+    if (heading) { chunks.push(`\\${heading[1].length < 2 ? 'section*' : 'subsection*'}{${escapeTeX(heading[2])}}`); continue; }
     if (!raw.trim()) { chunks.push('\\par'); continue; }
     chunks.push(`${escapeTeX(raw.replace(/\*\*/g, '').replace(/\*/g, ''))}\\par`);
   }
@@ -28,12 +28,12 @@ function manuscriptBody(markdown, kind) {
 export async function assembleBook(store, { scopeId = 'book' } = {}) {
   const graph = await store.graph({ refresh: true });
   const allNodes = graph.readingOrder.map((id) => graph.nodes.find((node) => node.id === id)).filter(Boolean);
-  if (!allNodes.length) throw new Error('Programme.md has no resolvable manuscript links to assemble.');
+  if (!allNodes.length) throw new Error('The table of contents (Programme.md in this example) has no resolvable manuscript links to assemble.');
   const scope = await store.scope(scopeId);
   const cutoff = allNodes.findIndex((node) => node.id === scope.buildThroughNodeId);
-  if (cutoff < 0) throw new Error('The selected scope does not resolve to a Programme node.');
+  if (cutoff < 0) throw new Error('The selected scope does not resolve to a reading-order node.');
   // A page/section preview is still a valid book document: it includes every
-  // Programme node before the chosen cutoff so its preamble and pagination are
+  // reading-order node before the chosen cutoff so its preamble and pagination are
   // evaluated exactly as they are in the complete book.
   const nodes = allNodes.slice(0, cutoff + 1);
   const settings = {};
@@ -48,7 +48,8 @@ export async function assembleBook(store, { scopeId = 'book' } = {}) {
     logicalPage += 1;
   }
   const document = previewDocument(settings).replace('\\input{page.tex}', sections.join('\n'));
-  return { document, pageMap, graph, settings, scope, includedNodeIds: nodes.map((node) => node.id) };
+  const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, node.hash]));
+  return { document, pageMap, graph, settings, scope, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
 }
 
 function runLuaLaTex(directory) {
@@ -70,9 +71,9 @@ export async function buildBook(store, { scopeId = 'book' } = {}) {
   const result = await runLuaLaTex(directory);
   try {
     if (!result.ok) return result;
-    const manifest = { schemaVersion: 2, builtAt: new Date().toISOString(), programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, pages: assembled.pageMap, spreads: assembled.pageMap.filter((entry) => entry.logicalPage % 2 === 1).map((entry) => ({ spread: Math.ceil(entry.logicalPage / 2), pageNumbers: [entry.logicalPage, entry.logicalPage + 1], nodeIds: entry.nodeIds })) };
+    const manifest = { schemaVersion: 2, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, pages: assembled.pageMap, spreads: assembled.pageMap.filter((entry) => entry.logicalPage % 2 === 1).map((entry) => ({ spread: Math.ceil(entry.logicalPage / 2), pageNumbers: [entry.logicalPage, entry.logicalPage + 1], nodeIds: entry.nodeIds })) };
     await writeAtomic(path.join(directory, 'page-map.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await store.activateBuild(directory, manifest);
-    return { ok: true, log: result.log, pageMap: manifest };
+    return { ok: true, log: result.log, pageMap: manifest, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes };
   } finally { await rm(directory, { recursive: true, force: true }); }
 }

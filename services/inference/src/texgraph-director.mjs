@@ -1,8 +1,8 @@
 const skills = [
   {
     id: 'texgraph.book-scope',
-    purpose: 'Reason about the selected whole-book, section, or manuscript-page scope using Programme order and its graph neighborhood.',
-    rules: ['Programme order is authoritative.', 'A scope is not permission to alter every node inside it.', 'State when a suggestion concerns the whole book, a section, or one page.'],
+    purpose: 'Reason about the selected whole-book, section, or manuscript-page scope using the table-of-contents reading order and its graph neighborhood.',
+    rules: ['The table of contents controls reading order. In this example its filename is Programme.md.', 'A scope is not permission to alter every node inside it.', 'State when a suggestion concerns the whole book, a section, or one page.'],
   },
   {
     id: 'texgraph.markdown-revision',
@@ -12,7 +12,7 @@ const skills = [
   {
     id: 'texgraph.composition',
     purpose: 'Assess sequencing, section architecture, transitions, and recurring motifs from the bounded manuscript graph.',
-    rules: ['Do not derive reading order from folders.', 'Explain consequences in Programme order.', 'Keep structural ideas separate from accepted manuscript edits.'],
+    rules: ['Do not derive reading order from folders.', 'Explain consequences in table-of-contents order.', 'Keep structural ideas separate from accepted manuscript edits.'],
   },
   {
     id: 'texgraph.document-grounding',
@@ -22,19 +22,19 @@ const skills = [
   {
     id: 'texgraph.print-preview',
     purpose: 'Reason about LuaLaTeX book previews, page maps, recto-verso implications, and prefix builds.',
-    rules: ['A scoped preview includes the preamble and every preceding Programme node.', 'Compilation remains an explicit author action.', 'Never emit document classes, imports, command definitions, file operations, Lua, or shell escape in a Markdown proposal.'],
+    rules: ['A scoped preview includes the preamble and every preceding node in table-of-contents order.', 'Compilation remains an explicit author action.', 'Never emit document classes, imports, command definitions, file operations, Lua, or shell escape in a Markdown proposal.'],
   },
 ];
 
 const tools = [
-  { id: 'texgraph.vault-graph.inspect', mode: 'bounded-context', purpose: 'Read the supplied canonical graph, scope, Programme order, diagnostics, and selected target.' },
-  { id: 'texgraph.programme.prefix-preview', mode: 'deterministic-local', purpose: 'Describe the exact build boundary supplied by the product; it does not run a compiler from the director.' },
+  { id: 'texgraph.vault-graph.inspect', mode: 'bounded-context', purpose: 'Read the supplied canonical graph, scope, table-of-contents order, diagnostics, and selected target.' },
+  { id: 'texgraph.reading-order.prefix-preview', mode: 'deterministic-local', purpose: 'Describe the exact build boundary supplied by the product; it does not run a compiler from the director.' },
   { id: 'texgraph.markdown.propose', mode: 'proposal-only', purpose: 'Return a complete replacement for the selected individual node; author acceptance is required.' },
   { id: 'texgraph.document.extract', mode: 'review-gated', purpose: 'Use only pre-extracted, author-approved excerpts supplied in the envelope.' },
 ];
 
 const mcpServers = [
-  { id: 'texgraph-vault', access: 'context-adapter', operations: ['graph.inspect', 'scope.inspect', 'programme.inspect'], note: 'The product supplies bounded results; the director has no raw vault filesystem access.' },
+  { id: 'texgraph-vault', access: 'context-adapter', operations: ['graph.inspect', 'scope.inspect', 'table-of-contents.inspect'], note: 'The product supplies bounded results; the director has no raw vault filesystem access.' },
   { id: 'markitdown', access: 'review-gated-context-adapter', operations: ['document.extract'], note: 'Extraction occurs server-side. Only author-approved text reaches the director.' },
   { id: 'lualatex-preview', access: 'explicit-local-operation', operations: ['preview.describe', 'page-map.inspect'], note: 'Compilation is a deterministic, author-triggered product operation, never a director shell tool.' },
 ];

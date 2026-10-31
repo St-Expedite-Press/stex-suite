@@ -4,7 +4,7 @@ startScreenlabPalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
-const state = { graph: null, node: null, scope: null, proposal: null, sourceDirty: false, pageMap: null, attachments: [] };
+const state = { graph: null, node: null, scope: null, proposal: null, sourceDirty: false, pageMap: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -99,9 +99,9 @@ function renderWorkspace() {
   const isBook = scope.kind === 'book';
   const entries = isBook ? (state.graph.book?.sections || []) : scope.nodeIds.map((id) => nodesById.get(id)).filter(Boolean);
   $('#workspace-kind').textContent = isBook ? 'Canonical book representation' : scope.kind === 'node' ? 'Selected manuscript page' : 'Selected book section';
-  $('#workspace-count').textContent = isBook ? `${entries.length} sections` : `${entries.length} Programme node${entries.length === 1 ? '' : 's'}`;
+  $('#workspace-count').textContent = isBook ? `${entries.length} sections` : `${entries.length} reading-order node${entries.length === 1 ? '' : 's'}`;
   const cutoff = nodesById.get(scope.buildThroughNodeId);
-  $('#workspace-boundary').textContent = cutoff ? `Preview boundary: the book’s preamble through “${cutoff.title}.”` : 'Preview boundary: the complete Programme.';
+  $('#workspace-boundary').textContent = cutoff ? `Preview boundary: the book’s preamble through “${cutoff.title}.”` : 'Preview boundary: the complete table of contents.';
   list.replaceChildren(...entries.map((entry) => {
     const isSection = isBook;
     const item = document.createElement('button'); item.type = 'button'; item.className = 'workspace-item';
@@ -116,12 +116,12 @@ function renderNode() {
   $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'selected page' : 'selected section'}`;
   $('#conversation-title').textContent = scope.title;
   $('#source').value = state.node.source;
-  $('#source-label').textContent = scope.kind === 'book' ? 'Canonical Programme Markdown' : scope.kind === 'node' ? 'Canonical Markdown' : 'Section anchor Markdown';
+  $('#source-label').textContent = scope.kind === 'book' ? 'Canonical table-of-contents Markdown' : scope.kind === 'node' ? 'Canonical Markdown' : 'Section anchor Markdown';
   $('#source-hash').textContent = state.node.hash.slice(0, 12);
   $('#save-state').textContent = `manuscript/${state.node.relativePath}`;
   const cutoff = state.graph.nodes.find((node) => node.id === scope.buildThroughNodeId);
-  $('#build-description').textContent = cutoff ? `Build parses the canonical book from its preamble through “${cutoff.title}.”` : 'Build parses the complete Programme-ordered book.';
-  renderWorkspace(); renderNodes(); renderPages();
+  $('#build-description').textContent = cutoff ? `Typeset parses the canonical book from its preamble through “${cutoff.title}.”` : 'Typeset parses the complete book in table-of-contents order.';
+  renderWorkspace(); renderNodes(); renderPages(); renderLiveBuild();
 }
 
 function renderPages() {
@@ -140,7 +140,25 @@ function renderBuild(build) {
   const target = build?.targetScope?.title;
   $('#build-state').textContent = ready ? `Built ${target ? `through ${target}` : new Date(build.completedAt).toLocaleTimeString()}` : build?.error || 'Not built';
   $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.';
-  if (ready || build?.lastSuccessful) { $('#pdf').src = apiUrl(`/api/project/preview&at=${Date.now()}`); $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden'); }
+  if (ready || build?.lastSuccessful) { $('#pdf').src = apiUrl(`/api/project/preview?at=${Date.now()}`); $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden'); }
+}
+
+function proofIsCurrent() {
+  return Boolean(state.build?.ok && state.build.targetScope?.id === state.scope?.id && !state.sourceDirty);
+}
+
+function renderLiveBuild() {
+  const button = $('#send-live-build');
+  if (!button) return;
+  const matchingHandoff = state.liveBuild?.targetScope?.id === state.scope?.id ? state.liveBuild : null;
+  button.disabled = !proofIsCurrent();
+  if (matchingHandoff?.status === 'queued-locally') {
+    $('#live-build-state').textContent = `Verified proof staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}. A delivery adapter may send it to the live build; no remote run has been claimed.`;
+  } else if (proofIsCurrent()) {
+    $('#live-build-state').textContent = 'This proof matches the current manuscript. It is ready to stage for the live-build adapter.';
+  } else {
+    $('#live-build-state').textContent = 'Typeset a current proof before sending it to the live-build queue.';
+  }
 }
 
 async function loadNode(id, scopeId = id) {
@@ -158,7 +176,7 @@ async function selectScope(scopeId) {
 
 async function saveSource() {
   const button = $('#save-source'); button.disabled = true;
-  try { state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; renderNode(); }
+  try { state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; state.build = null; renderNode(); renderBuild(null); }
   catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
 }
 
@@ -184,10 +202,32 @@ async function uploadAttachments(files) {
 }
 
 async function approveAttachment(id) { try { await request(`/api/project/attachments/${id}/approve`, { method: 'POST', body: '{}' }); state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { $('#attachment-state').textContent = error.message; } }
-async function acceptProposal() { try { state.node = await request(`/api/nodes/${state.node.id}/proposal/accept`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.graph = await request('/api/project/graph'); state.proposal = null; renderNode(); renderProposal(); renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); } catch (error) { $('#save-state').textContent = error.message; } }
+async function acceptProposal() { try { state.node = await request(`/api/nodes/${state.node.id}/proposal/accept`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.graph = await request('/api/project/graph'); state.proposal = null; state.build = null; renderNode(); renderBuild(null); renderProposal(); renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); } catch (error) { $('#save-state').textContent = error.message; } }
 async function rejectProposal() { try { await request(`/api/nodes/${state.node.id}/proposal/reject`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.proposal = null; renderProposal(); } catch (error) { $('#save-state').textContent = error.message; } }
 
 async function build() {
+  const scope = state.scope || scopeFor('book');
+  if (!confirm(`Typeset the canonical book through "${scope.title}"? The preamble and every preceding node in table-of-contents order will be included.`)) return;
+  const button = $('#build'); button.disabled = true; button.textContent = 'Typesetting…';
+  try {
+    state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id }) });
+    renderBuild(state.build); state.pageMap = await request('/api/project/page-map'); renderPages(); renderLiveBuild();
+  } catch (error) {
+    $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.';
+  } finally { button.disabled = false; button.textContent = 'Typeset proof'; }
+}
+
+async function sendLiveBuild() {
+  const scope = state.scope || scopeFor('book');
+  if (!proofIsCurrent()) return;
+  if (!confirm(`Stage the verified proof for "${scope.title}" in the live-build queue? This does not claim a remote build has started.`)) return;
+  const button = $('#send-live-build'); button.disabled = true; button.textContent = 'Staging…';
+  try { state.liveBuild = await request('/api/project/live-build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id }) }); renderLiveBuild(); }
+  catch (error) { $('#live-build-state').textContent = error.message; }
+  finally { button.textContent = 'Send to live build'; renderLiveBuild(); }
+}
+
+async function legacyBuild() {
   const scope = state.scope || scopeFor('book');
   if (!confirm(`Build the canonical book through “${scope.title}”? The preamble and every preceding Programme node will be included.`)) return;
   const button = $('#build'); button.disabled = true; button.textContent = 'Building…';
@@ -198,20 +238,21 @@ async function build() {
 
 async function refresh() {
   const priorScope = state.scope?.id || 'book';
-  state.graph = await request('/api/project/refresh'); renderNodes();
+  state.graph = await request('/api/project/refresh', { method: 'POST', body: '{}' }); renderNodes();
   const scope = scopeFor(priorScope) || scopeFor('book');
   if (scope?.anchorNodeId) await loadNode(scope.anchorNodeId, scope.id);
 }
 
 async function bootstrap() {
   if (!book) { location.replace('http://127.0.0.1:4300/texgraph/'); return; }
-  state.graph = await request('/api/project/graph'); state.attachments = await request('/api/project/attachments');
+  const [graph, attachments, buildState, liveBuild] = await Promise.all([request('/api/project/graph'), request('/api/project/attachments'), request('/api/project/build'), request('/api/project/live-build')]);
+  state.graph = graph; state.attachments = attachments; state.build = buildState; state.liveBuild = liveBuild;
   $('#book-title').textContent = state.graph.book?.title || book.replaceAll('-', ' ');
   state.pageMap = await request('/api/project/page-map'); renderNodes(); renderAttachments();
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
-  renderBuild(await request('/api/project/build'));
-  $('#turn-form').addEventListener('submit', sendTurn); $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', build); $('#refresh').addEventListener('click', refresh); $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files])); $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; });
+  renderBuild(state.build); renderLiveBuild();
+  $('#turn-form').addEventListener('submit', sendTurn); $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', build); $('#send-live-build').addEventListener('click', sendLiveBuild); $('#refresh').addEventListener('click', refresh); $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files])); $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; renderLiveBuild(); });
 }
 
 bootstrap().catch((error) => { document.body.textContent = `TexGraph could not start: ${error.message}`; });

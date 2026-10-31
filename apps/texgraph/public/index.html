@@ -5,11 +5,11 @@
     <main class="studio-shell">
       <aside class="navigator" aria-label="Manuscript graph">
         <div class="brand"><span class="brand-mark">T</span><span>TexGraph</span></div>
-        <section class="book-card"><p class="eyebrow">Obsidian manuscript graph</p><h1 id="book-title">Loading…</h1><p id="book-author">Programme-led reading order</p></section>
+        <section class="book-card"><p class="eyebrow">Obsidian manuscript graph</p><h1 id="book-title">Loading…</h1><p id="book-author">Table-of-contents reading order</p></section>
         <div class="navigator-toolbar"><button id="refresh" class="quiet-button" type="button">Refresh vault</button><span id="diagnostics"></span></div>
         <p class="eyebrow scope-heading">Canonical book</p><nav id="scope-list" class="scope-list" aria-label="Book working scopes"></nav>
-        <p class="eyebrow scope-heading">Programme nodes</p><nav id="node-list" class="page-list"></nav>
-        <p class="navigator-note">Programme.md is the reading authority. A scoped preview always parses the book from its beginning through the selected cutoff.</p>
+        <p class="eyebrow scope-heading">Manuscript nodes</p><nav id="node-list" class="page-list"></nav>
+        <p class="navigator-note">This book calls its table of contents Programme.md. It controls reading order; a scoped preview always parses the book from its beginning through the selected cutoff.</p>
       </aside>
       <section class="conversation" aria-label="Conversation and Markdown editor">
         <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation · selected manuscript node</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Hermes bridge</span></header>
@@ -19,8 +19,9 @@
         <form id="turn-form" class="composer"><label for="message">Message TexGraph</label><textarea id="message" rows="4" placeholder="Ask, revise, sequence, or typeset…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><div><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><button id="attach" type="button" class="quiet-button">Attach files</button><span id="attachment-state"></span></div><button type="submit">Send</button></div></form>
       </section>
       <section class="preview" aria-label="LuaLaTeX full-book preview">
-        <header class="panel-header preview-header"><div><p class="eyebrow">LuaLaTeX · scoped book preview</p><h2 id="preview-title">Printed pages & spreads</h2></div><button id="build" type="button" class="build-button">Build preview</button></header>
+        <header class="panel-header preview-header"><div><p class="eyebrow">LuaLaTeX · scoped book preview</p><h2 id="preview-title">Printed pages & spreads</h2></div><div class="production-actions"><button id="build" type="button" class="build-button">Typeset proof</button><button id="send-live-build" type="button" class="quiet-button" disabled>Send to live build</button></div></header>
         <p id="build-description" class="build-description">Build is explicit. It parses the book from its preamble through the selected scope and retains the prior successful PDF on failure.</p>
+        <p id="live-build-state" class="live-build-state">Typeset a current proof before sending it to the live-build queue.</p>
         <nav id="printed-pages" class="printed-pages" aria-label="Rendered page map"></nav>
         <div id="pdf-wrap" class="pdf-wrap"><div id="empty-preview" class="empty-preview"><span class="empty-glyph">⌘</span><h3>No preview yet</h3><p>Build the book through the selected scope to create a local, mapped PDF preview.</p></div><iframe id="pdf" title="Book PDF preview" class="hidden"></iframe></div>
         <section class="build-log-section"><div class="log-heading"><span>Build state</span><span id="build-state">Not built</span></div><pre id="build-log">The last successful preview is kept if a newer build fails.</pre></section>
