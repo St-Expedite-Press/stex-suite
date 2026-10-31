@@ -92,16 +92,36 @@ function renderAttachments() {
   }));
 }
 
+function renderWorkspace() {
+  const scope = state.scope || scopeFor(state.node.id);
+  const nodesById = new Map(state.graph.nodes.map((node) => [node.id, node]));
+  const list = $('#workspace-items');
+  const isBook = scope.kind === 'book';
+  const entries = isBook ? (state.graph.book?.sections || []) : scope.nodeIds.map((id) => nodesById.get(id)).filter(Boolean);
+  $('#workspace-kind').textContent = isBook ? 'Canonical book representation' : scope.kind === 'node' ? 'Selected manuscript page' : 'Selected book section';
+  $('#workspace-count').textContent = isBook ? `${entries.length} sections` : `${entries.length} Programme node${entries.length === 1 ? '' : 's'}`;
+  const cutoff = nodesById.get(scope.buildThroughNodeId);
+  $('#workspace-boundary').textContent = cutoff ? `Preview boundary: the book’s preamble through “${cutoff.title}.”` : 'Preview boundary: the complete Programme.';
+  list.replaceChildren(...entries.map((entry) => {
+    const isSection = isBook;
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'workspace-item';
+    item.innerHTML = `<span>${isSection ? entry.kind.replaceAll('-', ' ') : entry.kind}</span><strong>${entry.title}</strong>`;
+    item.addEventListener('click', () => isSection ? selectScope(entry.id) : loadNode(entry.id, entry.id));
+    return item;
+  }));
+}
+
 function renderNode() {
   const scope = state.scope || scopeFor(state.node.id);
   $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'selected page' : 'selected section'}`;
   $('#conversation-title').textContent = scope.title;
   $('#source').value = state.node.source;
+  $('#source-label').textContent = scope.kind === 'book' ? 'Canonical Programme Markdown' : scope.kind === 'node' ? 'Canonical Markdown' : 'Section anchor Markdown';
   $('#source-hash').textContent = state.node.hash.slice(0, 12);
   $('#save-state').textContent = `manuscript/${state.node.relativePath}`;
   const cutoff = state.graph.nodes.find((node) => node.id === scope.buildThroughNodeId);
   $('#build-description').textContent = cutoff ? `Build parses the canonical book from its preamble through “${cutoff.title}.”` : 'Build parses the complete Programme-ordered book.';
-  renderNodes(); renderPages();
+  renderWorkspace(); renderNodes(); renderPages();
 }
 
 function renderPages() {

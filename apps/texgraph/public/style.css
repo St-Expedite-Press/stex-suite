@@ -47,6 +47,14 @@ h2 { font-family: Georgia, serif; font-size: 22px; margin: 0; font-weight: 500; 
 .turn.user { margin-left: auto; background: #efede4; padding: 12px 14px; border-radius: 10px 2px 10px 10px; }
 .turn.assistant { border-left: 2px solid #dbb154; padding: 3px 0 3px 12px; }
 .turn.system { opacity: .65; font-size: 12px; }
+.scope-workspace { display: grid; gap: 9px; margin: 4px 0 14px; padding: 13px; border: 1px solid #d9d2bd; background: #f4f0e4; }
+.workspace-meta { display: flex; justify-content: space-between; gap: 10px; color: #716644; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.workspace-boundary { margin: 0; color: #59564e; font: 13px/1.45 Georgia, serif; }
+.workspace-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 5px; max-height: 155px; overflow: auto; }
+.workspace-item { display: grid; gap: 2px; padding: 8px 9px; border: 1px solid #d9d3c3; border-radius: 3px; background: #fffdf7; color: #343229; text-align: left; }
+.workspace-item:hover { background: #ebe4d1; }
+.workspace-item span { color: #837a65; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+.workspace-item strong { font: 500 12px/1.25 Georgia, serif; }
 .composer { border-top: 1px solid #e3e0d6; padding-top: 17px; }
 .composer label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 7px; }
 textarea { width: 100%; resize: vertical; border: 1px solid #d9d5c8; background: #fffefa; color: #25241f; border-radius: 4px; padding: 10px; line-height: 1.45; }
@@ -68,10 +76,10 @@ button:disabled { opacity: .55; cursor: wait; }
 .reject { color: #61332e; background: transparent; border: 1px solid #bd9189; }
 .reject:hover { background: #f8e6e3; }
 .hidden { display: none !important; }
-.source-editor { margin-top: 16px; border-top: 1px solid #e3e0d6; padding-top: 13px; }
+.source-editor { margin: 0 0 10px; border-top: 1px solid #e3e0d6; padding-top: 13px; }
 .source-editor summary { cursor: pointer; font-size: 12px; font-weight: 700; }
 #source-hash { margin-left: 7px; color: #838075; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 400; }
-#source { min-height: 160px; margin-top: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+#source { min-height: 230px; margin-top: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .quiet-button { background: transparent; color: #2f4b40; border: 1px solid #8ea89b; }
 .quiet-button:hover { background: #ebf2ed; }
 .build-button { background: #a45c2b; }
