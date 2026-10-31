@@ -17,6 +17,13 @@ test('maps Programme order without rewriting the manuscript and records diagnost
   assert.equal(graph.readingOrder.length, 2); assert.equal(graph.nodes.find((node) => node.id === graph.readingOrder[0]).relativePath, '02/Second.md'); assert.ok(graph.diagnostics.some((entry) => entry.code === 'unresolved-programme-link')); assert.ok(graph.diagnostics.some((entry) => entry.code === 'editorial-block'));
   assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /Editorial Includability/);
 });
+test('coalesces simultaneous graph refreshes so a vault sidecar is written once', async (context) => {
+  const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
+  const graphs = await Promise.all([store.refreshGraph(), store.refreshGraph(), store.initialize()]);
+  assert.equal(graphs[0].readingOrder.length, 2);
+  assert.equal(graphs[1].readingOrder.length, 2);
+  assert.equal((await store.node(graphs[0].readingOrder[1])).relativePath, '01/First.md');
+});
 test('rejects stale graph proposals and keeps acceptance history in sidecar state', async (context) => {
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true })); const graph = await store.graph(); const node = await store.node(graph.readingOrder[0]);
   const proposal = await store.createProposal(node.id, { source: '# Second\n\nChanged.', commentary: 'Change.' }); await store.updateNode(node.id, '# Second\n\nManual.', node.hash);

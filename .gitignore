@@ -18,5 +18,6 @@ coverage/
 apps/texgraph/.local-book/
 apps/lab/.local-projects/
 apps/texgraph/books/*/.texgraph/
+apps/texgraph/books/*/.obsidian/
 .playwright-mcp/
 services/inference/.state/

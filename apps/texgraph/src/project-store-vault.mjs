@@ -73,6 +73,7 @@ export class ProjectStore {
     this.conversationsDirectory = path.join(this.stateDirectory, 'conversations');
     this.proposalsDirectory = path.join(this.stateDirectory, 'proposals');
     this.buildsDirectory = path.join(this.stateDirectory, 'builds');
+    this.refreshing = null;
   }
 
   sourcePath(relativePath) { return contained(this.manuscriptDirectory, relativePath); }
@@ -83,10 +84,20 @@ export class ProjectStore {
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
     await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true })]);
-    return this.refreshGraph();
+    return this.graph();
   }
 
   async refreshGraph() {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = this.#refreshGraph();
+    try {
+      return await this.refreshing;
+    } finally {
+      this.refreshing = null;
+    }
+  }
+
+  async #refreshGraph() {
     const programmeRelative = 'Programme.md';
     const programmeFile = this.sourcePath(programmeRelative);
     if (!(await exists(programmeFile))) throw new Error('manuscript/Programme.md is required as the reading-order authority.');
@@ -127,7 +138,7 @@ export class ProjectStore {
   async graph({ refresh = false } = {}) { return refresh || !(await exists(this.graphPath)) ? this.refreshGraph() : JSON.parse(await readFile(this.graphPath, 'utf8')); }
   async settingsTicket() { try { return JSON.parse(await readFile(path.join(this.root, 'texgraph', 'settings.json'), 'utf8')); } catch { return {}; } }
   async node(id) {
-    const graph = await this.graph({ refresh: true });
+    const graph = await this.graph();
     const summary = graph.nodes.find((entry) => entry.id === this.nodePath(id));
     if (!summary) throw new Error('Graph node not found.');
     const source = await readFile(this.sourcePath(summary.relativePath), 'utf8');

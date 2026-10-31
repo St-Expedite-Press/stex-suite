@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile, copyFile, access } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile, copyFile, access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 
@@ -41,7 +41,23 @@ export async function writeAtomic(file, content) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporary, content, 'utf8');
-  await rename(temporary, file);
+  try {
+    // OneDrive and antivirus scanners can briefly hold the destination open on
+    // Windows.  Keep the atomic replacement, but give that transient lock time
+    // to clear rather than failing a vault refresh.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        await rename(temporary, file);
+        return;
+      } catch (error) {
+        const retryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
+        if (!retryable || attempt === 7) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500, 25 * (2 ** attempt))));
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
 }
 
 export class BookStore {

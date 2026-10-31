@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,12 +11,26 @@ const publicDirectory = path.join(directory, 'public');
 const booksDirectory = path.resolve(process.env.STEX_BOOKS_DIR || path.join(directory, '..', 'texgraph', 'books'));
 const port = Number(process.env.STEX_LAB_PORT || 4300);
 const mime = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+const obsidianConfig = process.env.STEX_OBSIDIAN_CONFIG || path.join(process.env.APPDATA || '', 'obsidian', 'obsidian.json');
 
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
 function requireBookId(id) { if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id)) throw new Error('Invalid book id.'); return id; }
 function bookRoot(id) { const root = path.resolve(booksDirectory, requireBookId(id)); if (!root.startsWith(`${booksDirectory}${path.sep}`)) throw new Error('Invalid book path.'); return root; }
 function setting(source, name, fallback, maximum = 4000) { return String(source[name] || fallback).trim().slice(0, maximum); }
-async function atomic(file, content) { const temporary = `${file}.${process.pid}.tmp`; await writeFile(temporary, content, 'utf8'); await rename(temporary, file); }
+async function atomic(file, content) {
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(temporary, content, 'utf8');
+  try {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try { await rename(temporary, file); return; }
+      catch (error) {
+        if (!['EACCES', 'EBUSY', 'EPERM'].includes(error?.code) || attempt === 7) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500, 25 * (2 ** attempt))));
+      }
+    }
+  } finally { await rm(temporary, { force: true }).catch(() => {}); }
+}
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
 async function textIfPresent(file) { try { return await readFile(file, 'utf8'); } catch { return ''; } }
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
@@ -48,6 +63,42 @@ async function books() {
   const entries = await readdir(booksDirectory, { withFileTypes: true });
   const records = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => bookSummary(entry.name).catch(() => null)));
   return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function comparablePath(value) { return path.resolve(value).replace(/[\\/]+$/, '').toLowerCase(); }
+function vaultContaining(vaults, target) {
+  const targetPath = comparablePath(target);
+  return Object.entries(vaults || {})
+    .map(([id, vault]) => ({ id, ...vault, root: comparablePath(vault?.path || '') }))
+    .filter((vault) => vault.root && (targetPath === vault.root || targetPath.startsWith(`${vault.root}${path.sep.toLowerCase()}`)))
+    .sort((left, right) => right.root.length - left.root.length)[0] || null;
+}
+async function obsidianVaultForBook(id) {
+  const root = bookRoot(id);
+  const programme = path.join(root, 'manuscript', 'Programme.md');
+  let configuration = { vaults: {} };
+  try { configuration = JSON.parse(await readFile(obsidianConfig, 'utf8')); } catch { /* Obsidian writes this after its first launch. */ }
+  configuration.vaults ||= {};
+  const existing = vaultContaining(configuration.vaults, programme);
+  if (existing) return { vault: existing, programme, registered: false };
+  const vaultId = randomBytes(8).toString('hex');
+  configuration.vaults[vaultId] = { path: root, ts: Date.now() };
+  await atomic(obsidianConfig, `${JSON.stringify(configuration, null, 2)}\n`);
+  return { vault: { id: vaultId, path: root, root: comparablePath(root) }, programme, registered: true };
+}
+async function launchObsidian(uri) {
+  if (process.env.STEX_OBSIDIAN_NO_LAUNCH === '1') return;
+  const executable = process.env.STEX_OBSIDIAN_EXECUTABLE || (process.platform === 'win32' ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Obsidian', 'Obsidian.exe') : 'obsidian');
+  if (process.platform === 'win32' && !(await exists(executable))) throw new Error('Obsidian is not installed at the configured local application path.');
+  const child = spawn(executable, [uri], { detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+}
+async function openInObsidian(id) {
+  const { vault, programme, registered } = await obsidianVaultForBook(id);
+  const file = path.relative(vault.path, programme).replaceAll('\\', '/');
+  const uri = `obsidian://open?vault=${encodeURIComponent(vault.id)}&file=${encodeURIComponent(file)}`;
+  await launchObsidian(uri);
+  return { opened: true, registered, vaultId: vault.id, programme: file };
 }
 
 function acceptedTicket(payload, id) {
@@ -152,6 +203,8 @@ http.createServer(async (request, response) => {
   try {
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
+    const openMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/open-in-obsidian$/.exec(url.pathname);
+    if (openMatch && request.method === 'POST') return send(response, 200, await openInObsidian(openMatch[1]));
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
     if (documentMatch && request.method === 'GET') return send(response, 200, await documentManifest(bookRoot(documentMatch[1])));
     if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));
