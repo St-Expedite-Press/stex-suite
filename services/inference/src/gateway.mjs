@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { texGraphDirectorKit, texGraphProcedure } from './texgraph-director.mjs';
 
 function constantTimeMatch(actual, expected) { if (!actual || !expected) return false; const left = Buffer.from(actual); const right = Buffer.from(expected); return left.length === right.length && timingSafeEqual(left, right); }
 function boundedText(value, maximum) { return String(value || '').trim().slice(0, maximum); }
@@ -13,9 +14,6 @@ export function validateTurn(body, maxInputTokens) {
   return { turns, message, context };
 }
 
-function texGraphProcedure(kind) {
-  return `You are the persistent ScreenLab director operating a constrained TexGraph book-production turn (${kind}). Do not reveal internal routing, credentials, or unprovided source material. Work only with the bounded TexGraph envelope. Canonical Markdown is never changed automatically. Reply with exactly one JSON object: {"commentary":"...","noChange":true} or {"commentary":"...","proposal":{"source":"complete revised Markdown for the selected node"},"graphSuggestions":[{"kind":"...","message":"..."}],"ticketUpdates":{}}. A proposal must be a complete replacement of the selected node only, without TeX document setup, imports, commands, file operations, Lua, or shell escape. If the request is about layout or graph discovery, use noChange true and graphSuggestions instead.`;
-}
 function parseDirectorReply(snapshot) {
   if (snapshot?.status !== 'completed') throw new Error(snapshot?.error || 'Hermes did not complete the turn.');
   const reply = snapshot?.result?.reply;
@@ -33,7 +31,7 @@ export function createGateway({ config, fetchImpl = fetch, sleep = (ms) => new P
     const turn = validateTurn(body, config.maxInputTokens);
     const session = `texgraph-${String(body.book?.id || body.book?.title || 'book').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'book'}`;
     const idempotencyKey = `tg-${randomUUID().replaceAll('-', '')}`;
-    const envelope = { product: 'texgraph', contract: 'stex.texgraph.hermes-envelope.v1', procedure: texGraphProcedure(kind), selectedTarget: body.page || body.target || null, graph: body.graph || body.book?.graph || null, settingsTicket: body.book?.settings || body.ticket || {}, approvedSourceExcerpts: Array.isArray(body.approvedSourceExcerpts) ? body.approvedSourceExcerpts.slice(0, 8) : [], priorTurns: turn.turns };
+    const envelope = { product: 'texgraph', contract: 'stex.texgraph.hermes-envelope.v1', procedure: texGraphProcedure(kind), directorKit: texGraphDirectorKit(kind), selectedTarget: body.page || body.target || null, graph: body.graph || body.book?.graph || null, settingsTicket: body.book?.settings || body.ticket || {}, approvedSourceExcerpts: Array.isArray(body.approvedSourceExcerpts) ? body.approvedSourceExcerpts.slice(0, 8) : [], priorTurns: turn.turns };
     const start = await fetchImpl(new URL(`/v1/conversations/${encodeURIComponent(session)}/turns`, config.hermesUrl), { method: 'POST', headers: { 'content-type': 'application/json', 'x-screenlab-internal-key': config.hermesKey }, body: JSON.stringify({ actor: 'texgraph', message: `${texGraphProcedure(kind)}\n\nAuthor request:\n${turn.message}`, context: envelope, scope: 'texgraph', idempotency_key: idempotencyKey, correlation_id: idempotencyKey }) });
     if (!start.ok) throw new Error(`Hermes returned ${start.status}.`);
     let snapshot = await start.json(); const deadline = Date.now() + config.timeoutMs;

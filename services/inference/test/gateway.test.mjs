@@ -21,6 +21,9 @@ test('sends a bounded TexGraph envelope to Hermes and returns its structured rep
   const request = JSON.parse(requests[0].options.body);
   assert.equal(request.actor, 'texgraph'); assert.equal(request.scope, 'texgraph'); assert.match(request.context.procedure, /TexGraph/);
   assert.equal(request.context.selectedTarget.source, 'A poem.'); assert.equal(requests[0].options.headers['x-screenlab-internal-key'], 'internal-key');
+  assert.equal(request.context.directorKit.version, 'stex.texgraph.director-kit.v1');
+  assert.ok(request.context.directorKit.skills.some((skill) => skill.id === 'texgraph.composition'));
+  assert.ok(request.context.directorKit.mcpServers.some((server) => server.id === 'markitdown' && server.access === 'review-gated-context-adapter'));
 });
 
 test('fails closed when Hermes returns a malformed proposal', async () => {
