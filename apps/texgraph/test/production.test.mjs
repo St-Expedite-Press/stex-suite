@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { ProjectStore } from '../src/project-store-vault.mjs';
-import { buildBook } from '../src/book-assembler.mjs';
+import { assembleBook, buildBook } from '../src/book-assembler.mjs';
 import { DESIGN_DEFAULTS, designDocument, designHash, normalizeDesign, validateDesign } from '../src/design-settings.mjs';
 import { compilerFindings, runPreflight } from '../src/preflight.mjs';
 
@@ -63,4 +63,43 @@ test('preflight reports what a real proof gets wrong and never declares it press
   await store.saveDesign({ trimSize: '6 × 9 in' });
   assert.equal(status(await preflight()).freshness, 'warn');
   await assert.rejects(() => store.queueLiveBuild('book'), { code: 'STALE_BUILD' });
+});
+
+test('preflight catches an overflowing running head and a table of contents changed after the proof', { skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-preflight-heads-')); context.after(() => rm(root, { recursive: true, force: true }));
+  const long = Array.from({ length: 80 }, (_, index) => `Line ${index + 1} of a poem long enough to reach a verso page.`).join('\n');
+  await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
+  await writeFile(path.join(root, 'manuscript', '01', 'Long.md'), `# Long\n\n${long}\n`);
+  await writeFile(path.join(root, 'manuscript', '01', 'Later.md'), '# Later\n\nAdded after the proof.\n');
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](<01/Long.md>)\n');
+  const store = new ProjectStore(root); await store.initialize();
+  await store.saveDesign({ runningHeads: true, headTitle: 'W'.repeat(120) });
+  const result = await buildBook(store); assert.equal(result.ok, true, result.error);
+  const report = async () => runPreflight({ manifest: result.pageMap, pdfPath: store.previewPath(), pdfData: await readFile(store.previewPath()), graph: await store.graph({ refresh: true }), currentDesign: await store.design(), currentHeadTitle: 'W'.repeat(120) });
+  const overfull = (await report()).checks.find((entry) => entry.id === 'overfull');
+  assert.equal(overfull.status, 'warn'); assert.match(overfull.items.join('|'), /running head or folio: \d+/);
+  assert.equal((await report()).checks.find((entry) => entry.id === 'freshness').status, 'pass');
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](<01/Long.md>)\n- [x](<01/Later.md>)\n');
+  const freshness = (await report()).checks.find((entry) => entry.id === 'freshness');
+  assert.equal(freshness.status, 'warn'); assert.match(freshness.detail, /table of contents changed/);
+});
+
+test('saving a profile refuses non-object input and keeps fields that are left out', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-design-')); context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript'), { recursive: true }); await writeFile(path.join(root, 'manuscript', 'Programme.md'), '# Contents\n');
+  const store = new ProjectStore(root); await store.initialize();
+  await store.saveDesign({ folios: true, margins: { inner: '0.875in' } });
+  for (const input of [5, 'x', [], null]) await assert.rejects(() => store.saveDesign(input), { code: 'INVALID_DESIGN' });
+  const saved = await store.saveDesign({ fontSize: '12pt', leading: '15pt' });
+  assert.deepEqual([saved.folios, saved.margins.inner, saved.margins.outer, saved.fontSize], [true, '0.875in', '0.5in', '12pt']);
+});
+
+test('the recto running head uses the section opener heading', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-heads-')); context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript', '01_A'), { recursive: true });
+  await writeFile(path.join(root, 'manuscript', '01_A', '00_Section_Note.md'), '# Alpha & Omega\n');
+  await writeFile(path.join(root, 'manuscript', '01_A', 'Poem.md'), '# Poem\n\nA line.\n');
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](<01_A/00_Section_Note.md>)\n- [x](<01_A/Poem.md>)\n');
+  const store = new ProjectStore(root); await store.initialize();
+  assert.ok((await assembleBook(store)).document.includes(String.raw`\markright{Alpha \& Omega}`));
 });

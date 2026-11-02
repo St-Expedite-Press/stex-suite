@@ -235,7 +235,8 @@ function renderStatus() {
   if (state.build?.ok === false) items.push(statusItem('Last build', 'failed · showing previous proof', 'bad', state.build.error));
   items.push(statusItem('Review flags', String(flags.length), flags.length ? 'warn' : 'good', flags.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n')));
   const counts = preflightCounts();
-  if (counts) items.push(statusItem('Preflight', counts.fail ? `${counts.fail} failed · ${counts.warn} warning(s)` : counts.warn ? `${counts.warn} warning(s)` : 'all checks pass', counts.fail ? 'bad' : counts.warn ? 'warn' : 'good'));
+  // A check that did not run is never reported as passing.
+  if (counts) items.push(statusItem('Preflight', [counts.fail && `${counts.fail} failed`, counts.warn && `${counts.warn} warning(s)`, counts.unavailable && `${counts.unavailable} not checked`].filter(Boolean).join(' · ') || 'all checks pass', counts.fail ? 'bad' : counts.warn || counts.unavailable ? 'warn' : 'good'));
   items.push(statusItem('Press readiness', 'not assessed · no printer profile or PDF/X validation', 'warn'));
   $('#production-status').replaceChildren(...items);
 }

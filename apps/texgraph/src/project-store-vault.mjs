@@ -313,7 +313,10 @@ export class ProjectStore {
   async design() { try { return normalizeDesign(JSON.parse(await readFile(path.join(this.stateDirectory, 'design.json'), 'utf8'))); } catch { return normalizeDesign({}); } }
   saveDesign(input) {
     return this.exclusive(async () => {
-      const { design, errors } = validateDesign(input);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) { const error = new Error('A design profile must be an object of settings.'); error.code = 'INVALID_DESIGN'; throw error; }
+      // Fields left out keep their saved values.
+      const current = await this.design();
+      const { design, errors } = validateDesign({ ...current, ...input, margins: { ...current.margins, ...(input.margins && typeof input.margins === 'object' ? input.margins : {}) } });
       if (!design) { const error = new Error(errors.join(' ')); error.code = 'INVALID_DESIGN'; throw error; }
       await writeAtomic(path.join(this.stateDirectory, 'design.json'), `${JSON.stringify(design, null, 2)}\n`);
       return design;

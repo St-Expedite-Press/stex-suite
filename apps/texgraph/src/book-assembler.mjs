@@ -65,7 +65,7 @@ function manuscriptBody(blocks, kind) {
 const COMPOSITION_MACROS = String.raw`\makeatletter
 \newwrite\tg@map\immediate\openout\tg@map=\jobname.tgmap
 \newcommand\tgmark[2]{\write\tg@map{#1 #2 \the\ReadonlyShipoutCounter\space\thepage}}
-\newcommand\tgrecto{\clearpage\ifodd\value{page}\else\null\thispagestyle{empty}\newpage\fi}
+\newcommand\tgrecto{\clearpage\ifodd\value{page}\else\null\write\tg@map{blank \the\ReadonlyShipoutCounter}\thispagestyle{empty}\newpage\fi}
 \newcommand\tgstanza{\par\addvspace{\baselineskip}}
 \newcommand\tgline[2]{{\noindent\hangindent=\dimexpr#1+2em\relax\hangafter=1\hspace*{#1}#2\par}}
 \AtEndDocument{\clearpage\immediate\write\tg@map{total \the\ReadonlyShipoutCounter}}
@@ -81,6 +81,12 @@ function isolatedStart(reference, preceding, firstNodeId, currentDesign) {
   const sameDesign = (reference.designHash ?? designHash({})) === currentDesign;
   const unchanged = sameOrder && sameDesign && preceding.every((node) => reference.sourceHashes?.[node.id] === node.hash);
   return { startPage: entry.firstBookPage ?? entry.firstPage, basis: unchanged ? 'book-proof' : 'provisional' };
+}
+
+// The verso running head: the profile's title, else the settings ticket's, else the folder name.
+export async function resolveHeadTitle(store, graph, design) {
+  const ticket = await store.settingsTicket();
+  return design.headTitle || ticket?.identity?.title || graph.book?.title || '';
 }
 
 export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', reference = null } = {}) {
@@ -120,24 +126,27 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
     // Each unit starts a new page; openers start on a recto when the profile asks, decided in TeX from the folio.
     const opensRecto = settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note');
     // The recto running head names the section a page belongs to.
-    const section = sectionOf(node.id); const mark = section && section !== markedSection ? `\\markright{${escapeTeX(section.title)}}` : '';
+    // The recto head uses the section opener's own heading when it has one, so head and opener agree.
+    const opener = node.kind === 'section-note' ? blocks.find((block) => block.type === 'heading')?.text : null;
+    const section = sectionOf(node.id); const mark = section && section !== markedSection ? `\\markright{${opener ? inlineTeX(opener) : escapeTeX(section.title)}}` : '';
     if (section) markedSection = section;
     sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${manuscriptBody(blocks, node.kind)}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
   }
-  const ticket = await store.settingsTicket();
-  const title = ticket?.identity?.title || graph.book?.title || '';
-  const document = designDocument(settings, { title }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
+  const headTitle = await resolveHeadTitle(store, graph, settings);
+  const document = designDocument(settings, { title: headTitle }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
   const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, node.hash]));
-  return { document, units, graph, settings, designHash: designId, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
+  return { document, units, graph, settings, headTitle, designHash: designId, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
 }
 
 // Builds the page map only from compiler output. Anything inconsistent is
 // reported and leaves the map unverified rather than guessed.
 export function paginationFromCompiler({ marks, log, units, pageOffset = 0 }) {
-  const warnings = []; const seen = new Map(); let shippedPages = null;
+  const warnings = []; const seen = new Map(); let shippedPages = null; const blanks = new Set();
   for (const line of String(marks || '').split(/\r?\n/)) {
     const total = /^total (\d+)$/.exec(line.trim());
     if (total) { shippedPages = Number(total[1]); continue; }
+    const blank = /^blank (\d+)$/.exec(line.trim());
+    if (blank) { blanks.add(Number(blank[1])); continue; }
     const match = /^(start|end) (\S+) (\d+) (\S+)$/.exec(line.trim()); if (!match) continue;
     const entry = seen.get(match[2]) || {};
     if (entry[match[1]]) warnings.push(`Duplicate ${match[1]} marker for ${match[2]}.`);
@@ -160,6 +169,18 @@ export function paginationFromCompiler({ marks, log, units, pageOffset = 0 }) {
     previousLast = Math.max(previousLast, mapped.lastPage);
     nodes.push(mapped);
   }
+  // A piece's end marker sits after its text, but a footnote can continue onto later
+  // pages before the next piece starts. Pieces are separated by page breaks, so every
+  // page up to the next piece belongs to this one, except recto padding (marked blank).
+  const printed = nodes.filter((node) => node.firstPage);
+  printed.forEach((node, index) => {
+    let boundary = (printed[index + 1]?.firstPage ?? physicalPageCount + 1) - 1;
+    while (boundary > node.lastPage && blanks.has(boundary)) boundary -= 1;
+    if (boundary > node.lastPage) {
+      node.lastPage = boundary; node.lastBookPage = boundary + pageOffset;
+      if (/^\d+$/.test(node.lastFolio)) node.lastFolio = String(Number(node.firstFolio) + boundary - node.firstPage);
+    }
+  });
   const pages = Array.from({ length: physicalPageCount }, (_, index) => {
     const page = index + 1;
     const nodeIds = nodes.filter((node) => node.firstPage <= page && page <= node.lastPage).map((node) => node.nodeId);
@@ -202,7 +223,7 @@ export async function buildBook(store, { scopeId = 'book', mode = 'prefix' } = {
     const marks = await readFile(path.join(directory, 'document.tgmap'), 'utf8').catch(() => '');
     const compiled = paginationFromCompiler({ marks, log: result.log, units: assembled.units, pageOffset: assembled.numbering.startPage - 1 });
     const compiler = compilerFindings({ log: result.log, document: assembled.document, units: assembled.units });
-    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, design: assembled.settings, designHash: assembled.designHash, compiler, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, ...compiled };
+    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, design: assembled.settings, designHash: assembled.designHash, headTitle: assembled.headTitle, compiler, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, ...compiled };
     await writeAtomic(path.join(directory, 'page-map.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await store.activateBuild(directory, manifest);
     // A verified book-order proof is the reference for later isolated page numbering.

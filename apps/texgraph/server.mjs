@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
-import { buildBook } from './src/book-assembler.mjs';
+import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
 import { runPreflight } from './src/preflight.mjs';
 import { requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
@@ -142,7 +142,8 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'GET' && url.pathname === '/api/project/preflight') {
     const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
     const pdfData = await readFile(store.previewPath()).catch(() => new Uint8Array());
-    return json(response, 200, await runPreflight({ manifest, pdfPath: store.previewPath(), pdfData, graph: await store.graph(), currentDesign: await store.design() }));
+    const [graph, design] = await Promise.all([store.graph(), store.design()]);
+    return json(response, 200, await runPreflight({ manifest, pdfPath: store.previewPath(), pdfData, graph, currentDesign: design, currentHeadTitle: await resolveHeadTitle(store, graph, design) }));
   }
   if (request.method === 'GET' && url.pathname === '/api/project/design') { const design = await store.design(); return json(response, 200, { design, hash: designHash(design), defaultHash: designHash({}), trimSizes: [...TRIM_SIZES.keys()] }); }
   if (request.method === 'PUT' && url.pathname === '/api/project/design') { const design = await store.saveDesign(await body(request)); return json(response, 200, { design, hash: designHash(design) }); }

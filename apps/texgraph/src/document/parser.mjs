@@ -29,9 +29,10 @@ function identify(blocks) {
 export function parseManuscript(markdown) {
   const lines = String(markdown).replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(CONTROL_CHARACTERS, '').split('\n');
   const blocks = []; const excluded = []; let stanza = null; let note = null; let first = 0;
-  if (lines[0]?.trim() === '---') {
-    // Only a YAML-shaped header is front matter; an opening rule followed by verse is print content.
-    const end = lines.findIndex((line, index) => index > 0 && /^---\s*$/.test(line));
+  // Front matter opens with exactly "---" and closes with a "---" line followed by a line
+  // break. Only a YAML-shaped header counts; an opening rule followed by verse is print content.
+  if (lines[0] === '---') {
+    const end = lines.findIndex((line, index) => index > 0 && index < lines.length - 1 && /^---\s*$/.test(line));
     const header = end > 0 ? lines.slice(1, end).filter((line) => line.trim()) : [];
     if (header.some((line) => /^[\w-]+\s*:/.test(line)) && header.every((line) => /^[\w-]+\s*:|^\s+\S|^\s*-\s/.test(line))) {
       excluded.push({ type: 'front-matter', span: { start: 1, end: end + 1 } }); first = end + 1;
@@ -75,5 +76,8 @@ export function parseManuscript(markdown) {
     stanza.lines.push({ indent, text, line: number }); stanza.span.end = number;
   }
   close();
-  return { blocks: identify(blocks), excluded, lineCount: lines.length };
+  // A fence marker inside an editorial note belongs to the note.
+  const notes = blocks.filter((block) => block.type === 'note');
+  const unowned = excluded.filter((region) => !notes.some((note) => region.type === 'fence-marker' && note.span.start <= region.span.start && region.span.end <= note.span.end));
+  return { blocks: identify(blocks), excluded: unowned, lineCount: lines.length };
 }

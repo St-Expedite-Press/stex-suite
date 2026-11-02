@@ -119,7 +119,11 @@ test('renders verse markup and escapes TeX in one pass', () => {
 });
 test('derives the page map only from compiler markers and refuses inconsistent evidence', () => {
   const units = [{ nodeId: 'node-a', kind: 'front-matter', sourcePath: 'manuscript/a.md' }, { nodeId: 'node-b', kind: 'poem', sourcePath: 'manuscript/b.md' }];
-  const marks = 'start node-a 1 1\nend node-a 1 1\nstart node-b 3 3\nend node-b 5 5\ntotal 5\n';
+  const marks = 'start node-a 1 1\nend node-a 1 1\nblank 2\nstart node-b 3 3\nend node-b 5 5\ntotal 5\n';
+  // Without a blank marker, the page before the next piece is a continuation (e.g. of a footnote).
+  const continued = paginationFromCompiler({ marks: marks.replace('blank 2\n', ''), log: 'Output written on x (5 pages', units });
+  assert.deepEqual(continued.nodes.map((node) => [node.firstPage, node.lastPage]), [[1, 2], [3, 5]]);
+  assert.equal(continued.pagination.verified, true);
   const good = paginationFromCompiler({ marks, log: 'Output written on\n document.pdf (5 pages, 900 bytes).', units });
   assert.equal(good.pagination.verified, true); assert.equal(good.pagination.physicalPageCount, 5);
   assert.deepEqual(good.nodes.map((node) => [node.firstPage, node.lastPage]), [[1, 1], [3, 5]]);
@@ -243,4 +247,18 @@ test('a section typeset alone reproduces its book pages and footnote numbers', {
   const short = (await store.graph()).nodes.find((node) => node.relativePath === '01_A/Short.md');
   await store.updateNode(short.id, '# Short\n\nTwo lines.\n', (await store.node(short.id)).hash);
   assert.equal((await buildBook(store, { scopeId: sectionB.id, mode: 'isolated' })).pageMap.numbering.basis, 'provisional');
+});
+test('pages carrying a footnote continuation belong to the piece the footnote came from', { skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-footnote-')); context.after(() => rm(root, { recursive: true, force: true }));
+  const reviewers = Array.from({ length: 40 }, (_, index) => `**Reviewer ${index + 1} — 5/10**\n\n> ${'A long reviewer remark that fills the footnote area. '.repeat(3)}`).join('\n\n');
+  const files = { '01/Noted.md': `# Noted\n\nA short poem.\n\n### Editorial Includability\n\n${reviewers}\n`, '01/After.md': '# After\n\nThe next poem.\n' };
+  for (const [relative, source] of Object.entries(files)) { await mkdir(path.dirname(path.join(root, 'manuscript', relative)), { recursive: true }); await writeFile(path.join(root, 'manuscript', relative), source); }
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), Object.keys(files).map((relative) => `- [x](<${relative}>)`).join('\n'));
+  const store = new ProjectStore(root); await store.initialize();
+  const map = (await buildBook(store)).pageMap;
+  assert.equal(map.pagination.verified, true, map.pagination.warnings.join('\n'));
+  const [noted, after] = map.nodes;
+  assert.ok(noted.lastPage > noted.firstPage, 'the footnote runs past the poem’s first page');
+  assert.equal(after.firstPage, noted.lastPage + 1);
+  assert.deepEqual(map.pages.filter((page) => page.blank).map((page) => page.physicalPage), [], 'no page is left unattributed');
 });

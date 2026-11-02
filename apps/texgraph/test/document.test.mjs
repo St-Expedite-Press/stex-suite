@@ -46,3 +46,18 @@ test('gives blocks content-derived ids that survive edits elsewhere', () => {
   assert.deepEqual([before[0].id, before[2].id, before[3].id], [after[0].id, after[2].id, after[3].id]);
   assert.notEqual(before[1].id, after[1].id);
 });
+
+test('front matter needs an exact opening rule and a closing rule followed by a line break', () => {
+  // Each of these was print content before the model moved out of the assembler; it still is.
+  for (const source of ['---\ntitle: x\n---', '---  \ntitle: x\n---\nVerse\n', ' ---\ntitle: x\n---\nVerse\n']) {
+    assert.ok(parseManuscript(source).blocks.some((block) => block.type === 'stanza' && block.lines.some((line) => /title: x/.test(line.text))), JSON.stringify(source));
+  }
+  assert.deepEqual(parseManuscript('---\r\ntitle: x\r\n---\r\nVerse\r\n').excluded.map((region) => region.type), ['front-matter']);
+});
+
+test('a fence marker inside an editorial note is owned by the note only', () => {
+  const { blocks, excluded } = parseManuscript('# Poem\n\nLine.\n\n### Editorial Includability\n\n**R — 5/10**\n\n```\n> quoted\n```\n\n> more\n');
+  const note = blocks.find((block) => block.type === 'note');
+  assert.deepEqual([note.span.start, note.span.end], [5, 13]);
+  assert.deepEqual(excluded, []);
+});
