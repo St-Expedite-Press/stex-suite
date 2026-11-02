@@ -173,3 +173,22 @@ button:disabled { opacity: .55; cursor: wait; }
 .composer-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 .icon-button { width: 28px; height: 28px; padding: 0; border: 1px solid rgba(127, 127, 127, .4); border-radius: 50%; background: transparent; color: var(--t1, #292821); font-size: 16px; line-height: 1; }
 .send-button { padding: 6px 14px; border-radius: 99px; }
+
+/* Publication profile: every control is a saved setting that changes the PDF. */
+.design-panel { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid rgba(127, 127, 127, .3); border-radius: 8px; background: var(--s2, #f4f2eb); font-size: 12px; }
+.design-panel fieldset { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 0; border: 0; }
+.design-panel legend { margin-bottom: 4px; padding: 0; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--t2, #6e6b62); }
+.design-panel label { display: grid; gap: 3px; color: var(--t2, #6e6b62); }
+.design-panel label.check { display: flex; align-items: center; gap: 6px; color: var(--t1, #292821); }
+.design-panel input:not([type="checkbox"]), .design-panel select { width: 9.5em; padding: 4px 6px; border: 1px solid rgba(127, 127, 127, .4); border-radius: 4px; background: var(--s1, #fffefa); color: var(--t1, #292821); font: inherit; }
+.design-panel input[name="bodyFont"] { width: 14em; }
+.design-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.design-actions #design-state { margin-right: auto; color: var(--t2, #6e6b62); }
+.preflight-section[open] { max-height: 260px; overflow: auto; }
+.preflight-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.preflight-list > li { display: grid; gap: 2px; padding-left: 10px; border-left: 3px solid rgba(127, 127, 127, .4); }
+.preflight-list > li span { color: #b9b5a8; }
+.preflight-list ul { margin: 2px 0 0; padding-left: 1.2em; color: #b9b5a8; font-size: 11px; }
+.preflight-list .preflight-pass { border-left-color: #6f9f78; }
+.preflight-list .preflight-warn { border-left-color: var(--signal-2, #e3b95e); }
+.preflight-list .preflight-fail { border-left-color: var(--bad, #ff6b6b); }

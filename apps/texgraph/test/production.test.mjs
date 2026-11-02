@@ -22,6 +22,7 @@ test('design profiles validate strictly on save and fall back to defaults on rea
   assert.match(document, /paperwidth=5\.5in,paperheight=8\.5in,top=0\.75in,bottom=0\.8in,inner=0\.875in,outer=0\.625in/);
   assert.match(document, /\\@setfontsize\\normalsize\{10\.5pt\}\{14pt\}/);
   assert.match(document, /\\scshape A \\& B/, 'the running head title is escaped');
+  assert.match(designDocument({ runningHeads: true, headTitle: 'Lift Wind/Love Heat' }, { title: 'folder name' }), /\\scshape Lift Wind\/Love Heat\}/, 'the profile title wins over the folder');
   assert.match(document, /\\@oddfoot\{\\hfil\{\\footnotesize\\thepage\}\\hfil\}/);
 });
 

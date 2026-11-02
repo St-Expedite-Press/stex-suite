@@ -14,6 +14,8 @@ export const DESIGN_DEFAULTS = Object.freeze({
   runningHeads: false,
   folios: false,
   rectoOpeners: true,
+  // Verso running head; empty uses the book's title from its settings ticket or folder.
+  headTitle: '',
 });
 
 const LENGTH = /^(\d+(?:\.\d+)?)\s*(in|mm|cm|pt)$/i;
@@ -31,6 +33,7 @@ const rules = {
   runningHeads: (value) => (typeof value === 'boolean' ? ok(value) : fail('Running heads must be on or off.')),
   folios: (value) => (typeof value === 'boolean' ? ok(value) : fail('Folios must be on or off.')),
   rectoOpeners: (value) => (typeof value === 'boolean' ? ok(value) : fail('Recto openers must be on or off.')),
+  headTitle: (value) => (typeof value === 'string' && value.trim().length <= 120 ? ok(value.trim()) : fail('The running-head title must be text of at most 120 characters.')),
 };
 const margin = (side, value) => { const size = length(value); const pts = size ? points(size) : NaN; return pts >= 18 && pts <= 144.6 ? ok(size) : fail(`The ${side} margin must be between 0.25in and 2in.`); };
 
@@ -57,6 +60,7 @@ export function designDocument(design, { title = '' } = {}) {
   const classSize = points(profile.fontSize) < 10.5 ? '10pt' : points(profile.fontSize) < 11.5 ? '11pt' : '12pt';
   const head = (content) => (profile.runningHeads ? `\\hfil{\\footnotesize\\scshape ${content}}\\hfil` : '\\hfil');
   const foot = profile.folios ? '\\hfil{\\footnotesize\\thepage}\\hfil' : '\\hfil';
+  title = profile.headTitle || title;
   return String.raw`\documentclass[${classSize},twoside]{article}
 \usepackage[paperwidth=${width},paperheight=${height},top=${top},bottom=${bottom},inner=${inner},outer=${outer}]{geometry}
 \raggedbottom
