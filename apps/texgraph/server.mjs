@@ -4,11 +4,12 @@ import { createHash } from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage } from './src/lualatex.mjs';
 import { buildBook } from './src/book-assembler.mjs';
-import { requestPageRevision } from './src/inference-client.mjs';
+import { requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
@@ -27,7 +28,12 @@ const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(process.env.TEXGRAPH_PORT || 4310);
 
-const mimeTypes = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf' };
+const mimeTypes = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf' };
+// The proof viewer's PDF.js browser build; only these two files are exposed.
+const pdfjsFiles = new Set(['pdf.min.mjs', 'pdf.worker.min.mjs']);
+function pdfjsFile(name) {
+  try { return path.join(path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json')), 'build', name); } catch { return null; }
+}
 
 function json(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -65,8 +71,12 @@ async function storeFor(url) {
     const bookRoot = path.resolve(booksDirectory, bookId);
     if (!bookRoot.startsWith(`${booksDirectory}${path.sep}`)) throw new Error('Invalid book path.');
     try { await access(path.join(bookRoot, 'manuscript', 'Programme.md')); } catch { throw new Error('Book project not found.'); }
-    if (!projectStores.has(`book:${bookId}`)) projectStores.set(`book:${bookId}`, new ProjectStore(bookRoot));
-    const store = projectStores.get(`book:${bookId}`); await store.initialize(); return store;
+    // Map the vault once per server start so diagnostics reflect the current manuscript and parser.
+    if (!projectStores.has(`book:${bookId}`)) {
+      const created = new ProjectStore(bookRoot);
+      projectStores.set(`book:${bookId}`, created.initialize().then(() => created.refreshGraph()).then(() => created).catch((error) => { projectStores.delete(`book:${bookId}`); throw error; }));
+    }
+    const store = await projectStores.get(`book:${bookId}`); await store.initialize(); return store;
   }
   const projectId = url.searchParams.get('project');
   if (!projectId) return defaultStore;
@@ -104,6 +114,19 @@ async function saveAttachments(store, payload) {
 }
 async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
 
+// One conversation turn with a book, section or page. Hermes may propose changes;
+// the store keeps only those for nodes whose text this turn offered.
+async function scopeTurn(store, scopeId, payload) {
+  if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+  const userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim() });
+  const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+  const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
+  const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, approvedSourceExcerpts, turns: priorTurns.slice(0, -1), message: userTurn.message });
+  const { changeSet, dropped } = result.changes.length ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes }, context.sources) : { changeSet: null, dropped: [] };
+  const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
+  return { userTurn, assistantTurn, changeSet, availability: result.availability };
+}
+
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
   const attachmentId = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/approve$/)?.[1];
@@ -114,35 +137,30 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
   if (request.method === 'GET' && url.pathname === '/api/project/build') return json(response, 200, await store.buildStatus());
+  if (request.method === 'GET' && url.pathname === '/api/project/reference-map') return json(response, 200, await store.referenceMap());
   if (request.method === 'GET' && url.pathname === '/api/project/live-build') return json(response, 200, await store.liveBuildStatus());
   if (request.method === 'GET' && url.pathname === '/api/project/page-map') {
     try { return json(response, 200, JSON.parse(await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8'))); } catch { return json(response, 200, null); }
   }
   if (request.method === 'POST' && url.pathname === '/api/project/build') {
     const payload = await body(request);
-    const result = await buildBook(store, { scopeId: payload.scopeId || 'book' }); return json(response, result.ok ? 200 : 422, await store.recordBuild(result));
+    const result = await buildBook(store, { scopeId: payload.scopeId || 'book', mode: payload.mode === 'isolated' ? 'isolated' : 'prefix' }); return json(response, result.ok ? 200 : 422, await store.recordBuild(result));
   }
   if (request.method === 'POST' && url.pathname === '/api/project/live-build') {
     const payload = await body(request);
     return json(response, 201, await store.queueLiveBuild(payload.scopeId || 'book'));
   }
+  const scoped = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/);
+  if (scoped) {
+    const [, scopeId, action] = scoped;
+    if (request.method === 'GET' && action === 'turns') return json(response, 200, await store.turns(scopeId));
+    if (request.method === 'GET' && action === 'changes') return json(response, 200, await store.changeSet(scopeId));
+    if (request.method === 'POST' && action === 'changes/decide') { const payload = await body(request); return json(response, 200, await store.decideChanges(scopeId, payload.changeSetId, { nodeId: payload.nodeId || null, decision: payload.decision })); }
+    if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request)));
+  }
   if (!id) return false;
-  if (request.method === 'GET' && url.pathname.endsWith('/turns')) return json(response, 200, await store.turns(id));
-  if (request.method === 'GET' && url.pathname.endsWith('/proposal')) return json(response, 200, await store.proposal(id));
   if (request.method === 'GET' && url.pathname === `/api/nodes/${id}`) return json(response, 200, await store.node(id));
   if (request.method === 'PUT' && url.pathname === `/api/nodes/${id}`) { const payload = await body(request); return json(response, 200, await store.updateNode(id, payload.source, payload.baseHash)); }
-  if (request.method === 'POST' && url.pathname.endsWith('/turn')) {
-    const payload = await body(request); if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
-    const scope = await store.scope(payload.scopeId || id);
-    const userTurn = await store.appendTurn(id, { role: 'user', message: payload.message.trim(), scopeId: scope.id, scopeKind: scope.kind });
-    const [node, graph, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.node(id), store.graph({ refresh: true }), store.turns(id), store.approvedSourceExcerpts(), store.settingsTicket()]);
-    const result = await requestPageRevision({ book: { title: path.basename(store.root), design: 'Table-of-contents-led manuscript vault', graph, settings, context: { scope } }, page: node, approvedSourceExcerpts, turns: priorTurns, message: userTurn.message });
-    const assistantTurn = await store.appendTurn(id, { role: 'assistant', commentary: result.commentary, availability: result.availability, scopeId: scope.id, scopeKind: scope.kind, graphSuggestions: result.graphSuggestions || [] });
-    const proposal = scope.kind === 'node' && result.proposal ? await store.createProposal(id, result.proposal) : null;
-    return json(response, 200, { userTurn, assistantTurn, proposal, graphSuggestions: result.graphSuggestions || [], availability: result.availability });
-  }
-  if (request.method === 'POST' && url.pathname.endsWith('/proposal/accept')) { const payload = await body(request); return json(response, 200, await store.acceptProposal(id, payload.proposalId)); }
-  if (request.method === 'POST' && url.pathname.endsWith('/proposal/reject')) { const payload = await body(request); return json(response, 200, await store.rejectProposal(id, payload.proposalId)); }
   return false;
 }
 
@@ -201,6 +219,8 @@ http.createServer(async (request, response) => {
       if (handled === false) json(response, 404, { error: 'Unknown API route.' });
       return;
     }
+    const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
+    if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
     const requested = url.pathname === '/' ? '/index.html' : url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });

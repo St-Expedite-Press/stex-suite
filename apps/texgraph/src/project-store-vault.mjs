@@ -3,8 +3,10 @@ import { access, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } f
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
+import { parseManuscript } from './book-assembler.mjs';
 
 const MAX_SOURCE = 400_000;
+const SCOPE_SOURCE_BUDGET = 60_000;
 const NODE_ID = /^[a-z][a-z0-9-]{5,80}$/;
 export const sourceHash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const nodeIdFor = (relativePath) => `node-${sourceHash(relativePath.replaceAll('\\', '/').toLowerCase()).slice(0, 20)}`;
@@ -60,7 +62,10 @@ function programmeLinks(source, programmePath) {
 }
 function diagnosticsFor(relative, source) {
   const diagnostics = [];
-  if (/^---\s*$[\s\S]{0,4000}^#{2,4}\s+Editorial\b/im.test(source)) diagnostics.push({ code: 'editorial-block', nodePath: relative, message: 'Editorial material appears after a manuscript separator; review it before assembly.' });
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(source)) diagnostics.push({ code: 'control-characters', nodePath: relative, message: 'Invisible control characters are present; the proof omits them.' });
+  // Editorial sections print as footnotes; one without reviewer comments prints nothing.
+  const emptyNotes = parseManuscript(source).blocks.filter((block) => block.type === 'note' && !block.entries.length).length;
+  if (emptyNotes) diagnostics.push({ code: 'empty-editorial-note', nodePath: relative, message: 'An Editorial section has no reviewer comments in the expected form (**Name — score** followed by > quotes), so no footnote prints for it.' });
   return diagnostics;
 }
 
@@ -119,12 +124,23 @@ export class ProjectStore {
     this.buildsDirectory = path.join(this.stateDirectory, 'builds');
     this.liveBuildsDirectory = path.join(this.stateDirectory, 'live-builds');
     this.refreshing = null;
+    this.writes = Promise.resolve();
+  }
+
+  // Manuscript writes and change-set decisions run one at a time, so a hash check
+  // and the write it guards can never interleave with another write.
+  exclusive(task) {
+    const run = this.writes.then(task, task);
+    this.writes = run.catch(() => {});
+    return run;
   }
 
   sourcePath(relativePath) { return contained(this.manuscriptDirectory, relativePath); }
   nodePath(id) { if (!NODE_ID.test(id)) throw new Error('Invalid graph node id.'); return id; }
-  conversationPath(id) { return path.join(this.conversationsDirectory, `${this.nodePath(id)}.jsonl`); }
-  proposalPath(id) { return path.join(this.proposalsDirectory, `${this.nodePath(id)}.json`); }
+  // Book, section and page conversations are separate threads keyed by scope id.
+  scopeKey(scopeId) { return scopeId === 'book' ? 'book' : this.nodePath(scopeId); }
+  conversationPath(scopeId) { return path.join(this.conversationsDirectory, `${this.scopeKey(scopeId)}.jsonl`); }
+  changeSetPath(scopeId) { return path.join(this.proposalsDirectory, `${this.scopeKey(scopeId)}.json`); }
 
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
@@ -197,7 +213,8 @@ export class ProjectStore {
     const source = await readFile(this.sourcePath(summary.relativePath), 'utf8');
     return { ...summary, source, hash: sourceHash(source) };
   }
-  async updateNode(id, source, baseHash) {
+  updateNode(id, source, baseHash) { return this.exclusive(() => this.#writeNode(id, source, baseHash)); }
+  async #writeNode(id, source, baseHash) {
     if (typeof source !== 'string' || source.length > MAX_SOURCE) throw new Error('Source must be Markdown under 400 KB.');
     const node = await this.node(id);
     if (baseHash && baseHash !== node.hash) { const error = new Error('This manuscript node changed on disk. Reload it before saving.'); error.code = 'STALE_SOURCE'; throw error; }
@@ -205,24 +222,80 @@ export class ProjectStore {
     await this.refreshGraph();
     return this.node(id);
   }
-  async appendTurn(id, turn) {
-    await this.node(id);
-    const record = { id: randomUUID(), at: new Date().toISOString(), ...turn };
-    await writeFile(this.conversationPath(id), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
+  async appendTurn(scopeId, turn) {
+    await this.scope(scopeId);
+    const record = { id: randomUUID(), at: new Date().toISOString(), scopeId, ...turn };
+    await writeFile(this.conversationPath(scopeId), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
     return record;
   }
-  async turns(id, limit = 12) {
-    await this.node(id);
-    try { return (await readFile(this.conversationPath(id), 'utf8')).trim().split('\n').filter(Boolean).slice(-limit).map(JSON.parse); }
-    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  async turns(scopeId, limit = 40) {
+    const scope = await this.scope(scopeId);
+    const read = async (key) => { try { return (await readFile(this.conversationPath(key), 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
+    // Earlier versions saved book and section turns in their anchor node's file, tagged with the scope id.
+    const own = (await read(scopeId)).filter((turn) => !turn.scopeId || turn.scopeId === scopeId);
+    const legacy = scope.kind === 'node' || !scope.anchorNodeId ? [] : (await read(scope.anchorNodeId)).filter((turn) => turn.scopeId === scopeId);
+    return [...legacy, ...own].sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
   }
-  async createProposal(id, proposal) {
-    const node = await this.node(id);
-    if (typeof proposal.source !== 'string' || proposal.source.length > MAX_SOURCE) throw new Error('Proposed Markdown is invalid.');
-    const record = { id: randomUUID(), nodeId: node.id, createdAt: new Date().toISOString(), baseHash: node.hash, beforeHash: node.hash, afterHash: sourceHash(proposal.source), commentary: String(proposal.commentary || ''), source: proposal.source, status: 'pending' };
-    await writeAtomic(this.proposalPath(id), `${JSON.stringify(record, null, 2)}\n`); return record;
+  // What the director is shown for a scope: the book offers its table of contents,
+  // a section or page each of its nodes, within a size budget.
+  async scopeContext(scopeId) {
+    const graph = await this.graph({ refresh: true }); const scope = scopeFromGraph(graph, scopeId === 'book' ? 'book' : this.nodePath(scopeId));
+    const ids = scope.kind === 'book' ? [graph.book.tableOfContentsNodeId].filter(Boolean) : scope.nodeIds;
+    const sources = []; const withheld = []; let budget = SCOPE_SOURCE_BUDGET;
+    for (const id of ids) {
+      const node = await this.node(id);
+      if (node.source.length > budget) { withheld.push({ nodeId: node.id, title: node.title }); continue; }
+      budget -= node.source.length;
+      sources.push({ nodeId: node.id, relativePath: node.relativePath, title: node.title, kind: node.kind, hash: node.hash, source: node.source });
+    }
+    return { graph, scope, sources, withheld };
   }
-  async proposal(id) { try { return JSON.parse(await readFile(this.proposalPath(id), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  // Records the director's proposed replacements as one pending change set for the
+  // scope. A change may only replace a node whose exact text was offered.
+  createChangeSet(scopeId, proposal, offered) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered)); }
+  async #createChangeSet(scopeId, { commentary = '', changes = [] }, offered) {
+    const kept = []; const dropped = [];
+    for (const change of Array.isArray(changes) ? changes : []) {
+      const base = offered.find((entry) => entry.nodeId === change?.nodeId);
+      if (!base) { dropped.push({ nodeId: String(change?.nodeId || '').slice(0, 100), reason: 'This node was not offered in the conversation scope.' }); continue; }
+      if (typeof change.source !== 'string' || change.source.length > MAX_SOURCE) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is invalid.' }); continue; }
+      if (kept.some((entry) => entry.nodeId === base.nodeId)) { dropped.push({ nodeId: base.nodeId, reason: 'Only one change per node is kept.' }); continue; }
+      // Keep the file's own line endings; a reply in another convention would otherwise rewrite every line unseen.
+      const source = base.source.includes('\r\n') ? change.source.replace(/\r?\n/g, '\r\n') : change.source.replace(/\r\n/g, '\n');
+      if (source === base.source) continue;
+      kept.push({ nodeId: base.nodeId, relativePath: base.relativePath, title: base.title, baseHash: base.hash, afterHash: sourceHash(source), before: base.source, source, summary: String(change.summary || '').slice(0, 500), status: 'pending' });
+    }
+    if (!kept.length) return { changeSet: null, dropped };
+    const record = { schemaVersion: 2, id: randomUUID(), scopeId, createdAt: new Date().toISOString(), commentary: String(commentary).slice(0, 12000), status: 'pending', changes: kept, dropped };
+    await writeAtomic(this.changeSetPath(scopeId), `${JSON.stringify(record, null, 2)}\n`);
+    return { changeSet: record, dropped };
+  }
+  async changeSet(scopeId) {
+    // A file without changes is a single-page proposal from before change sets; it cannot be reviewed as a diff.
+    try { const record = JSON.parse(await readFile(this.changeSetPath(scopeId), 'utf8')); return Array.isArray(record?.changes) ? record : null; } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  }
+  // Accepting writes through updateNode, so a node that changed since the proposal is marked stale, never overwritten.
+  decideChanges(scopeId, changeSetId, decision) { return this.exclusive(() => this.#decideChanges(scopeId, changeSetId, decision)); }
+  async #decideChanges(scopeId, changeSetId, { nodeId = null, decision }) {
+    if (!['accept', 'reject'].includes(decision)) throw new Error('Decision must be accept or reject.');
+    const record = await this.changeSet(scopeId);
+    if (!record || record.id !== changeSetId) throw new Error('This change set is no longer current.');
+    const targets = record.changes.filter((change) => change.status === 'pending' && (!nodeId || change.nodeId === nodeId));
+    if (!targets.length) throw new Error('No pending change matches.');
+    try {
+      for (const change of targets) {
+        change.decidedAt = new Date().toISOString();
+        if (decision === 'reject') { change.status = 'rejected'; continue; }
+        try { await this.#writeNode(change.nodeId, change.source, change.baseHash); change.status = 'accepted'; }
+        catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
+      }
+    } finally {
+      record.status = record.changes.some((change) => change.status === 'pending') ? 'pending' : 'resolved';
+      await writeAtomic(this.changeSetPath(scopeId), `${JSON.stringify(record, null, 2)}\n`);
+    }
+    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: targets.map((change) => ({ nodeId: change.nodeId, title: change.title, status: change.status, beforeHash: change.baseHash, afterHash: change.afterHash })) });
+    return record;
+  }
   async approvedSourceExcerpts() {
     try {
       const documents = JSON.parse(await readFile(path.join(this.stateDirectory, 'documents.json'), 'utf8'));
@@ -230,19 +303,22 @@ export class ProjectStore {
       return Promise.all(approved.map(async (entry) => ({ id: entry.id, name: entry.name, excerpt: (await readFile(contained(this.stateDirectory, entry.extraction), 'utf8')).slice(0, 6000) })));
     } catch { return []; }
   }
-  async acceptProposal(id, proposalId) {
-    const proposal = await this.proposal(id); if (!proposal || proposal.id !== proposalId || proposal.status !== 'pending') throw new Error('Pending proposal not found.');
-    const node = await this.node(id); if (node.hash !== proposal.baseHash) { const error = new Error('The proposal is stale because the manuscript changed.'); error.code = 'STALE_PROPOSAL'; throw error; }
-    const accepted = await this.updateNode(id, proposal.source, proposal.baseHash);
-    proposal.status = 'accepted'; proposal.acceptedAt = new Date().toISOString(); await writeAtomic(this.proposalPath(id), `${JSON.stringify(proposal, null, 2)}\n`);
-    await this.appendTurn(id, { role: 'system', kind: 'proposal-accepted', proposalId: proposal.id, beforeHash: proposal.beforeHash, afterHash: proposal.afterHash }); return accepted;
-  }
-  async rejectProposal(id, proposalId) { const proposal = await this.proposal(id); if (!proposal || proposal.id !== proposalId || proposal.status !== 'pending') throw new Error('Pending proposal not found.'); proposal.status = 'rejected'; proposal.rejectedAt = new Date().toISOString(); await writeAtomic(this.proposalPath(id), `${JSON.stringify(proposal, null, 2)}\n`); return proposal; }
   buildDirectory() { return this.buildsDirectory; }
   previewPath() { return path.join(this.buildsDirectory, 'current.pdf'); }
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
   async recordBuild(result) { const record = { completedAt: new Date().toISOString(), lastSuccessful: await exists(this.previewPath()), ...result, log: String(result.log || '').slice(-60000) }; await writeAtomic(path.join(this.buildsDirectory, 'last.json'), `${JSON.stringify(record, null, 2)}\n`); return record; }
+  // The latest verified book-order page map: book page numbers for isolated proofs and for the book tree.
+  async referenceMap() {
+    for (const name of ['reference-map.json', 'page-map.json']) {
+      try {
+        const map = JSON.parse(await readFile(path.join(this.buildsDirectory, name), 'utf8'));
+        if (map?.schemaVersion >= 3 && (map.mode ?? 'prefix') === 'prefix' && map.pagination?.verified) return map;
+      } catch { /* try the next */ }
+    }
+    return null;
+  }
+  async saveReferenceMap(manifest) { await writeAtomic(path.join(this.buildsDirectory, 'reference-map.json'), `${JSON.stringify(manifest, null, 2)}\n`); }
   async liveBuildStatus() { try { return JSON.parse(await readFile(path.join(this.liveBuildsDirectory, 'latest.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   async queueLiveBuild(scopeId = 'book') {
     const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
@@ -257,6 +333,17 @@ export class ProjectStore {
     }
     if (!Object.keys(proof.sourceHashes || {}).length) {
       const error = new Error('This proof has no source manifest. Typeset it again before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
+    }
+    if (proof.pageMap?.mode === 'isolated') {
+      const error = new Error('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_BOOK_ORDER'; throw error;
+    }
+    // The table of contents is source too: an added, removed or reordered node changes the book.
+    const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);
+    if (JSON.stringify(current) !== JSON.stringify(proof.includedNodeIds || [])) {
+      const error = new Error('The table of contents changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
+    }
+    if (!(proof.pageMap?.schemaVersion >= 3 && proof.pageMap.pagination?.verified === true)) {
+      const error = new Error('This proof has no compiler-verified page map. Resolve the pagination warnings and typeset it again.'); error.code = 'PAGINATION_UNVERIFIED'; throw error;
     }
     const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };

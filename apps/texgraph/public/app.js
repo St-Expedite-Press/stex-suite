@@ -1,10 +1,12 @@
 import { startScreenlabPalette } from './palette.js';
+import { createProofViewer } from './proof-viewer.js';
+import { element, renderThread } from './thread.js';
 
 startScreenlabPalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
-const state = { graph: null, node: null, scope: null, proposal: null, sourceDirty: false, pageMap: null, attachments: [], build: null, liveBuild: null };
+const state = { graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -14,7 +16,6 @@ async function request(url, options = {}) {
   return payload;
 }
 
-const label = (node) => `${node.kind.replaceAll('-', ' ')} · ${node.title}`;
 function scopes() {
   const fallback = { id: 'book', kind: 'book', title: book?.replaceAll('-', ' ') || 'Book', nodeIds: state.graph.readingOrder, anchorNodeId: state.graph.readingOrder[0], buildThroughNodeId: state.graph.readingOrder.at(-1), sections: [] };
   const canonical = state.graph.book || fallback;
@@ -26,125 +27,213 @@ function scopeFor(id) {
   const node = state.graph.nodes.find((entry) => entry.id === id);
   return node ? { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id } : null;
 }
-function scopeLabel(scope) { return scope.kind === 'book' ? 'Whole book' : scope.kind === 'node' ? `Page · ${scope.title}` : `${scope.kind.replaceAll('-', ' ')} · ${scope.title}`; }
 
-function renderScopes() {
-  const list = $('#scope-list');
-  list.replaceChildren(...scopes().map((scope) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `scope-button ${scope.id === state.scope?.id ? 'active' : ''} ${scope.kind}`;
-    button.textContent = scopeLabel(scope);
-    button.title = `Work with ${scope.title}; builds parse the book through its final node.`;
-    button.addEventListener('click', () => selectScope(scope.id));
-    return button;
-  }));
+// Only a schema 3 page map carries pages reported by the compiler; older proofs are estimates.
+const compiledMap = () => (state.pageMap?.schemaVersion >= 3 ? state.pageMap : null);
+// Book page numbers: an isolated proof's map carries them; a book-order proof's pages are book pages.
+const bookFirst = (entry) => entry.firstBookPage ?? entry.firstPage;
+const bookLast = (entry) => entry.lastBookPage ?? entry.lastPage;
+const pageRange = (entry) => (bookFirst(entry) === bookLast(entry) ? `p. ${bookFirst(entry)}` : `pp. ${bookFirst(entry)}–${bookLast(entry)}`);
+const nodePages = (id) => compiledMap()?.nodes.find((entry) => entry.nodeId === id && entry.firstPage) || null;
+
+// Sections the author has opened in the book tree; the one holding the current selection always opens.
+const expanded = new Set();
+const sectionOf = (nodeId) => state.graph.book?.sections?.find((section) => section.nodeIds.includes(nodeId)) || null;
+
+function treeButton(className, title, pages, onClick, { active = false, detail = '', flagged = '' } = {}) {
+  const button = element('button', `${className}${active ? ' active' : ''}`); button.type = 'button';
+  button.append(element('span', 'tree-title', title));
+  if (flagged) { const flag = element('span', 'tree-flag', '!'); flag.title = flagged; button.append(flag); }
+  button.append(element('span', 'tree-pages', pages));
+  button.title = detail || title;
+  button.addEventListener('click', onClick);
+  return button;
 }
 
+// One tree for the book: the whole book, its sections in table-of-contents order, and their pieces.
+// Page numbers come from the latest verified book-order proof, or else from the proof on screen.
 function renderNodes() {
-  const order = state.graph.readingOrder;
-  const byId = new Map(state.graph.nodes.map((node) => [node.id, node]));
-  const extra = state.graph.nodes.filter((node) => !order.includes(node.id) && node.kind !== 'programme');
-  $('#node-list').replaceChildren(...[...order.map((id) => byId.get(id)), ...extra].filter(Boolean).map((node, index) => {
-    const button = document.createElement('button');
-    button.className = `page-button ${node.id === state.node?.id ? 'active' : ''}`;
-    button.title = node.relativePath;
-    button.innerHTML = `<span class="page-number">${String(index + 1).padStart(2, '0')}</span><span>${label(node)}${node.changedOnDisk ? ' · changed' : ''}</span>`;
-    button.addEventListener('click', () => loadNode(node.id, node.id));
-    return button;
-  }));
-  const count = state.graph.diagnostics.length;
-  $('#diagnostics').textContent = count ? `${count} review flags` : 'Graph healthy';
-  renderScopes();
+  const graph = state.graph; const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const source = state.referenceMap || compiledMap();
+  const pages = new Map((source?.nodes || []).filter((entry) => entry.firstPage).map((entry) => [entry.nodeId, entry]));
+  const flags = new Map(); for (const entry of graph.diagnostics) flags.set(entry.nodePath, [...(flags.get(entry.nodePath) || []), entry.message]);
+  const range = (ids) => {
+    const entries = ids.map((id) => pages.get(id)).filter(Boolean); if (!entries.length) return '';
+    const first = Math.min(...entries.map(bookFirst)); const last = Math.max(...entries.map(bookLast));
+    return first === last ? `${first}` : `${first}–${last}`;
+  };
+  const open = state.scope?.kind === 'node' ? sectionOf(state.scope.id) : state.scope?.kind === 'book' ? null : state.scope;
+  if (open) expanded.add(open.id);
+  const piece = (node) => treeButton('tree-piece', node.title, range([node.id]), async () => { if (await loadNode(node.id, node.id) && nodePages(node.id)) showPdfPage(nodePages(node.id).firstPage); }, {
+    active: state.scope?.id === node.id, detail: `manuscript/${node.relativePath}${node.changedOnDisk ? ' · changed on disk' : ''}`, flagged: (flags.get(node.relativePath) || []).join('\n'),
+  });
+  const group = (id, title, nodeIds, selectable) => {
+    const isOpen = expanded.has(id); const wrap = element('div', `tree-section${isOpen ? ' open' : ''}`); const row = element('div', 'tree-row');
+    const toggle = element('button', 'tree-toggle', isOpen ? '▾' : '▸'); toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', String(isOpen)); toggle.setAttribute('aria-label', `${isOpen ? 'Collapse' : 'Expand'} ${title}`);
+    toggle.addEventListener('click', () => { if (isOpen) expanded.delete(id); else expanded.add(id); renderNodes(); });
+    row.append(toggle, selectable ? treeButton('tree-section-title', title, range(nodeIds), () => selectScope(id), { active: state.scope?.id === id }) : element('span', 'tree-section-title tree-static', title));
+    wrap.append(row);
+    if (isOpen) { const children = element('div', 'tree-children'); children.append(...nodeIds.map((nodeId) => byId.get(nodeId)).filter(Boolean).map(piece)); wrap.append(children); }
+    return wrap;
+  };
+  const unlisted = graph.nodes.filter((node) => !graph.readingOrder.includes(node.id) && node.kind !== 'programme').map((node) => node.id);
+  const bookPages = source?.targetScope?.id === 'book' ? `${source.pagination.physicalPageCount} pp.` : '';
+  $('#book-tree').replaceChildren(
+    treeButton('tree-book', 'Whole book', bookPages, () => selectScope('book'), { active: state.scope?.kind === 'book', detail: 'The whole book, in table-of-contents order' }),
+    ...(graph.book?.sections || []).map((section) => group(section.id, section.title, section.nodeIds, true)),
+    ...(unlisted.length ? [group('unlisted', 'Not in the table of contents', unlisted, false)] : []),
+  );
+  const count = graph.diagnostics.length;
+  $('#diagnostics').textContent = count ? `${count} review flag${count === 1 ? '' : 's'}` : 'No review flags';
+  $('#diagnostics').title = graph.diagnostics.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n');
 }
 
-function renderTurns(turns) {
-  const box = $('#turns');
-  box.replaceChildren(...turns.map((turn) => {
-    const item = $('#turn-template').content.firstElementChild.cloneNode(true);
-    item.classList.add(turn.role || 'system');
-    item.querySelector('.turn-role').textContent = turn.role === 'assistant' ? 'Hermes' : turn.role === 'user' ? 'You' : 'Vault';
-    item.querySelector('.turn-text').textContent = turn.message || turn.commentary || (turn.kind === 'proposal-accepted' ? 'Accepted the proposed Markdown revision.' : '');
-    return item;
-  }));
-  box.scrollTop = box.scrollHeight;
+// What a conversation with each kind of scope is about, in the author's terms.
+function scopeSubject(scope) {
+  if (scope.kind === 'book') return { name: 'the whole book', short: 'Whole book', reach: 'Hermes can suggest changes to the table of contents and discuss any part of the book.' };
+  if (scope.kind === 'node') return { name: `“${scope.title}”`, short: scope.title, reach: 'Hermes can suggest changes to this page.' };
+  return { name: `the section “${scope.title}”`, short: scope.title, reach: `Hermes can suggest changes to the ${scope.nodeIds.length} piece${scope.nodeIds.length === 1 ? '' : 's'} in this section.` };
 }
 
-function renderProposal() {
-  const box = $('#proposal'); const proposal = state.proposal;
-  if (!proposal || proposal.status !== 'pending') { box.classList.add('hidden'); box.replaceChildren(); return; }
-  box.classList.remove('hidden');
-  box.innerHTML = '<h3>Proposed Markdown revision</h3><p></p><pre></pre><div class="proposal-actions"><button class="accept">Accept revision</button><button class="reject">Reject</button></div>';
-  box.querySelector('p').textContent = proposal.commentary || 'Review this complete node replacement before accepting.';
-  box.querySelector('pre').textContent = proposal.source;
-  box.querySelector('.accept').addEventListener('click', acceptProposal);
-  box.querySelector('.reject').addEventListener('click', rejectProposal);
+// Keeps the reader at the bottom of the thread unless they have scrolled up to reread.
+function renderTurns({ follow = false } = {}) {
+  const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const subject = scopeSubject(state.scope);
+  const last = renderThread(box, {
+    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, onDecide: decide,
+    empty: { title: `Talk with ${subject.name}`, text: `${subject.reach} Nothing changes until you accept a suggestion; accepted changes are written to the manuscript and the proof is typeset again.` },
+  });
+  if (!last) return;
+  // A new reply scrolls to its start so a long answer or its suggested changes read from the top.
+  if (follow) box.scrollTop += last.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+  else if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function setView(view) {
+  state.view = view;
+  $('#show-thread').setAttribute('aria-selected', String(view === 'thread')); $('#show-source').setAttribute('aria-selected', String(view === 'source'));
+  $('#source-panel').classList.toggle('hidden', view !== 'source'); $('#turns').classList.toggle('hidden', view !== 'thread');
 }
 
 function renderAttachments() {
   const box = $('#attachments');
   box.replaceChildren(...state.attachments.map((attachment) => {
-    const item = document.createElement('span'); item.className = `attachment ${attachment.contextState}`; item.textContent = attachment.name;
+    const item = element('span', `attachment ${attachment.contextState}`, attachment.name);
     if (attachment.contextState === 'pending-review') {
-      const approve = document.createElement('button'); approve.type = 'button'; approve.className = 'quiet-button'; approve.textContent = 'Use in chat'; approve.addEventListener('click', () => approveAttachment(attachment.id)); item.append(' ', approve);
-    } else { const stateText = document.createElement('small'); stateText.textContent = attachment.contextState === 'approved' ? ' attached' : ' extracting'; item.append(stateText); }
+      const approve = element('button', 'quiet-button', 'Use in chat'); approve.type = 'button'; approve.addEventListener('click', () => approveAttachment(attachment.id)); item.append(' ', approve);
+    } else item.append(element('small', '', attachment.contextState === 'approved' ? ' attached' : ' extracting'));
     return item;
   }));
 }
 
-function renderWorkspace() {
-  const scope = state.scope || scopeFor(state.node.id);
-  const nodesById = new Map(state.graph.nodes.map((node) => [node.id, node]));
-  const list = $('#workspace-items');
-  const isBook = scope.kind === 'book';
-  const entries = isBook ? (state.graph.book?.sections || []) : scope.nodeIds.map((id) => nodesById.get(id)).filter(Boolean);
-  $('#workspace-kind').textContent = isBook ? 'Canonical book representation' : scope.kind === 'node' ? 'Selected manuscript page' : 'Selected book section';
-  $('#workspace-count').textContent = isBook ? `${entries.length} sections` : `${entries.length} reading-order node${entries.length === 1 ? '' : 's'}`;
-  const cutoff = nodesById.get(scope.buildThroughNodeId);
-  $('#workspace-boundary').textContent = cutoff ? `Preview boundary: the book’s preamble through “${cutoff.title}.”` : 'Preview boundary: the complete table of contents.';
-  list.replaceChildren(...entries.map((entry) => {
-    const isSection = isBook;
-    const item = document.createElement('button'); item.type = 'button'; item.className = 'workspace-item';
-    item.innerHTML = `<span>${isSection ? entry.kind.replaceAll('-', ' ') : entry.kind}</span><strong>${entry.title}</strong>`;
-    item.addEventListener('click', () => isSection ? selectScope(entry.id) : loadNode(entry.id, entry.id));
-    return item;
-  }));
-}
+// A page or section typesets alone with the book's preamble; the book typesets in full.
+const buildPlan = (scope) => (scope.kind === 'book'
+  ? { label: 'Typeset book', mode: 'prefix', text: 'Typesets the whole book in table-of-contents order.' }
+  : { label: scope.kind === 'node' ? 'Typeset page' : 'Typeset section', mode: 'isolated', text: `Typesets ${scope.kind === 'node' ? 'this page' : 'this section'} alone with the book’s preamble; page and footnote numbers continue from the last whole-book proof.` });
 
 function renderNode() {
-  const scope = state.scope || scopeFor(state.node.id);
-  $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'selected page' : 'selected section'}`;
+  const scope = state.scope || scopeFor(state.node.id); const subject = scopeSubject(scope);
+  $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'page' : 'section'}`;
   $('#conversation-title').textContent = scope.title;
+  $('#composer-scope').textContent = `To ${subject.short}`;
+  $('#message').placeholder = `Message ${subject.name}…`;
   $('#source').value = state.node.source;
-  $('#source-label').textContent = scope.kind === 'book' ? 'Canonical table-of-contents Markdown' : scope.kind === 'node' ? 'Canonical Markdown' : 'Section anchor Markdown';
+  // The scope under discussion and the one file this editor saves are different things for books and sections.
+  $('#source-label').textContent = scope.kind === 'node' ? 'This page’s canonical Markdown' : `${scope.kind === 'book' ? 'The table of contents' : `The first piece of ${scope.title}`} · pick a piece in the sidebar to edit it`;
   $('#source-hash').textContent = state.node.hash.slice(0, 12);
   $('#save-state').textContent = `manuscript/${state.node.relativePath}`;
-  const cutoff = state.graph.nodes.find((node) => node.id === scope.buildThroughNodeId);
-  $('#build-description').textContent = cutoff ? `Typeset parses the canonical book from its preamble through “${cutoff.title}.”` : 'Typeset parses the complete book in table-of-contents order.';
-  renderWorkspace(); renderNodes(); renderPages(); renderLiveBuild();
+  const plan = buildPlan(scope);
+  if (!$('#build').disabled) $('#build').textContent = plan.label;
+  $('#build-book').classList.toggle('hidden', scope.kind === 'book');
+  $('#build-description').textContent = plan.text;
+  renderNodes(); renderLiveBuild(); renderNodePages(); renderStatus();
 }
 
-function renderPages() {
-  const pages = state.pageMap?.pages || [];
-  $('#printed-pages').replaceChildren(...pages.map((page) => {
-    const button = document.createElement('button');
-    button.className = `page-button ${page.nodeIds.includes(state.node?.id) ? 'active' : ''}`;
-    button.textContent = `p. ${page.logicalPage} · ${page.kind}`;
-    button.addEventListener('click', () => loadNode(page.nodeIds[0], page.nodeIds[0]));
-    return button;
-  }));
+function showPdfPage(page) {
+  if (state.viewer) { state.viewer.showPage(page); return; }
+  // A fresh view parameter makes the browser's PDF viewer honour the page fragment.
+  $('#pdf').src = `${apiUrl(`/api/project/preview?at=${state.pdfStamp || Date.now()}&view=${Date.now()}`)}#page=${page}`;
+  $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden');
+}
+
+function showProof() {
+  state.pdfStamp = Date.now(); const url = apiUrl(`/api/project/preview?at=${state.pdfStamp}`);
+  $('#empty-preview').classList.add('hidden');
+  if (!state.viewer) { $('#pdf').src = url; $('#pdf').classList.remove('hidden'); return; }
+  $('#proof-viewer').classList.remove('hidden');
+  state.viewer.load(url, compiledMap()).then(() => renderNodePages()).catch(() => { $('#build-state').textContent = 'The proof PDF could not be opened in the viewer.'; });
+}
+
+// Captions and click targets for the proof viewer come only from the compiler page map.
+function describePage(number) {
+  const entry = compiledMap()?.pages[number - 1]; if (!entry) return {};
+  const titles = new Map(state.graph.nodes.map((node) => [node.id, node.title]));
+  return { bookPage: entry.bookPage ?? number, blank: entry.blank, nodeId: entry.nodeIds[0] || null, label: entry.blank ? 'blank' : entry.nodeIds.map((id) => titles.get(id) || id).join(' / ') };
+}
+
+function renderNodePages() {
+  const mapped = state.node && nodePages(state.node.id); const button = $('#node-pages');
+  button.classList.toggle('hidden', !mapped);
+  if (mapped) button.textContent = `Show ${pageRange(mapped)} in proof`;
+  state.viewer?.highlight(mapped?.firstPage, mapped?.lastPage);
 }
 
 function renderBuild(build) {
   const ready = build?.ok === true;
   const target = build?.targetScope?.title;
-  $('#build-state').textContent = ready ? `Built ${target ? `through ${target}` : new Date(build.completedAt).toLocaleTimeString()}` : build?.error || 'Not built';
+  $('#build-state').textContent = ready ? `Built ${build.pageMap?.mode === 'isolated' ? target : `through ${target}`}` : build?.error || 'Not built';
   $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.';
-  if (ready || build?.lastSuccessful) { $('#pdf').src = apiUrl(`/api/project/preview?at=${Date.now()}`); $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden'); }
+  $('#build-log-section').open = build?.ok === false;
+  if (ready || build?.lastSuccessful || state.pageMap) showProof();
+  renderStatus();
 }
 
+// Compares the displayed proof with the graph: changed node sources, and a table of
+// contents that now includes different nodes for the proof's scope. Null when no proof is shown.
+function proofStaleness() {
+  const map = state.pageMap; if (!map?.sourceHashes || !state.graph) return null;
+  const current = new Map(state.graph.nodes.map((node) => [node.id, node.hash]));
+  const changed = Object.entries(map.sourceHashes).filter(([id, hash]) => current.get(id) !== hash).length;
+  const scope = scopeFor(map.targetScope?.id); const order = state.graph.readingOrder;
+  const included = !scope ? [] : map.mode === 'isolated' ? order.slice(order.indexOf(scope.nodeIds[0]), order.indexOf(scope.buildThroughNodeId) + 1) : order.slice(0, order.indexOf(scope.buildThroughNodeId) + 1);
+  return { changed, orderChanged: JSON.stringify(included) !== JSON.stringify(map.includedNodeIds || []) };
+}
+const isStale = (staleness) => Boolean(staleness && (staleness.changed || staleness.orderChanged));
+
 function proofIsCurrent() {
-  return Boolean(state.build?.ok && state.build.targetScope?.id === state.scope?.id && !state.sourceDirty);
+  const staleness = proofStaleness();
+  return Boolean(state.build?.ok && state.build.targetScope?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
+}
+
+function statusItem(name, value, tone = '', detail = '') {
+  const item = element('span', `status-item ${tone}`); if (detail) item.title = detail;
+  item.append(element('small', '', name), value); return item;
+}
+
+function paginationText(compiled) {
+  if (!compiled) return ['estimated · legacy proof', 'warn'];
+  if (!compiled.pagination.verified) return [`unverified · ${compiled.pagination.warnings.length} warning(s)`, 'warn'];
+  if (compiled.mode !== 'isolated') return [`${compiled.pagination.physicalPageCount} pages · compiler-mapped`, 'good'];
+  const first = compiled.numbering.startPage; const last = first + compiled.pagination.physicalPageCount - 1;
+  const basis = { 'book-proof': 'numbered from the book proof', provisional: 'provisional numbers · earlier pages changed', unknown: 'numbered from 1 · no book proof yet' }[compiled.numbering.basis];
+  return [`pp. ${first}–${last} alone · ${basis}`, compiled.numbering.basis === 'book-proof' ? 'good' : 'warn'];
+}
+
+// Production state, not editing state: each item is derived from recorded artifacts.
+function renderStatus() {
+  if (!state.graph) return;
+  const map = state.pageMap; const compiled = compiledMap(); const stale = proofStaleness(); const flags = state.graph.diagnostics;
+  const items = [];
+  if (state.node) items.push(statusItem('Source', `${state.node.hash.slice(0, 8)}${state.sourceDirty ? ' · unsaved edits' : ''}`, state.sourceDirty ? 'warn' : ''));
+  items.push(statusItem('Proof', map ? `${map.targetScope?.title || 'book'}${compiled?.mode === 'isolated' ? ' (alone)' : ''} · ${new Date(map.builtAt).toLocaleString()}` : 'none', map ? '' : 'warn'));
+  const staleText = stale && [stale.changed && `${stale.changed} node${stale.changed === 1 ? '' : 's'} changed`, stale.orderChanged && 'contents changed'].filter(Boolean).join(' · ');
+  if (map) items.push(statusItem('Currency', staleText ? `stale · ${staleText} since proof` : state.sourceDirty ? 'unsaved edits are not in the proof' : 'matches saved source', staleText || state.sourceDirty ? 'warn' : 'good'));
+  if (map) { const [text, tone] = paginationText(compiled); items.push(statusItem('Pagination', text, tone, compiled?.pagination.warnings.join('\n'))); }
+  if (state.build?.ok === false) items.push(statusItem('Last build', 'failed · showing previous proof', 'bad', state.build.error));
+  items.push(statusItem('Review flags', String(flags.length), flags.length ? 'warn' : 'good', flags.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n')));
+  items.push(statusItem('Press readiness', 'not assessed · no preflight exists', 'warn'));
+  $('#production-status').replaceChildren(...items);
 }
 
 function renderLiveBuild() {
@@ -156,16 +245,22 @@ function renderLiveBuild() {
     $('#live-build-state').textContent = `Verified proof staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}. A delivery adapter may send it to the live build; no remote run has been claimed.`;
   } else if (proofIsCurrent()) {
     $('#live-build-state').textContent = 'This proof matches the current manuscript. It is ready to stage for the live-build adapter.';
+  } else if (compiledMap()?.mode === 'isolated') {
+    $('#live-build-state').textContent = 'A section or page proof is for reading; typeset the whole book to send it to the live build.';
   } else {
     $('#live-build-state').textContent = 'Typeset a current proof before sending it to the live-build queue.';
   }
 }
 
 async function loadNode(id, scopeId = id) {
-  if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return;
-  const [node, turns, proposal] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/nodes/${id}/turns`), request(`/api/nodes/${id}/proposal`)]);
-  state.node = node; state.scope = scopeFor(scopeId) || scopeFor(id); state.proposal = proposal; state.sourceDirty = false;
-  renderNode(); renderTurns(turns); renderProposal();
+  if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return false;
+  const scope = scopeFor(scopeId) || scopeFor(id);
+  const [node, turns, changeSet] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+  const changedScope = state.scope?.id !== scope.id;
+  state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.sourceDirty = false;
+  if (changedScope) state.notice = '';
+  renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
+  return true;
 }
 
 async function selectScope(scopeId) {
@@ -180,17 +275,47 @@ async function saveSource() {
   catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
 }
 
+function sizeComposer() { const input = $('#message'); input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 220)}px`; }
+
 async function sendTurn(event) {
-  event.preventDefault();
+  event?.preventDefault();
   const input = $('#message'); const button = $('#turn-form [type="submit"]'); const message = input.value.trim();
-  if (!message || !state.node) return;
-  button.disabled = true;
+  if (!message || !state.scope || state.thinking) return;
+  const scope = state.scope; button.disabled = true; input.value = ''; sizeComposer(); setView('thread');
+  state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString() }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
-    const result = await request(`/api/nodes/${state.node.id}/turn`, { method: 'POST', body: JSON.stringify({ message, scopeId: state.scope?.id || state.node.id }) });
-    input.value = ''; state.proposal = result.proposal;
-    renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); renderProposal();
-    const pill = $('#gateway-state'); pill.textContent = result.availability === 'available' ? 'Hermes connected' : 'Hermes unavailable'; pill.className = `status-pill ${result.availability === 'available' ? 'available' : 'unavailable'}`;
-  } catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
+    const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
+    const pill = $('#gateway-state'); pill.textContent = { available: 'Hermes connected', unconfigured: 'Hermes not configured' }[result.availability] || 'Hermes unavailable'; pill.className = `status-pill ${result.availability === 'available' ? 'available' : 'unavailable'}`;
+    if (state.scope?.id !== scope.id) return;
+    [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+  } catch (error) {
+    if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1); state.notice = `Not sent: ${error.message}`;
+  } finally {
+    state.thinking = false; button.disabled = false;
+    if (state.scope?.id === scope.id) renderTurns({ follow: true });
+  }
+}
+
+// Accepting writes the manuscript, refreshes the workspace from it, and typesets
+// the scope again so the change is visible on the page.
+async function decide(nodeId, decision) {
+  const scope = state.scope; const changeSet = state.changeSet;
+  const touchesOpen = changeSet.changes.some((change) => change.status === 'pending' && change.nodeId === state.node.id && (!nodeId || nodeId === change.nodeId));
+  if (decision === 'accept' && touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the accepted change. Continue?')) return;
+  $('#turns').querySelectorAll('.changes button').forEach((button) => { button.disabled = true; });
+  try {
+    state.changeSet = await request(`/api/scopes/${scope.id}/changes/decide`, { method: 'POST', body: JSON.stringify({ changeSetId: changeSet.id, nodeId, decision }) });
+    const accepted = state.changeSet.changes.some((change) => change.status === 'accepted' && (!nodeId || change.nodeId === nodeId));
+    // Reload the open page only when its own change was written; a stale one leaves the author's text alone.
+    const openAccepted = touchesOpen && state.changeSet.changes.some((change) => change.nodeId === state.node.id && change.status === 'accepted');
+    state.graph = await request('/api/project/graph');
+    if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
+    state.turns = await request(`/api/scopes/${scope.id}/turns`); state.notice = '';
+    // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
+    if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
+    renderTurns();
+    if (accepted) await build();
+  } catch (error) { state.notice = error.message; renderTurns(); }
 }
 
 async function uploadAttachments(files) {
@@ -202,19 +327,22 @@ async function uploadAttachments(files) {
 }
 
 async function approveAttachment(id) { try { await request(`/api/project/attachments/${id}/approve`, { method: 'POST', body: '{}' }); state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { $('#attachment-state').textContent = error.message; } }
-async function acceptProposal() { try { state.node = await request(`/api/nodes/${state.node.id}/proposal/accept`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.graph = await request('/api/project/graph'); state.proposal = null; state.build = null; renderNode(); renderBuild(null); renderProposal(); renderTurns(await request(`/api/nodes/${state.node.id}/turns`)); } catch (error) { $('#save-state').textContent = error.message; } }
-async function rejectProposal() { try { await request(`/api/nodes/${state.node.id}/proposal/reject`, { method: 'POST', body: JSON.stringify({ proposalId: state.proposal.id }) }); state.proposal = null; renderProposal(); } catch (error) { $('#save-state').textContent = error.message; } }
 
-async function build() {
-  const scope = state.scope || scopeFor('book');
-  if (!confirm(`Typeset the canonical book through "${scope.title}"? The preamble and every preceding node in table-of-contents order will be included.`)) return;
-  const button = $('#build'); button.disabled = true; button.textContent = 'Typesetting…';
+// Typesetting only reads the manuscript, so it needs no confirmation.
+async function build({ wholeBook = false } = {}) {
+  const scope = wholeBook ? scopeFor('book') : state.scope || scopeFor('book'); const plan = buildPlan(scope);
+  const buttons = [$('#build'), $('#build-book')]; buttons.forEach((button) => { button.disabled = true; });
+  (wholeBook ? $('#build-book') : $('#build')).textContent = 'Typesetting…';
   try {
-    state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id }) });
-    renderBuild(state.build); state.pageMap = await request('/api/project/page-map'); renderPages(); renderLiveBuild();
+    state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id, mode: plan.mode }) });
+    [state.pageMap, state.referenceMap] = await Promise.all([request('/api/project/page-map'), request('/api/project/reference-map')]);
+    renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild();
   } catch (error) {
     $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.';
-  } finally { button.disabled = false; button.textContent = 'Typeset proof'; }
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+    $('#build').textContent = buildPlan(state.scope || scopeFor('book')).label; $('#build-book').textContent = 'Whole book';
+  }
 }
 
 async function sendLiveBuild() {
@@ -227,15 +355,6 @@ async function sendLiveBuild() {
   finally { button.textContent = 'Send to live build'; renderLiveBuild(); }
 }
 
-async function legacyBuild() {
-  const scope = state.scope || scopeFor('book');
-  if (!confirm(`Build the canonical book through “${scope.title}”? The preamble and every preceding Programme node will be included.`)) return;
-  const button = $('#build'); button.disabled = true; button.textContent = 'Building…';
-  try { renderBuild(await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id }) })); state.pageMap = await request('/api/project/page-map'); renderPages(); }
-  catch (error) { $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.'; }
-  finally { button.disabled = false; button.textContent = 'Build preview'; }
-}
-
 async function refresh() {
   const priorScope = state.scope?.id || 'book';
   state.graph = await request('/api/project/refresh', { method: 'POST', body: '{}' }); renderNodes();
@@ -245,14 +364,28 @@ async function refresh() {
 
 async function bootstrap() {
   if (!book) { location.replace('http://127.0.0.1:4300/texgraph/'); return; }
-  const [graph, attachments, buildState, liveBuild] = await Promise.all([request('/api/project/graph'), request('/api/project/attachments'), request('/api/project/build'), request('/api/project/live-build')]);
-  state.graph = graph; state.attachments = attachments; state.build = buildState; state.liveBuild = liveBuild;
+  const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
+  Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
   $('#book-title').textContent = state.graph.book?.title || book.replaceAll('-', ' ');
-  state.pageMap = await request('/api/project/page-map'); renderNodes(); renderAttachments();
+  renderNodes(); renderAttachments();
+  state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
   renderBuild(state.build); renderLiveBuild();
-  $('#turn-form').addEventListener('submit', sendTurn); $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', build); $('#send-live-build').addEventListener('click', sendLiveBuild); $('#refresh').addEventListener('click', refresh); $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files])); $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; renderLiveBuild(); });
+  $('#turn-form').addEventListener('submit', sendTurn);
+  // Enter sends; Shift+Enter starts a new line; the box grows with its text.
+  $('#message').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendTurn(); } });
+  $('#message').addEventListener('input', sizeComposer);
+  $('#show-thread').addEventListener('click', () => setView('thread')); $('#show-source').addEventListener('click', () => setView('source'));
+  $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', () => build()); $('#build-book').addEventListener('click', () => build({ wholeBook: true }));
+  $('#send-live-build').addEventListener('click', sendLiveBuild); $('#refresh').addEventListener('click', refresh);
+  $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files]));
+  $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; renderLiveBuild(); renderStatus(); });
+  $('#node-pages').addEventListener('click', () => { const mapped = nodePages(state.node.id); if (mapped) showPdfPage(mapped.firstPage); });
 }
 
-bootstrap().catch((error) => { document.body.textContent = `TexGraph could not start: ${error.message}`; });
+bootstrap().catch((error) => {
+  // The server reads these files fresh from disk, so a server started before an update serves a page it cannot answer.
+  const stale = error.message === 'Unknown API route.';
+  document.body.textContent = stale ? `TexGraph could not start: this page is newer than the TexGraph server at ${location.host}. Stop that server and start it again (corepack pnpm dev:texgraph), then reload.` : `TexGraph could not start: ${error.message}`;
+});
