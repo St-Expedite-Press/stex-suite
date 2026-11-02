@@ -3,7 +3,7 @@ import { access, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } f
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
-import { parseManuscript } from './book-assembler.mjs';
+import { parseManuscript } from './document/parser.mjs';
 
 const MAX_SOURCE = 400_000;
 const SCOPE_SOURCE_BUDGET = 60_000;

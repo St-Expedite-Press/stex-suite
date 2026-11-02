@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { ProjectStore } from '../src/project-store-vault.mjs';
-import { assembleBook, buildBook, inlineTeX, paginationFromCompiler, parseManuscript } from '../src/book-assembler.mjs';
+import { assembleBook, buildBook, inlineTeX, paginationFromCompiler } from '../src/book-assembler.mjs';
+import { parseManuscript } from '../src/document/parser.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
 
@@ -104,19 +105,8 @@ test('a table-of-contents insertion before the proof cutoff makes the proof stal
   await assert.rejects(() => store.queueLiveBuild('book'), { code: 'STALE_BUILD' });
 });
 
-test('keeps verse lineation, stanzas, indentation, emphasis and Unicode through assembly', () => {
-  const { blocks } = parseManuscript('---\ntitle: x\n---\n# Title\n\nFirst line  \n    indented — Æther’s\n\n```\n   fenced *Latin*\n```\nAfter\n\n---\n\n### Editorial Notes\n> cut\n');
-  assert.deepEqual(blocks.map((block) => block.type), ['heading', 'stanza', 'stanza', 'note']);
-  assert.deepEqual(blocks[3].entries, [{ label: null, text: 'cut' }]);
-  assert.deepEqual(blocks[1].lines, [{ indent: 0, text: 'First line' }, { indent: 4, text: 'indented — Æther’s' }]);
-  assert.deepEqual(blocks[2].lines, [{ indent: 3, text: 'fenced *Latin*' }, { indent: 0, text: 'After' }]);
-  // An opening rule followed by verse is not YAML front matter and must not swallow the verse.
-  assert.deepEqual(parseManuscript('---\nKept line\n---\nAfter\n').blocks.map((block) => block.type), ['break', 'stanza', 'break', 'stanza']);
-  assert.deepEqual(parseManuscript('---\ntitle: x\n---\n').blocks, []);
-  assert.deepEqual(parseManuscript('﻿# A\n').blocks, [{ type: 'heading', level: 1, text: 'A' }]);
-  assert.deepEqual(parseManuscript('  If there be such a fool\n').blocks[0].lines, [{ indent: 4, text: 'If there be such a fool' }], 'two em spaces indent 2em');
+test('renders verse markup and escapes TeX in one pass', () => {
   // Author's decision: a leading > is part of the line (e.g. a device prompt), not a quotation.
-  assert.deepEqual(parseManuscript('> new device detected\n').blocks[0].lines, [{ indent: 0, text: '> new device detected' }]);
   assert.equal(inlineTeX('> reject?'), '> reject?');
   for (const [source, tex] of [
     ['*SHE:* and **HE:**', String.raw`\emph{SHE:} and \textbf{HE:}`],

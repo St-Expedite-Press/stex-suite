@@ -4,12 +4,10 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { previewDocument } from './lualatex.mjs';
 import { writeAtomic } from './project-store.mjs';
+import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
 
 // Typographic spaces are authorial spacing; Latin Modern has no glyphs for them, so they become explicit space.
 const TEX_ESCAPES = { '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', $: '\\$', '#': '\\#', _: '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', ' ': '\\hspace{.5em}', ' ': '\\hspace{1em}', ' ': '\\thinspace{}' };
-// Control characters other than tab and line ends have no printed form and stop or
-// split LuaTeX input; the vault graph flags them.
-const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 // One pass, so the braces of an emitted \textbackslash{} are never escaped again.
 export const escapeTeX = (value) => String(value).replace(CONTROL_CHARACTERS, '').replace(/[\\&%$#_{}~^   ]/g, (character) => TEX_ESCAPES[character]);
 
@@ -23,59 +21,6 @@ export function inlineTeX(text) {
   }
   // An unmatched * or _ is authorial text, not markup; it is kept literally.
   return result + escapeTeX(text.slice(last));
-}
-
-const BOLD_LINE = /^\s*\*\*([^*]+)\*\*\s*$/;
-
-// Reads the print-bearing part of a manuscript node into blocks. Source lines are
-// verse lines: each keeps its own break and leading indentation, and blank lines
-// separate stanzas. An "Editorial" section (reviewer labels with their quoted
-// comments) becomes a note block, and the work resumes at the first other line.
-// Front matter and code-fence markers are not print content.
-export function parseManuscript(markdown) {
-  let source = String(markdown).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(CONTROL_CHARACTERS, '');
-  if (source.startsWith('---\n')) {
-    // Only a YAML-shaped header is front matter; an opening rule followed by verse is print content.
-    const end = source.search(/\n---\s*\n/); const header = end >= 0 ? source.slice(4, end).split('\n').filter((line) => line.trim()) : [];
-    if (header.some((line) => /^[\w-]+\s*:/.test(line)) && header.every((line) => /^[\w-]+\s*:|^\s+\S|^\s*-\s/.test(line))) source = source.slice(end).replace(/^\n---\s*\n/, '');
-  }
-  const lines = source.split('\n');
-  const blocks = []; let stanza = null; let note = null;
-  const close = () => { if (stanza) blocks.push(stanza); stanza = null; };
-  const nextContent = (index) => lines.slice(index + 1).find((line) => line.trim() && !/^\s*```/.test(line)) ?? '';
-  for (const [index, raw] of lines.entries()) {
-    if (/^\s*```/.test(raw)) continue;
-    if (note) {
-      if (!raw.trim()) continue;
-      const quote = /^\s*>\s?(.*)$/.exec(raw);
-      if (quote) {
-        const text = quote[1].trim(); if (!text) continue;
-        if (!note.entries.length) note.entries.push({ label: null, text: '' });
-        const entry = note.entries.at(-1); entry.text = entry.text ? `${entry.text} ${text}` : text; continue;
-      }
-      // A bold line is a reviewer label only when a quoted comment follows it; otherwise (e.g. **II**) it is the work's own text.
-      const label = BOLD_LINE.exec(raw);
-      if (label && /^\s*>/.test(nextContent(index))) { note.entries.push({ label: label[1].trim(), text: '' }); continue; }
-      note = null;
-    }
-    if (!raw.trim()) { close(); continue; }
-    const editorial = /^#{1,6}\s+(Editorial\b.*?)\s*$/i.exec(raw);
-    if (editorial) {
-      close(); if (blocks.at(-1)?.type === 'break') blocks.pop(); // the separator belongs to the note
-      note = { type: 'note', title: editorial[1], entries: [] }; blocks.push(note); continue;
-    }
-    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(raw);
-    if (heading) { close(); blocks.push({ type: 'heading', level: heading[1].length, text: heading[2] }); continue; }
-    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(raw)) { close(); blocks.push({ type: 'break' }); continue; }
-    const expanded = raw.replaceAll('\t', '    ');
-    const text = expanded.trimStart().trimEnd();
-    // Indent is measured in ordinary spaces (half an em); an em space counts as two.
-    const indent = [...expanded.slice(0, expanded.length - expanded.trimStart().length)].reduce((sum, character) => sum + (character === ' ' ? 2 : 1), 0);
-    stanza ||= { type: 'stanza', lines: [] };
-    stanza.lines.push({ indent, text });
-  }
-  close();
-  return { blocks };
 }
 
 // All notes at one anchor form a single footnote, one paragraph per reviewer.
