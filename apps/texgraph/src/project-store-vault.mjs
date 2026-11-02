@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
+import { designHash, normalizeDesign, validateDesign } from './design-settings.mjs';
 
 const MAX_SOURCE = 400_000;
 const SCOPE_SOURCE_BUDGET = 60_000;
@@ -308,6 +309,16 @@ export class ProjectStore {
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
   async recordBuild(result) { const record = { completedAt: new Date().toISOString(), lastSuccessful: await exists(this.previewPath()), ...result, log: String(result.log || '').slice(-60000) }; await writeAtomic(path.join(this.buildsDirectory, 'last.json'), `${JSON.stringify(record, null, 2)}\n`); return record; }
+  // The book's publication profile is product state, kept beside the proofs, not in the vault.
+  async design() { try { return normalizeDesign(JSON.parse(await readFile(path.join(this.stateDirectory, 'design.json'), 'utf8'))); } catch { return normalizeDesign({}); } }
+  saveDesign(input) {
+    return this.exclusive(async () => {
+      const { design, errors } = validateDesign(input);
+      if (!design) { const error = new Error(errors.join(' ')); error.code = 'INVALID_DESIGN'; throw error; }
+      await writeAtomic(path.join(this.stateDirectory, 'design.json'), `${JSON.stringify(design, null, 2)}\n`);
+      return design;
+    });
+  }
   // The latest verified book-order page map: book page numbers for isolated proofs and for the book tree.
   async referenceMap() {
     for (const name of ['reference-map.json', 'page-map.json']) {
@@ -336,6 +347,9 @@ export class ProjectStore {
     }
     if (proof.pageMap?.mode === 'isolated') {
       const error = new Error('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_BOOK_ORDER'; throw error;
+    }
+    if ((proof.pageMap?.designHash ?? designHash({})) !== designHash(await this.design())) {
+      const error = new Error('The design profile changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
     }
     // The table of contents is source too: an added, removed or reordered node changes the book.
     const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);

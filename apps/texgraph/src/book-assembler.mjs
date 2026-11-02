@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { previewDocument } from './lualatex.mjs';
+import { designDocument, designHash } from './design-settings.mjs';
+import { compilerFindings } from './preflight.mjs';
 import { writeAtomic } from './project-store.mjs';
 import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
 
@@ -54,7 +55,8 @@ function manuscriptBody(blocks, kind) {
     const last = block.lines.length - 1;
     return `\\tgstanza\n${block.lines.map((line, index) => `\\tgline{${line.indent / 2}em}{${inlineTeX(line.text)}${index === last ? marks(block) : ''}}`).join('\n')}`;
   });
-  if (kind === 'section-note' || kind === 'cycle-note') return `\\thispagestyle{empty}\n${chunks.join('\n')}`;
+  // Openers carry no running head or folio.
+  if (kind === 'section-note' || kind === 'cycle-note' || kind === 'front-matter') return `\\thispagestyle{empty}\n${chunks.join('\n')}`;
   return chunks.join('\n');
 }
 
@@ -71,11 +73,13 @@ const COMPOSITION_MACROS = String.raw`\makeatletter
 
 // Book pagination for a scope typeset alone: where its first printed piece falls in
 // a book-order proof. Exact only if everything before it is unchanged since then.
-function isolatedStart(reference, preceding, firstNodeId) {
+// Proofs made before design profiles existed used the default profile.
+function isolatedStart(reference, preceding, firstNodeId, currentDesign) {
   const entry = reference?.nodes?.find((node) => node.nodeId === firstNodeId && node.firstPage);
   if (!entry) return { startPage: 1, basis: 'unknown' };
   const sameOrder = JSON.stringify((reference.includedNodeIds || []).slice(0, preceding.length)) === JSON.stringify(preceding.map((node) => node.id));
-  const unchanged = sameOrder && preceding.every((node) => reference.sourceHashes?.[node.id] === node.hash);
+  const sameDesign = (reference.designHash ?? designHash({})) === currentDesign;
+  const unchanged = sameOrder && sameDesign && preceding.every((node) => reference.sourceHashes?.[node.id] === node.hash);
   return { startPage: entry.firstBookPage ?? entry.firstPage, basis: unchanged ? 'book-proof' : 'provisional' };
 }
 
@@ -94,7 +98,7 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
   const first = isolated ? allNodes.findIndex((node) => node.id === scope.nodeIds[0]) : 0;
   if (first < 0) throw new Error('The selected scope does not resolve to a reading-order node.');
   const nodes = allNodes.slice(first, cutoff + 1); const preceding = allNodes.slice(0, first);
-  const settings = {};
+  const settings = await store.design(); const designId = designHash(settings);
   const sections = []; const units = []; let numbering = { startPage: 1, basis: 'book-order', footnotes: 0 };
   const parsed = new Map();
   for (const node of nodes) parsed.set(node.id, parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
@@ -102,22 +106,29 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
     let footnotes = 0;
     for (const node of preceding) footnotes += footnoteCount(parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
     const firstPrinted = nodes.find((node) => parsed.get(node.id).some((block) => block.type === 'heading' || block.type === 'stanza'));
-    numbering = { ...isolatedStart(reference, preceding, firstPrinted?.id), footnotes };
+    numbering = { ...isolatedStart(reference, preceding, firstPrinted?.id, designId), footnotes };
     sections.push(`\\setcounter{page}{${numbering.startPage}}\\setcounter{footnote}{${numbering.footnotes}}`);
   }
+  const sectionOf = (nodeId) => graph.book?.sections?.find((section) => section.nodeIds.includes(nodeId));
+  let markedSection = null;
   for (const node of nodes) {
     const blocks = parsed.get(node.id);
     const unit = { nodeId: node.id, kind: node.kind, sourcePath: `manuscript/${node.relativePath}`, printable: blocks.some((block) => block.type === 'heading' || block.type === 'stanza') };
     units.push(unit);
     // A node without print content occupies no page, so it gets no markers.
     if (!unit.printable) { sections.push(`% texgraph-node:${node.id} (no print content)`); continue; }
-    // Each unit starts a new physical page; these open on a recto, which TeX decides from the pages it has shipped.
-    const opensRecto = node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note';
-    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}\n${manuscriptBody(blocks, node.kind)}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
+    // Each unit starts a new page; openers start on a recto when the profile asks, decided in TeX from the folio.
+    const opensRecto = settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note');
+    // The recto running head names the section a page belongs to.
+    const section = sectionOf(node.id); const mark = section && section !== markedSection ? `\\markright{${escapeTeX(section.title)}}` : '';
+    if (section) markedSection = section;
+    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${manuscriptBody(blocks, node.kind)}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
   }
-  const document = previewDocument(settings).replace('\\input{page.tex}', `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
+  const ticket = await store.settingsTicket();
+  const title = ticket?.identity?.title || graph.book?.title || '';
+  const document = designDocument(settings, { title }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
   const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, node.hash]));
-  return { document, units, graph, settings, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
+  return { document, units, graph, settings, designHash: designId, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
 }
 
 // Builds the page map only from compiler output. Anything inconsistent is
@@ -190,7 +201,8 @@ export async function buildBook(store, { scopeId = 'book', mode = 'prefix' } = {
     if (!result.ok) return result;
     const marks = await readFile(path.join(directory, 'document.tgmap'), 'utf8').catch(() => '');
     const compiled = paginationFromCompiler({ marks, log: result.log, units: assembled.units, pageOffset: assembled.numbering.startPage - 1 });
-    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, ...compiled };
+    const compiler = compilerFindings({ log: result.log, document: assembled.document, units: assembled.units });
+    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, design: assembled.settings, designHash: assembled.designHash, compiler, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, ...compiled };
     await writeAtomic(path.join(directory, 'page-map.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await store.activateBuild(directory, manifest);
     // A verified book-order proof is the reference for later isolated page numbering.

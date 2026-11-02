@@ -9,6 +9,8 @@ import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage } from './src/lualatex.mjs';
 import { buildBook } from './src/book-assembler.mjs';
+import { designHash } from './src/design-settings.mjs';
+import { runPreflight } from './src/preflight.mjs';
 import { requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -137,6 +139,13 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
   if (request.method === 'GET' && url.pathname === '/api/project/build') return json(response, 200, await store.buildStatus());
+  if (request.method === 'GET' && url.pathname === '/api/project/preflight') {
+    const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
+    const pdfData = await readFile(store.previewPath()).catch(() => new Uint8Array());
+    return json(response, 200, await runPreflight({ manifest, pdfPath: store.previewPath(), pdfData, graph: await store.graph(), currentDesign: await store.design() }));
+  }
+  if (request.method === 'GET' && url.pathname === '/api/project/design') { const design = await store.design(); return json(response, 200, { design, hash: designHash(design) }); }
+  if (request.method === 'PUT' && url.pathname === '/api/project/design') { const design = await store.saveDesign(await body(request)); return json(response, 200, { design, hash: designHash(design) }); }
   if (request.method === 'GET' && url.pathname === '/api/project/reference-map') return json(response, 200, await store.referenceMap());
   if (request.method === 'GET' && url.pathname === '/api/project/live-build') return json(response, 200, await store.liveBuildStatus());
   if (request.method === 'GET' && url.pathname === '/api/project/page-map') {
