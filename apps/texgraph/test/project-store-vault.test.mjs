@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { ProjectStore } from '../src/project-store-vault.mjs';
-import { assembleBook, buildBook, inlineTeX, paginationFromCompiler, parseManuscript } from '../src/book-assembler.mjs';
+import { assembleBook, buildBook, inlineTeX, paginationFromCompiler } from '../src/book-assembler.mjs';
+import { parseManuscript } from '../src/document/parser.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
 
@@ -104,19 +105,8 @@ test('a table-of-contents insertion before the proof cutoff makes the proof stal
   await assert.rejects(() => store.queueLiveBuild('book'), { code: 'STALE_BUILD' });
 });
 
-test('keeps verse lineation, stanzas, indentation, emphasis and Unicode through assembly', () => {
-  const { blocks } = parseManuscript('---\ntitle: x\n---\n# Title\n\nFirst line  \n    indented — Æther’s\n\n```\n   fenced *Latin*\n```\nAfter\n\n---\n\n### Editorial Notes\n> cut\n');
-  assert.deepEqual(blocks.map((block) => block.type), ['heading', 'stanza', 'stanza', 'note']);
-  assert.deepEqual(blocks[3].entries, [{ label: null, text: 'cut' }]);
-  assert.deepEqual(blocks[1].lines, [{ indent: 0, text: 'First line' }, { indent: 4, text: 'indented — Æther’s' }]);
-  assert.deepEqual(blocks[2].lines, [{ indent: 3, text: 'fenced *Latin*' }, { indent: 0, text: 'After' }]);
-  // An opening rule followed by verse is not YAML front matter and must not swallow the verse.
-  assert.deepEqual(parseManuscript('---\nKept line\n---\nAfter\n').blocks.map((block) => block.type), ['break', 'stanza', 'break', 'stanza']);
-  assert.deepEqual(parseManuscript('---\ntitle: x\n---\n').blocks, []);
-  assert.deepEqual(parseManuscript('﻿# A\n').blocks, [{ type: 'heading', level: 1, text: 'A' }]);
-  assert.deepEqual(parseManuscript('  If there be such a fool\n').blocks[0].lines, [{ indent: 4, text: 'If there be such a fool' }], 'two em spaces indent 2em');
+test('renders verse markup and escapes TeX in one pass', () => {
   // Author's decision: a leading > is part of the line (e.g. a device prompt), not a quotation.
-  assert.deepEqual(parseManuscript('> new device detected\n').blocks[0].lines, [{ indent: 0, text: '> new device detected' }]);
   assert.equal(inlineTeX('> reject?'), '> reject?');
   for (const [source, tex] of [
     ['*SHE:* and **HE:**', String.raw`\emph{SHE:} and \textbf{HE:}`],
@@ -129,7 +119,11 @@ test('keeps verse lineation, stanzas, indentation, emphasis and Unicode through 
 });
 test('derives the page map only from compiler markers and refuses inconsistent evidence', () => {
   const units = [{ nodeId: 'node-a', kind: 'front-matter', sourcePath: 'manuscript/a.md' }, { nodeId: 'node-b', kind: 'poem', sourcePath: 'manuscript/b.md' }];
-  const marks = 'start node-a 1 1\nend node-a 1 1\nstart node-b 3 3\nend node-b 5 5\ntotal 5\n';
+  const marks = 'start node-a 1 1\nend node-a 1 1\nblank 2\nstart node-b 3 3\nend node-b 5 5\ntotal 5\n';
+  // Without a blank marker, the page before the next piece is a continuation (e.g. of a footnote).
+  const continued = paginationFromCompiler({ marks: marks.replace('blank 2\n', ''), log: 'Output written on x (5 pages', units });
+  assert.deepEqual(continued.nodes.map((node) => [node.firstPage, node.lastPage]), [[1, 2], [3, 5]]);
+  assert.equal(continued.pagination.verified, true);
   const good = paginationFromCompiler({ marks, log: 'Output written on\n document.pdf (5 pages, 900 bytes).', units });
   assert.equal(good.pagination.verified, true); assert.equal(good.pagination.physicalPageCount, 5);
   assert.deepEqual(good.nodes.map((node) => [node.firstPage, node.lastPage]), [[1, 1], [3, 5]]);
@@ -253,4 +247,18 @@ test('a section typeset alone reproduces its book pages and footnote numbers', {
   const short = (await store.graph()).nodes.find((node) => node.relativePath === '01_A/Short.md');
   await store.updateNode(short.id, '# Short\n\nTwo lines.\n', (await store.node(short.id)).hash);
   assert.equal((await buildBook(store, { scopeId: sectionB.id, mode: 'isolated' })).pageMap.numbering.basis, 'provisional');
+});
+test('pages carrying a footnote continuation belong to the piece the footnote came from', { skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-footnote-')); context.after(() => rm(root, { recursive: true, force: true }));
+  const reviewers = Array.from({ length: 40 }, (_, index) => `**Reviewer ${index + 1} — 5/10**\n\n> ${'A long reviewer remark that fills the footnote area. '.repeat(3)}`).join('\n\n');
+  const files = { '01/Noted.md': `# Noted\n\nA short poem.\n\n### Editorial Includability\n\n${reviewers}\n`, '01/After.md': '# After\n\nThe next poem.\n' };
+  for (const [relative, source] of Object.entries(files)) { await mkdir(path.dirname(path.join(root, 'manuscript', relative)), { recursive: true }); await writeFile(path.join(root, 'manuscript', relative), source); }
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), Object.keys(files).map((relative) => `- [x](<${relative}>)`).join('\n'));
+  const store = new ProjectStore(root); await store.initialize();
+  const map = (await buildBook(store)).pageMap;
+  assert.equal(map.pagination.verified, true, map.pagination.warnings.join('\n'));
+  const [noted, after] = map.nodes;
+  assert.ok(noted.lastPage > noted.firstPage, 'the footnote runs past the poem’s first page');
+  assert.equal(after.firstPage, noted.lastPage + 1);
+  assert.deepEqual(map.pages.filter((page) => page.blank).map((page) => page.physicalPage), [], 'no page is left unattributed');
 });

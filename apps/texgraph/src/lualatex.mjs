@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const SAFE_SOURCE = /\\(?:documentclass|usepackage|input|include|openout|read|write|write18|directlua|catcode|newcommand|def|csname)\b/i;
-const TRIM_SIZES = new Map([
+export const TRIM_SIZES = new Map([
   ['5 × 7 in', ['5in', '7in']],
   ['5 × 8 in', ['5in', '8in']],
   ['5.5 × 8.5 in', ['5.5in', '8.5in']],

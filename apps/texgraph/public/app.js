@@ -6,7 +6,7 @@ startScreenlabPalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
-const state = { graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, attachments: [], build: null, liveBuild: null };
+const state = { graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -197,9 +197,11 @@ function proofStaleness() {
   const changed = Object.entries(map.sourceHashes).filter(([id, hash]) => current.get(id) !== hash).length;
   const scope = scopeFor(map.targetScope?.id); const order = state.graph.readingOrder;
   const included = !scope ? [] : map.mode === 'isolated' ? order.slice(order.indexOf(scope.nodeIds[0]), order.indexOf(scope.buildThroughNodeId) + 1) : order.slice(0, order.indexOf(scope.buildThroughNodeId) + 1);
-  return { changed, orderChanged: JSON.stringify(included) !== JSON.stringify(map.includedNodeIds || []) };
+  // Proofs made before profiles existed used the default profile.
+  const designChanged = Boolean(state.designHash) && (map.designHash ?? state.defaultDesignHash) !== state.designHash;
+  return { changed, orderChanged: JSON.stringify(included) !== JSON.stringify(map.includedNodeIds || []), designChanged };
 }
-const isStale = (staleness) => Boolean(staleness && (staleness.changed || staleness.orderChanged));
+const isStale = (staleness) => Boolean(staleness && (staleness.changed || staleness.orderChanged || staleness.designChanged));
 
 function proofIsCurrent() {
   const staleness = proofStaleness();
@@ -227,13 +229,64 @@ function renderStatus() {
   const items = [];
   if (state.node) items.push(statusItem('Source', `${state.node.hash.slice(0, 8)}${state.sourceDirty ? ' · unsaved edits' : ''}`, state.sourceDirty ? 'warn' : ''));
   items.push(statusItem('Proof', map ? `${map.targetScope?.title || 'book'}${compiled?.mode === 'isolated' ? ' (alone)' : ''} · ${new Date(map.builtAt).toLocaleString()}` : 'none', map ? '' : 'warn'));
-  const staleText = stale && [stale.changed && `${stale.changed} node${stale.changed === 1 ? '' : 's'} changed`, stale.orderChanged && 'contents changed'].filter(Boolean).join(' · ');
+  const staleText = stale && [stale.changed && `${stale.changed} node${stale.changed === 1 ? '' : 's'} changed`, stale.orderChanged && 'contents changed', stale.designChanged && 'design changed'].filter(Boolean).join(' · ');
   if (map) items.push(statusItem('Currency', staleText ? `stale · ${staleText} since proof` : state.sourceDirty ? 'unsaved edits are not in the proof' : 'matches saved source', staleText || state.sourceDirty ? 'warn' : 'good'));
   if (map) { const [text, tone] = paginationText(compiled); items.push(statusItem('Pagination', text, tone, compiled?.pagination.warnings.join('\n'))); }
   if (state.build?.ok === false) items.push(statusItem('Last build', 'failed · showing previous proof', 'bad', state.build.error));
   items.push(statusItem('Review flags', String(flags.length), flags.length ? 'warn' : 'good', flags.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n')));
-  items.push(statusItem('Press readiness', 'not assessed · no preflight exists', 'warn'));
+  const counts = preflightCounts();
+  // A check that did not run is never reported as passing.
+  if (counts) items.push(statusItem('Preflight', [counts.fail && `${counts.fail} failed`, counts.warn && `${counts.warn} warning(s)`, counts.unavailable && `${counts.unavailable} not checked`].filter(Boolean).join(' · ') || 'all checks pass', counts.fail ? 'bad' : counts.warn || counts.unavailable ? 'warn' : 'good'));
+  items.push(statusItem('Press readiness', 'not assessed · no printer profile or PDF/X validation', 'warn'));
   $('#production-status').replaceChildren(...items);
+}
+
+const preflightCounts = () => state.preflight && state.preflight.checks.reduce((counts, entry) => ({ ...counts, [entry.status]: (counts[entry.status] || 0) + 1 }), { pass: 0, warn: 0, fail: 0, unavailable: 0 });
+
+// Preflight describes the proof on screen; it is opened automatically when a check fails.
+function renderPreflight() {
+  const counts = preflightCounts(); if (!counts) return;
+  $('#preflight-state').textContent = `${counts.pass} pass · ${counts.warn} warn · ${counts.fail} fail${counts.unavailable ? ` · ${counts.unavailable} not checked` : ''}`;
+  $('#preflight-list').replaceChildren(...state.preflight.checks.map((entry) => {
+    const item = element('li', `preflight-${entry.status}`);
+    item.append(element('strong', '', entry.title), element('span', '', entry.detail));
+    if (entry.items?.length) { const list = element('ul'); list.append(...entry.items.slice(0, 12).map((text) => element('li', '', text))); item.append(list); }
+    return item;
+  }));
+  if (counts.fail) $('#preflight-section').open = true;
+  renderStatus();
+}
+async function refreshPreflight() { try { state.preflight = await request('/api/project/preflight'); renderPreflight(); } catch { /* the status bar keeps the last report */ } }
+
+// Each control is one saved profile setting; saving makes the current proof stale until it is typeset again.
+const designField = (form, name) => form.elements.namedItem(name);
+function fillDesign() {
+  const form = $('#design-panel'); const design = state.design;
+  designField(form, 'trimSize').replaceChildren(...state.trimSizes.map((size) => new Option(size, size)));
+  for (const name of ['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle']) designField(form, name).value = design[name];
+  for (const side of ['top', 'bottom', 'inner', 'outer']) designField(form, `margins.${side}`).value = design.margins[side];
+  for (const name of ['runningHeads', 'folios', 'rectoOpeners']) designField(form, name).checked = design[name];
+}
+function readDesign() {
+  const form = $('#design-panel');
+  return {
+    ...Object.fromEntries(['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle'].map((name) => [name, designField(form, name).value.trim()])),
+    margins: Object.fromEntries(['top', 'bottom', 'inner', 'outer'].map((side) => [side, designField(form, `margins.${side}`).value.trim()])),
+    ...Object.fromEntries(['runningHeads', 'folios', 'rectoOpeners'].map((name) => [name, designField(form, name).checked])),
+  };
+}
+function toggleDesign(open = $('#design-panel').classList.contains('hidden')) {
+  if (open) { fillDesign(); $('#design-state').textContent = ''; }
+  $('#design-panel').classList.toggle('hidden', !open); $('#open-design').setAttribute('aria-expanded', String(open));
+}
+async function saveDesign(event) {
+  event.preventDefault();
+  try {
+    const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify(readDesign()) });
+    state.design = saved.design; state.designHash = saved.hash; fillDesign();
+    $('#design-state').textContent = 'Saved. Typeset to see it in the proof.';
+    renderStatus(); renderLiveBuild(); refreshPreflight();
+  } catch (error) { $('#design-state').textContent = error.message; }
 }
 
 function renderLiveBuild() {
@@ -336,7 +389,7 @@ async function build({ wholeBook = false } = {}) {
   try {
     state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id, mode: plan.mode }) });
     [state.pageMap, state.referenceMap] = await Promise.all([request('/api/project/page-map'), request('/api/project/reference-map')]);
-    renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild();
+    renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild(); refreshPreflight();
   } catch (error) {
     $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.';
   } finally {
@@ -366,12 +419,15 @@ async function bootstrap() {
   if (!book) { location.replace('http://127.0.0.1:4300/texgraph/'); return; }
   const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
   Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
+  const design = await request('/api/project/design');
+  Object.assign(state, { design: design.design, designHash: design.hash, defaultDesignHash: design.defaultHash, trimSizes: design.trimSizes });
   $('#book-title').textContent = state.graph.book?.title || book.replaceAll('-', ' ');
   renderNodes(); renderAttachments();
   state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
-  renderBuild(state.build); renderLiveBuild();
+  renderBuild(state.build); renderLiveBuild(); refreshPreflight();
+  $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign);
   $('#turn-form').addEventListener('submit', sendTurn);
   // Enter sends; Shift+Enter starts a new line; the box grows with its text.
   $('#message').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendTurn(); } });

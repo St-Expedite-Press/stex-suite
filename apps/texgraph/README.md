@@ -67,6 +67,17 @@ book in table-of-contents order through the selected scope.
   before it. Recto openings follow the page number, so the scope lands on
   the same sides as in the book. Page maps then carry `bookPage` numbers.
   Only book-order proofs can be staged for the live build.
+- A publication profile (`.texgraph/design.json`, edited in the Design
+  panel) sets trim, margins, body font, size, leading, running heads and
+  their title, folios and recto openers, and drives the LuaLaTeX preamble.
+  The defaults reproduce proofs made before profiles existed. A proof
+  records its profile hash; changing the profile makes the proof stale.
+- Preflight (`GET /api/project/preflight`) checks the proof on screen: the
+  source-to-page map, PDF page count, trim size of every page, font
+  embedding (via `pdffonts` when installed, otherwise reported as not
+  checked), font fallback, missing glyphs, lines running into the margin
+  (attributed to pieces), and freshness. It never marks a book press-ready;
+  no printer profile or PDF/X validation exists yet.
 - Staging a proof for the live build requires a compiler-verified page map,
   unchanged node sources, and an unchanged table of contents through the
   proof's scope.
