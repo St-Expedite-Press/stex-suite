@@ -39,12 +39,22 @@ const mcpServers = [
   { id: 'lualatex-preview', access: 'explicit-local-operation', operations: ['preview.describe', 'page-map.inspect'], note: 'Compilation is a deterministic, author-triggered product operation, never a director shell tool.' },
 ];
 
+// A scope turn may revise any node whose source the product offered for the
+// selected book, section or page; other turn kinds keep the single-node rule.
+const scopeRevision = {
+  id: 'texgraph.markdown-revision',
+  purpose: 'Develop or revise canonical Obsidian Markdown for the selected scope while preserving links, headings, and the author approval boundary.',
+  rules: ['Propose complete replacements only for nodes supplied in scopeSources, as one changes entry per node.', 'Change only what the author asked for; leave every other node out of changes.', 'Never write canonical source automatically; every change is reviewed by the author.'],
+};
+const scopePropose = { id: 'texgraph.markdown.propose', mode: 'proposal-only', purpose: 'Return complete replacements for offered nodes in the selected scope; author acceptance is required for each.' };
+
 export function texGraphDirectorKit(kind) {
+  const scoped = kind === 'scope-turn';
   return {
-    version: 'stex.texgraph.director-kit.v1',
+    version: scoped ? 'stex.texgraph.director-kit.v2' : 'stex.texgraph.director-kit.v1',
     turnKind: kind,
-    skills,
-    tools,
+    skills: scoped ? skills.map((skill) => (skill.id === scopeRevision.id ? scopeRevision : skill)) : skills,
+    tools: scoped ? tools.map((tool) => (tool.id === scopePropose.id ? scopePropose : tool)) : tools,
     mcpServers,
     boundaries: [
       'No direct filesystem, shell, browser, network, provider, credential, or canonical-state write access.',
@@ -55,5 +65,6 @@ export function texGraphDirectorKit(kind) {
 }
 
 export function texGraphProcedure(kind) {
+  if (kind === 'scope-turn') return `You are the persistent ScreenLab director operating a constrained TexGraph conversation with the author about a selected scope (the whole book, a section, or a page) in envelope.selectedTarget.scope. You have the TexGraph Director Kit in the envelope. Its tools are bounded context adapters and product operations, not an invitation to claim filesystem, shell, browser, network, compiler, credential, or provider access. Do not reveal internal routing, credentials, or unprovided source material. The current text of every node you may change is in envelope.selectedTarget.scopeSources; withheldNodes were too large to include and cannot be changed this turn. Canonical Markdown is never changed automatically: the author reviews each change. Reply with exactly one JSON object: {"commentary":"...","changes":[{"nodeId":"<an offered nodeId>","source":"complete revised Markdown for that node","summary":"one line"}],"graphSuggestions":[{"kind":"...","message":"..."}]}. Omit changes, or use noChange true, when you are only discussing. Each source must be a complete replacement of that node without TeX document setup, imports, commands, file operations, Lua, or shell escape. Keep "### Editorial Includability" sections intact unless the author asks about them.`;
   return `You are the persistent ScreenLab director operating a constrained TexGraph book-production turn (${kind}). You have the TexGraph Director Kit in the envelope. Its tools are bounded context adapters and product operations, not an invitation to claim filesystem, shell, browser, network, compiler, credential, or provider access. Do not reveal internal routing, credentials, or unprovided source material. Work only with the bounded TexGraph envelope. Canonical Markdown is never changed automatically. Reply with exactly one JSON object: {"commentary":"...","noChange":true} or {"commentary":"...","proposal":{"source":"complete revised Markdown for the selected node"},"graphSuggestions":[{"kind":"...","message":"..."}],"ticketUpdates":{}}. A proposal must be a complete replacement of the selected node only, without TeX document setup, imports, commands, file operations, Lua, or shell escape. If the request is about layout or graph discovery, use noChange true and graphSuggestions instead.`;
 }

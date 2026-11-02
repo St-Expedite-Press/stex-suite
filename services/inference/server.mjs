@@ -16,7 +16,7 @@ function json(response, status, value) { response.writeHead(status, { 'content-t
 http.createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === '/health') return json(response, 200, gateway.health());
-    const kind = request.url === '/v1/texgraph/interview-turn' ? 'interview' : request.url === '/v1/texgraph/page-turn' ? 'page-turn' : null;
+    const kind = new Map([['/v1/texgraph/interview-turn', 'interview'], ['/v1/texgraph/page-turn', 'page-turn'], ['/v1/texgraph/scope-turn', 'scope-turn']]).get(request.url) || null;
     if (request.method !== 'POST' || !kind) return json(response, 404, { error: 'Not found.' });
     return json(response, 200, await gateway.handle({ token: request.headers['x-stex-inference-token'], kind, body: await body(request) }));
   } catch (error) { json(response, error.status || 400, { error: error.message || 'Inference request failed.' }); }

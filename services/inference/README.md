@@ -26,6 +26,9 @@ Every `/v1` call requires the private `X-STEX-Inference-Token` header.
   project context, returning commentary plus an optional draft settings ticket.
 - `POST /v1/texgraph/page-turn` accepts bounded page context and returns
   commentary plus either a complete proposed source revision or `noChange`.
+- `POST /v1/texgraph/scope-turn` accepts a book, section or page scope with
+  the sources it offers and returns commentary plus optional `changes` for
+  offered nodes (see `protocol/texgraph`).
 
 The gateway authenticates callers, bounds source/context, polls the private
 asynchronous director, and rejects malformed structured replies. Its tests use
