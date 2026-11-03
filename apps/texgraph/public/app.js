@@ -102,7 +102,7 @@ function renderTurns({ follow = false } = {}) {
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
     turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, onDecide: decide,
-    empty: { title: `Talk with ${subject.name}`, text: `${subject.reach} Nothing changes until you accept a suggestion; accepted changes are written to the manuscript and the proof is typeset again.` },
+    empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
   if (!last) return;
   // A new reply scrolls to its start so a long answer or its suggested changes read from the top.
@@ -129,8 +129,8 @@ function renderAttachments() {
 
 // A page or section typesets alone with the book's preamble; the book typesets in full.
 const buildPlan = (scope) => (scope.kind === 'book'
-  ? { label: 'Typeset book', mode: 'prefix', text: 'Typesets the whole book in table-of-contents order.' }
-  : { label: scope.kind === 'node' ? 'Typeset page' : 'Typeset section', mode: 'isolated', text: `Typesets ${scope.kind === 'node' ? 'this page' : 'this section'} alone with the book’s preamble; page and footnote numbers continue from the last whole-book proof.` });
+  ? { label: 'Typeset book', mode: 'prefix' }
+  : { label: scope.kind === 'node' ? 'Typeset page' : 'Typeset section', mode: 'isolated' });
 
 function renderNode() {
   const scope = state.scope || scopeFor(state.node.id); const subject = scopeSubject(scope);
@@ -140,13 +140,12 @@ function renderNode() {
   $('#message').placeholder = `Message ${subject.name}…`;
   $('#source').value = state.node.source;
   // The scope under discussion and the one file this editor saves are different things for books and sections.
-  $('#source-label').textContent = scope.kind === 'node' ? 'This page’s canonical Markdown' : `${scope.kind === 'book' ? 'The table of contents' : `The first piece of ${scope.title}`} · pick a piece in the sidebar to edit it`;
+  $('#source-label').textContent = scope.kind === 'node' ? 'Markdown' : `${scope.kind === 'book' ? 'Table of contents' : `First piece of ${scope.title}`} · select a piece to edit it`;
   $('#source-hash').textContent = state.node.hash.slice(0, 12);
   $('#save-state').textContent = `manuscript/${state.node.relativePath}`;
   const plan = buildPlan(scope);
   if (!$('#build').disabled) $('#build').textContent = plan.label;
   $('#build-book').classList.toggle('hidden', scope.kind === 'book');
-  $('#build-description').textContent = plan.text;
   renderNodes(); renderLiveBuild(); renderNodePages(); renderStatus();
 }
 
@@ -183,7 +182,7 @@ function renderBuild(build) {
   const ready = build?.ok === true;
   const target = build?.targetScope?.title;
   $('#build-state').textContent = ready ? `Built ${build.pageMap?.mode === 'isolated' ? target : `through ${target}`}` : build?.error || 'Not built';
-  $('#build-log').textContent = build?.log || 'The last successful preview is kept if a newer build fails.';
+  $('#build-log').textContent = build?.log || '';
   $('#build-log-section').open = build?.ok === false;
   if (ready || build?.lastSuccessful || state.pageMap) showProof();
   renderStatus();
@@ -237,7 +236,7 @@ function renderStatus() {
   const counts = preflightCounts();
   // A check that did not run is never reported as passing.
   if (counts) items.push(statusItem('Preflight', [counts.fail && `${counts.fail} failed`, counts.warn && `${counts.warn} warning(s)`, counts.unavailable && `${counts.unavailable} not checked`].filter(Boolean).join(' · ') || 'all checks pass', counts.fail ? 'bad' : counts.warn || counts.unavailable ? 'warn' : 'good'));
-  items.push(statusItem('Press readiness', 'not assessed · no printer profile or PDF/X validation', 'warn'));
+  items.push(statusItem('Press readiness', 'not assessed', 'warn'));
   $('#production-status').replaceChildren(...items);
 }
 
@@ -284,7 +283,7 @@ async function saveDesign(event) {
   try {
     const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify(readDesign()) });
     state.design = saved.design; state.designHash = saved.hash; fillDesign();
-    $('#design-state').textContent = 'Saved. Typeset to see it in the proof.';
+    $('#design-state').textContent = 'Saved.';
     renderStatus(); renderLiveBuild(); refreshPreflight();
   } catch (error) { $('#design-state').textContent = error.message; }
 }
@@ -295,13 +294,13 @@ function renderLiveBuild() {
   const matchingHandoff = state.liveBuild?.targetScope?.id === state.scope?.id ? state.liveBuild : null;
   button.disabled = !proofIsCurrent();
   if (matchingHandoff?.status === 'queued-locally') {
-    $('#live-build-state').textContent = `Verified proof staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}. A delivery adapter may send it to the live build; no remote run has been claimed.`;
+    $('#live-build-state').textContent = `Staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}; not sent to a remote build.`;
   } else if (proofIsCurrent()) {
-    $('#live-build-state').textContent = 'This proof matches the current manuscript. It is ready to stage for the live-build adapter.';
+    $('#live-build-state').textContent = '';
   } else if (compiledMap()?.mode === 'isolated') {
-    $('#live-build-state').textContent = 'A section or page proof is for reading; typeset the whole book to send it to the live build.';
+    $('#live-build-state').textContent = 'Typeset the whole book to send it to the live build.';
   } else {
-    $('#live-build-state').textContent = 'Typeset a current proof before sending it to the live-build queue.';
+    $('#live-build-state').textContent = '';
   }
 }
 
@@ -391,7 +390,7 @@ async function build({ wholeBook = false } = {}) {
     [state.pageMap, state.referenceMap] = await Promise.all([request('/api/project/page-map'), request('/api/project/reference-map')]);
     renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild(); refreshPreflight();
   } catch (error) {
-    $('#build-state').textContent = error.message; $('#build-log').textContent = 'The previous PDF preview, if any, remains available.';
+    $('#build-state').textContent = error.message; $('#build-log').textContent = 'Showing the previous proof.';
   } finally {
     buttons.forEach((button) => { button.disabled = false; });
     $('#build').textContent = buildPlan(state.scope || scopeFor('book')).label; $('#build-book').textContent = 'Whole book';
@@ -401,7 +400,7 @@ async function build({ wholeBook = false } = {}) {
 async function sendLiveBuild() {
   const scope = state.scope || scopeFor('book');
   if (!proofIsCurrent()) return;
-  if (!confirm(`Stage the verified proof for "${scope.title}" in the live-build queue? This does not claim a remote build has started.`)) return;
+  if (!confirm(`Stage the proof for "${scope.title}" for the live build?`)) return;
   const button = $('#send-live-build'); button.disabled = true; button.textContent = 'Staging…';
   try { state.liveBuild = await request('/api/project/live-build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id }) }); renderLiveBuild(); }
   catch (error) { $('#live-build-state').textContent = error.message; }

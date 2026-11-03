@@ -11,17 +11,17 @@
       <a href="/" class="back">← STEX Suite</a>
       <div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <p class="wordmark">TexGraph</p><h1>Enter a book</h1>
-      <p class="lede">Enter a living Obsidian vault inside TexGraph, or start a new book with a conversation.</p>
+      
     </header>
     <section class="book-lobby">
       <section class="book-picker" aria-label="Book selection">
         <div class="section-heading"><div><p class="eyebrow">Existing books</p><h2>Your manuscript library</h2></div><button id="new-book" type="button" class="quiet-button">+ New book</button></div>
-        <p class="section-lede">Enter a manuscript’s living vault: graph, Markdown, conversation, page map, and preview stay together inside TexGraph.</p>
+        
         <div id="book-list" class="book-list" aria-live="polite"></div>
       </section>
       <section class="interview-panel" aria-label="New book conversation">
         <header class="interview-header"><p class="eyebrow">New book conversation</p><span id="interview-state" class="status-pill">Ready</span></header>
-        <div id="interview-empty" class="interview-empty"><span class="empty-glyph">T</span><h2>What do you want to make?</h2><p>Start with a title, a line, an image, or a half-formed premise. TexGraph will take it from there.</p><form id="starter-composer" class="starter-composer"><label for="starter-answer">Your first message</label><textarea id="starter-answer" rows="4" placeholder="I want to make a poetry collection about…"></textarea><div class="starter-actions"><div class="prompt-chips"><button type="button" class="quiet-button" data-starter="I am building a poetry collection from poems I already have.">Existing poems</button><button type="button" class="quiet-button" data-starter="I have a title and a feeling, but not the structure yet.">Title and feeling</button><button type="button" class="quiet-button" data-starter="I want help discovering the book before I start writing it.">Discover a book</button></div><button type="submit">Begin →</button></div></form></div>
+        <div id="interview-empty" class="interview-empty"><span class="empty-glyph">T</span><h2>What do you want to make?</h2><p>Start with a title, a line, an image, or a premise.</p><form id="starter-composer" class="starter-composer"><label for="starter-answer">Your first message</label><textarea id="starter-answer" rows="4" placeholder="I want to make a poetry collection about…"></textarea><div class="starter-actions"><div class="prompt-chips"><button type="button" class="quiet-button" data-starter="I am building a poetry collection from poems I already have.">Existing poems</button><button type="button" class="quiet-button" data-starter="I have a title and a feeling, but not the structure yet.">Title and feeling</button><button type="button" class="quiet-button" data-starter="I want help discovering the book before I start writing it.">Discover a book</button></div><button type="submit">Begin →</button></div></form></div>
         <div id="chat" class="chat hidden" aria-live="polite"></div>
         <section id="ticket" class="ticket hidden" aria-live="polite"></section>
         <form id="interview-composer" class="interview-composer hidden"><label for="interview-answer">Your response</label><textarea id="interview-answer" rows="3" placeholder="Write naturally."></textarea><div><span id="answer-hint">Press Send to continue.</span><button type="submit">Send</button></div></form>

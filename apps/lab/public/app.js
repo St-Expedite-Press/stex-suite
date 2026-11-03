@@ -58,7 +58,7 @@ function ticket() {
 function finishInterview() {
   $('#interview-composer').classList.add('hidden');
   const draft = ticket();
-  addMessage('assistant', `I have a workable starting ticket for “${draft.title}.” You can create the book now and continue inside Obsidian.`);
+  addMessage('assistant', `Ready to create “${draft.title}.”`);
   const panel = $('#ticket');
   panel.classList.remove('hidden');
   panel.innerHTML = '<p class="eyebrow">Book starting point</p><h2></h2><p></p><div class="ticket-actions"><button class="accept-ticket">Create book studio →</button><button class="restart-ticket quiet-button">Start over</button></div>';
@@ -87,9 +87,8 @@ function beginInterview(initialMessage = '') {
   if (initialMessage) {
     answers.editorialIntent = initialMessage;
     addMessage('user', initialMessage);
-    addMessage('assistant', 'That is a strong beginning. I will hold onto it while we find the title and form.');
   } else {
-    addMessage('assistant', 'Start anywhere. A title, a line, an image, or a worry about the book is enough.');
+    addMessage('assistant', 'Start with a title, a line, or an image.');
   }
   askNext();
 }
@@ -97,7 +96,7 @@ function beginInterview(initialMessage = '') {
 async function loadBooks() {
   const books = await api('/api/books');
   const list = $('#book-list');
-  if (!books.length) { list.textContent = 'No books yet. Begin with a message on the right.'; return; }
+  if (!books.length) { list.textContent = 'No books yet.'; return; }
   list.replaceChildren(...books.map((book) => {
     const card = document.createElement('article');
     card.className = 'book-card';
