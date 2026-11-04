@@ -1,18 +1,19 @@
 import { startScreenlabPalette } from './palette.js';
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
+import { createModelSettings } from './model-settings.js';
 
 startScreenlabPalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
-const state = { graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
+const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
   const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || 'Request failed.');
+  if (!response.ok) throw Object.assign(new Error(payload.error || 'Request failed.'), { status: response.status, errors: Array.isArray(payload.errors) ? payload.errors : [] });
   return payload;
 }
 
@@ -101,7 +102,8 @@ function renderTurns({ follow = false } = {}) {
   const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
-    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, onDecide: decide,
+    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, drafts: state.drafts, onDecide: decide, onAnswer: sendAnswer,
+    artifactUrl: (id, { download = false } = {}) => apiUrl(`/api/artifacts/${id}/content${download ? '?download=1' : ''}`),
     empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
   if (!last) return;
@@ -329,6 +331,36 @@ async function saveSource() {
 
 function sizeComposer() { const input = $('#message'); input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 220)}px`; }
 
+// The Hermes pill reports the gateway's own health: model, key and reachability.
+async function refreshHermes() {
+  const pill = $('#gateway-state');
+  try {
+    const health = await request('/api/inference/health');
+    const text = { ready: `Hermes · ${health.model}`, unconfigured: 'Hermes not configured', 'key-rejected': 'OpenRouter key rejected', 'provider-unreachable': 'OpenRouter unreachable', 'gateway-unreachable': 'Gateway not running' }[health.state] || 'Hermes status unknown';
+    pill.textContent = text; pill.title = health.detail || ''; pill.className = `status-pill ${health.state === 'ready' ? 'available' : 'unavailable'}`;
+  } catch { pill.textContent = 'Hermes status unknown'; pill.className = 'status-pill unavailable'; }
+}
+
+// Answering a choice or form is a turn: the store validates it against the prompt and
+// Hermes replies. Until Hermes has the answer it is kept as a draft, so a failure or a
+// re-render leaves the form filled in and sendable again.
+async function sendAnswer(promptId, values) {
+  const scope = state.scope; if (state.thinking) return;
+  state.drafts.set(promptId, values); state.thinking = true; state.notice = ''; renderTurns({ follow: true });
+  try {
+    await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ answer: { promptId, values } }) });
+    state.drafts.delete(promptId);
+  } catch (error) {
+    state.notice = `Answer not sent: ${error.message}`;
+    if (error.status === 503) refreshHermes();
+  } finally {
+    // Reload either way: a 409 means it was answered elsewhere, and the thread should show that.
+    if (state.scope?.id === scope.id) [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
+    state.thinking = false;
+    if (state.scope?.id === scope.id) renderTurns({ follow: true });
+  }
+}
+
 async function sendTurn(event) {
   event?.preventDefault();
   const input = $('#message'); const button = $('#turn-form [type="submit"]'); const message = input.value.trim();
@@ -337,7 +369,7 @@ async function sendTurn(event) {
   state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString() }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
     const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
-    const pill = $('#gateway-state'); pill.textContent = { available: 'Hermes connected', unconfigured: 'Hermes not configured' }[result.availability] || 'Hermes unavailable'; pill.className = `status-pill ${result.availability === 'available' ? 'available' : 'unavailable'}`;
+    if (result.availability !== 'available') refreshHermes();
     if (state.scope?.id !== scope.id) return;
     [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
   } catch (error) {
@@ -425,9 +457,12 @@ async function bootstrap() {
   state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
-  renderBuild(state.build); renderLiveBuild(); refreshPreflight();
+  renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshHermes();
   $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign);
   $('#turn-form').addEventListener('submit', sendTurn);
+  const modelSettings = createModelSettings({ request, onSaved: refreshHermes });
+  $('#configure-models').addEventListener('click', () => { $('#settings-menu').open = false; modelSettings.open(); });
+  document.addEventListener('click', (event) => { if (!$('#settings-menu').contains(event.target)) $('#settings-menu').open = false; });
   // Enter sends; Shift+Enter starts a new line; the box grows with its text.
   $('#message').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendTurn(); } });
   $('#message').addEventListener('input', sizeComposer);

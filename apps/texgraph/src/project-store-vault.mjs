@@ -70,6 +70,57 @@ function diagnosticsFor(relative, source) {
   return diagnostics;
 }
 
+const text = (value) => typeof value === 'string' && value.length > 0;
+function partShapeProblem(part) {
+  if (!part || typeof part !== 'object') return 'A part must be an object.';
+  if (part.type === 'text') return text(part.text) ? null : 'A text part needs text.';
+  if (part.type === 'artifact') return ['code', 'document', 'data', 'image'].includes(part.kind) && typeof part.content === 'string' && text(part.title) ? null : 'An artifact needs a kind, a title and content.';
+  if (part.type === 'choice') return text(part.id) && text(part.prompt) && Array.isArray(part.options) && part.options.length >= 2 && part.options.every((option) => text(option?.id) && text(option?.label)) ? null : 'A choice needs an id, a prompt and labelled options.';
+  if (part.type === 'form') return text(part.id) && Array.isArray(part.fields) && part.fields.length > 0 && part.fields.every((field) => text(field?.id) && text(field?.label) && ['text', 'textarea', 'select', 'number', 'checkbox'].includes(field.kind) && (field.kind !== 'select' || (Array.isArray(field.options) && field.options.every(text)))) ? null : 'A form needs an id and labelled fields of known kinds.';
+  return 'Unknown part type.';
+}
+
+// The declared type of an image must match its file signature.
+function imageSignature(bytes) {
+  if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length > 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (bytes.length > 6 && /^GIF8[79]a$/.test(bytes.toString('ascii', 0, 6))) return 'image/gif';
+  return null;
+}
+
+const invalidAnswer = (message) => Object.assign(new Error(message), { code: 'INVALID_ANSWER' });
+// Normalizes an answer against its prompt and writes the readable summary sent to Hermes.
+function answerFor(prompt, values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) throw invalidAnswer('An answer must be an object.');
+  if (prompt.type === 'choice') {
+    const selected = Array.isArray(values.selected) ? [...new Set(values.selected)] : [];
+    const other = typeof values.other === 'string' ? values.other.trim().slice(0, 500) : '';
+    if (selected.some((id) => !prompt.options.some((option) => option.id === id))) throw invalidAnswer('That option is not one of the choices.');
+    if (other && !prompt.allowOther) throw invalidAnswer('This question does not take another answer.');
+    if (!selected.length && !other) throw invalidAnswer('Choose an option.');
+    if (!prompt.multiple && selected.length + (other ? 1 : 0) > 1) throw invalidAnswer('Choose one option.');
+    const labels = selected.map((id) => prompt.options.find((option) => option.id === id).label);
+    return { normalized: { selected, ...(other ? { other } : {}) }, summary: `${prompt.prompt} — ${[...labels, ...(other ? [`Other: ${other}`] : [])].join('; ')}` };
+  }
+  const normalized = {}; const lines = [];
+  for (const key of Object.keys(values)) if (!prompt.fields.some((field) => field.id === key)) throw invalidAnswer(`Unknown field ${key}.`);
+  for (const field of prompt.fields) {
+    const raw = Object.hasOwn(values, field.id) ? values[field.id] : undefined;
+    let value;
+    if (field.kind === 'checkbox') value = raw === true;
+    else if (field.kind === 'number') { if (raw === '' || raw === undefined || raw === null) value = null; else if (!Number.isFinite(Number(raw))) throw invalidAnswer(`${field.label} must be a number.`); else value = Number(raw); }
+    else {
+      value = typeof raw === 'string' ? raw.trim().slice(0, field.kind === 'textarea' ? 10_000 : 2_000) : '';
+      if (field.kind === 'select' && value && !field.options.includes(value)) throw invalidAnswer(`${field.label} must be one of its options.`);
+    }
+    if (field.required && (value === '' || value === null || value === false)) throw invalidAnswer(`${field.label} is required.`);
+    normalized[field.id] = value;
+    if (value !== '' && value !== null) lines.push(`${field.label}: ${field.kind === 'checkbox' ? (value ? 'yes' : 'no') : value}`);
+  }
+  return { normalized, summary: `${prompt.title || 'Form'} — ${lines.join('; ') || 'no answers'}` };
+}
+
 function canonicalBook(root, nodes, readingOrder) {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const ordered = readingOrder.map((id) => byId.get(id)).filter(Boolean);
@@ -126,6 +177,7 @@ export class ProjectStore {
     this.liveBuildsDirectory = path.join(this.stateDirectory, 'live-builds');
     this.refreshing = null;
     this.writes = Promise.resolve();
+    this.answering = new Set();
   }
 
   // Manuscript writes and change-set decisions run one at a time, so a hash check
@@ -237,6 +289,64 @@ export class ProjectStore {
     const legacy = scope.kind === 'node' || !scope.anchorNodeId ? [] : (await read(scope.anchorNodeId)).filter((turn) => turn.scopeId === scopeId);
     return [...legacy, ...own].sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
   }
+  // Artifacts from Hermes replies are product state: metadata and content under
+  // .texgraph/artifacts, referenced from turns by id so threads stay small.
+  artifactPath(id, extension) { if (!/^art-[a-f0-9]{16}$/.test(id)) throw new Error('Invalid artifact id.'); return path.join(this.stateDirectory, 'artifacts', `${id}.${extension}`); }
+  async storeParts(scopeId, parts = [], meta = null) {
+    const stored = []; const dropped = [];
+    for (const [index, part] of parts.entries()) {
+      // The gateway validates parts; the product still refuses shapes it cannot render.
+      const shapeProblem = partShapeProblem(part);
+      if (shapeProblem) { dropped.push({ index, reason: shapeProblem }); continue; }
+      if (part?.type !== 'artifact') {
+        // Interactive prompts get a product id, so an answer can be traced to exactly one prompt.
+        stored.push(part?.type === 'choice' || part?.type === 'form' ? { ...part, promptId: `prompt-${randomUUID().replaceAll('-', '').slice(0, 16)}` } : part);
+        continue;
+      }
+      const content = part.kind === 'image' ? Buffer.from(part.content, 'base64') : Buffer.from(String(part.content), 'utf8');
+      if (part.kind === 'image' && imageSignature(content) !== part.mediaType) { dropped.push({ index, reason: 'The image data does not match its declared type.' }); continue; }
+      const id = `art-${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+      const record = { id, kind: part.kind, title: part.title, language: part.language || null, mediaType: part.kind === 'image' ? part.mediaType : 'text/plain', bytes: content.length, sha256: createHash('sha256').update(content).digest('hex'), createdAt: new Date().toISOString(), scopeId, model: meta?.model || null };
+      await mkdir(path.join(this.stateDirectory, 'artifacts'), { recursive: true });
+      await writeAtomic(this.artifactPath(id, 'data'), content);
+      await writeAtomic(this.artifactPath(id, 'json'), `${JSON.stringify(record, null, 2)}\n`);
+      stored.push({ type: 'artifact', artifactId: id, kind: record.kind, title: record.title, language: record.language, mediaType: record.mediaType, bytes: record.bytes });
+    }
+    return { parts: stored, dropped };
+  }
+  async artifact(id) { try { return JSON.parse(await readFile(this.artifactPath(id, 'json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  async artifactContent(id) { const record = await this.artifact(id); return record ? { record, content: await readFile(this.artifactPath(id, 'data')) } : null; }
+  async artifacts() {
+    const directory = path.join(this.stateDirectory, 'artifacts');
+    const names = await readdir(directory).catch(() => []);
+    const records = await Promise.all(names.filter((name) => /^art-[a-f0-9]{16}\.json$/.test(name)).map((name) => this.artifact(name.slice(0, -5))));
+    return records.filter(Boolean).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+  // An answer must match a stored prompt in this scope's thread, once, with valid values.
+  // It is reserved while Hermes replies and recorded only once Hermes has it, so a
+  // failed turn leaves the question open to answer again.
+  reserveAnswer(scopeId, promptId, values) {
+    return this.exclusive(async () => {
+      const thread = await this.turns(scopeId, 100_000);
+      const prompt = thread.flatMap((turn) => turn.parts || []).find((part) => part.promptId === promptId);
+      if (!prompt) throw Object.assign(new Error('This question is not part of the conversation.'), { code: 'UNKNOWN_PROMPT' });
+      const key = `${scopeId}::${promptId}`;
+      if (this.answering.has(key) || thread.some((turn) => turn.kind === 'answer' && turn.promptId === promptId)) throw Object.assign(new Error('This question has already been answered.'), { code: 'ALREADY_ANSWERED' });
+      const { normalized, summary } = answerFor(prompt, values);
+      this.answering.add(key);
+      return { scopeId, promptId, key, partId: prompt.id, values: normalized, message: summary };
+    });
+  }
+  // Committing runs under the same lock as reserving, so a concurrent reservation always
+  // sees the answer either as reserved or as written, never as neither.
+  commitAnswer(reservation) {
+    return this.exclusive(async () => {
+      try { return await this.appendTurn(reservation.scopeId, { role: 'user', kind: 'answer', promptId: reservation.promptId, partId: reservation.partId, values: reservation.values, message: reservation.message }); }
+      finally { this.answering.delete(reservation.key); }
+    });
+  }
+  releaseAnswer(reservation) { this.answering.delete(reservation.key); }
+  async recordAnswer(scopeId, promptId, values) { return this.commitAnswer(await this.reserveAnswer(scopeId, promptId, values)); }
   // What the director is shown for a scope: the book offers its table of contents,
   // a section or page each of its nodes, within a size budget.
   async scopeContext(scopeId) {

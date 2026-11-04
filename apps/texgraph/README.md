@@ -98,23 +98,46 @@ book in table-of-contents order through the selected scope.
 
 ## Conversation boundary
 
-The browser talks only to TexGraph. It never reads or exposes an OpenRouter
-credential.
+The conversation is a front end to Hermes, the editorial director, which runs
+in the inference gateway (`services/inference`) on OpenRouter. The browser
+talks only to TexGraph; TexGraph talks only to the gateway; neither ever sees
+the OpenRouter key.
 
 In a manuscript book, the conversation belongs to the selected scope: the
 whole book, a section, or a page each keep their own thread in
 `.texgraph/conversations/<scope>.jsonl`. A turn calls
 `STEX_INFERENCE_URL/v1/texgraph/scope-turn` (`protocol/texgraph`, scope turn
-v2) with the scope's offered sources and at most ten recent turns. Hermes may
-reply with changes to offered nodes; TexGraph keeps those as one pending
-change set per scope (`.texgraph/proposals/<scope>.json`) and shows each as a
-line diff. Accepting writes the node only if it is unchanged since the
-suggestion (otherwise it is marked stale), refreshes the graph and editor,
-and typesets the proof for the scope again.
+v3) with the scope's offered sources and at most ten recent turns.
 
-The single-page local book (`book.json`) still uses `page-turn` v1. Without
-a configured gateway, turns are saved and the Studio says Hermes did not
-reply.
+Hermes replies in typed parts:
+
+- **Text** renders as formatted prose.
+- **Artifacts** (code, documents, data, images) are stored in
+  `.texgraph/artifacts/` and shown as cards to copy, download or open.
+  Images are kept only if their file signature matches their declared type;
+  content is served as plain text or the checked image type, never as HTML.
+- **Choices and forms** are interactive. An answer is validated against the
+  stored prompt (known options, required fields, value types), recorded once,
+  and sent back to Hermes as the next turn; the prompt then shows the answer.
+- **Changes** to offered nodes become one pending change set per scope
+  (`.texgraph/proposals/<scope>.json`), shown as line diffs. Accepting writes
+  the node only if it is unchanged since the suggestion (otherwise it is
+  marked stale), refreshes the graph and editor, and typesets the scope again.
+
+The Hermes pill shows the gateway's own health: the configured model, or why
+Hermes cannot answer (not configured, key rejected, OpenRouter unreachable,
+gateway not running). A failed turn is saved with the gateway's reason and
+changes nothing. Each reply names the model that answered, and any model in
+the director's stack that was unavailable.
+
+**Settings → Configure models** edits the gateway's agent roster: each role's
+model stack (primary, then fallbacks, reorderable), searched from OpenRouter's
+catalog with context length and prices, plus temperature and output cap, and
+custom roles. TexGraph relays these calls to the gateway with the shared
+secret (`/api/settings/models`, `/api/settings/model-catalog`); the browser
+never holds it.
+
+The single-page local book (`book.json`) still uses `page-turn` v1.
 
 ## Checks
 

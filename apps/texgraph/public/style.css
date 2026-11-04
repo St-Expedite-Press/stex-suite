@@ -192,3 +192,83 @@ button:disabled { opacity: .55; cursor: wait; }
 .preflight-list .preflight-pass { border-left-color: #6f9f78; }
 .preflight-list .preflight-warn { border-left-color: var(--signal-2, #e3b95e); }
 .preflight-list .preflight-fail { border-left-color: var(--bad, #ff6b6b); }
+
+/* Hermes reply parts: artifact cards and interactive prompts. */
+.msg-body > .artifact-card, .msg-body > .prompt { margin-top: 10px; }
+.artifact-card { display: grid; border: 1px solid rgba(127, 127, 127, .3); border-radius: 10px; overflow: hidden; background: var(--s1, #fffefa); }
+.artifact-card header { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(127, 127, 127, .2); font-size: 12px; }
+.artifact-kind { font: 600 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--signal, #a45c2b); }
+.artifact-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-size { color: var(--t2, #6e6b62); font-size: 11px; }
+.artifact-body { max-height: 70vh; overflow: auto; }
+.artifact-card.collapsed .artifact-body { max-height: 280px; overflow: hidden; mask-image: linear-gradient(#000 70%, transparent); }
+.artifact-code { margin: 0; padding: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; tab-size: 2; }
+.artifact-document { padding: 4px 14px; font: 14px/1.6 Georgia, serif; }
+.artifact-card img { display: block; max-width: 100%; height: auto; margin: 0 auto; background: repeating-conic-gradient(rgba(127, 127, 127, .15) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.artifact-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 10px; border-top: 1px solid rgba(127, 127, 127, .2); }
+.artifact-actions .quiet-button { padding: 4px 10px; font-size: 11px; text-decoration: none; }
+.prompt { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--signal, #a45c2b); border-radius: 10px; }
+.prompt.answered { border-color: rgba(127, 127, 127, .3); opacity: .85; }
+.prompt-title { margin: 0; font-weight: 700; }
+.prompt-options { display: grid; gap: 6px; }
+.prompt-option { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.prompt-option:hover { background: var(--s3, #efede4); }
+.prompt-option span { display: grid; gap: 2px; }
+.prompt-option small { color: var(--t2, #6e6b62); font-size: 12px; }
+.prompt-field { display: grid; gap: 4px; font-size: 12px; color: var(--t2, #6e6b62); }
+.prompt-field.kind-checkbox { display: flex; align-items: center; gap: 8px; color: var(--t1, #292821); }
+.prompt input:not([type="radio"]):not([type="checkbox"]), .prompt select, .prompt textarea { padding: 6px 8px; border: 1px solid rgba(127, 127, 127, .4); border-radius: 6px; background: var(--s2, #fffefa); color: var(--t1, #292821); font: 13px/1.4 inherit; }
+.prompt-submit { justify-self: start; padding: 6px 16px; border-radius: 99px; }
+.prompt-status { margin: 0; font-size: 12px; color: var(--signal-2, #a45c2b); }
+.msg.failed .msg-body { color: var(--bad, #b3261e); }
+.msg.is-answer .msg-body { border: 1px dashed rgba(127, 127, 127, .4); }
+
+/* Settings menu and Configure models dialog */
+.settings-menu { position: relative; margin-left: auto; font-weight: 400; letter-spacing: 0; }
+.settings-menu summary { list-style: none; cursor: pointer; padding: 5px 8px; border: 1px solid rgba(127, 127, 127, .4); border-radius: 3px; font-size: 11px; color: var(--t2, #e6d8ad); }
+.settings-menu summary::-webkit-details-marker { display: none; }
+.settings-menu[open] summary { color: var(--t1, #fff); border-color: var(--signal, #e3b95e); }
+/* Opens inward: the navigator clips anything past its right edge. */
+.settings-items { position: absolute; z-index: 20; right: 0; top: calc(100% + 4px); min-width: 150px; white-space: nowrap; padding: 4px; border: 1px solid rgba(127, 127, 127, .35); border-radius: 6px; background: var(--s2, #2e2f29); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.settings-items button { display: block; width: 100%; text-align: left; background: transparent; color: var(--t1, #e9e5d8); font-weight: 500; }
+.settings-items button:hover, .settings-items button:focus-visible { background: var(--s3, #3a3b34); box-shadow: none; }
+.model-settings { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid rgba(127, 127, 127, .35); border-radius: 10px; background: var(--s1, #fbfaf5); color: var(--t1, #292821); overflow: auto; }
+.model-settings::backdrop { background: rgba(0, 0, 0, .55); }
+.model-settings > * { margin-left: 20px; margin-right: 20px; }
+.settings-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 14px 20px; background: var(--s1, #fbfaf5); border-bottom: 1px solid rgba(127, 127, 127, .25); }
+.settings-head h2 { margin: 0; font-size: 16px; }
+.settings-note, .settings-state { color: var(--t2, #6e6b62); font-size: 12px; line-height: 1.45; }
+.role-list { display: grid; gap: 12px; }
+.role-card { border: 1px solid rgba(127, 127, 127, .3); border-radius: 8px; padding: 12px 14px; background: var(--s2, #fffefa); }
+.role-card > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.role-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.role-title h3 { margin: 0; font-size: 14px; }
+.role-id { color: var(--t2, #77746c); font-size: 11px; white-space: nowrap; }
+.role-use { font-size: 11px; color: var(--t2, #77746c); }
+.role-use.live { color: var(--signal, #286046); }
+.role-description { margin: 4px 0 0; font-size: 12px; color: var(--t2, #6e6b62); }
+.stack-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 4px; }
+.stack-model { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 6px 8px; border-radius: 5px; background: var(--s1, #f5f2e9); font-size: 12px; }
+.stack-rank { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--t2, #77746c); }
+.stack-model:first-child .stack-rank { color: var(--signal, #286046); font-weight: 700; }
+.stack-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; overflow-wrap: anywhere; }
+.stack-model > .stack-detail { grid-column: 2 / -1; }
+.stack-detail { font-size: 11px; color: var(--t2, #77746c); }
+.stack-detail.warn { color: var(--signal-2, #8b5a2c); }
+.stack-actions { display: flex; gap: 4px; }
+.stack-actions .quiet-button, .role-tuning .reject { padding: 4px 8px; font-size: 11px; }
+.stack-empty { padding: 6px 8px; font-size: 12px; color: var(--t2, #77746c); font-style: italic; }
+.stack-add, .role-add { display: flex; gap: 6px; }
+.stack-add input, .role-add input, .role-tuning input, .role-name { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid rgba(127, 127, 127, .4); border-radius: 4px; background: var(--s1, #fffefa); color: var(--t1, #292821); font: inherit; font-size: 12px; }
+.role-name { flex: 0 1 220px; font-weight: 700; }
+.role-tuning { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 10px; }
+.role-tuning label { display: grid; gap: 3px; font-size: 11px; color: var(--t2, #6e6b62); }
+.role-tuning input { width: 9em; flex: none; }
+.role-tuning .reject { margin-left: auto; }
+.role-add { margin-top: 12px; }
+.settings-foot { position: sticky; bottom: 0; margin: 12px 0 0; padding: 12px 20px; background: var(--s1, #fbfaf5); border-top: 1px solid rgba(127, 127, 127, .25); }
+.settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.settings-actions .settings-state { margin-right: auto; }
+.settings-errors { margin: 0 0 10px; padding-left: 18px; color: var(--bad, #a33a2f); font-size: 12px; }
+@media (max-width: 560px) { .stack-model { grid-template-columns: minmax(0, 1fr) auto; } .stack-rank { grid-column: 1 / -1; } .stack-model > .stack-detail { grid-column: 1 / -1; } }
+.msg-fallback { color: var(--signal-2, #8b5a2c); }

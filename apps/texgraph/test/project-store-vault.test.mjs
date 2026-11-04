@@ -262,3 +262,58 @@ test('pages carrying a footnote continuation belong to the piece the footnote ca
   assert.equal(after.firstPage, noted.lastPage + 1);
   assert.deepEqual(map.pages.filter((page) => page.blank).map((page) => page.physicalPage), [], 'no page is left unattributed');
 });
+test('stores Hermes artifacts by reference and only accepts images whose bytes match their type', async (context) => {
+  const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const { parts, dropped } = await store.storeParts('book', [
+    { type: 'text', text: 'Hello.' },
+    { type: 'artifact', kind: 'code', title: 'Helper', language: 'js', content: 'export const x = 1;' },
+    { type: 'artifact', kind: 'image', title: 'Dot', mediaType: 'image/png', content: png },
+    { type: 'artifact', kind: 'image', title: 'Liar', mediaType: 'image/jpeg', content: png },
+    { type: 'artifact', kind: 'image', title: 'Page', mediaType: 'image/png', content: Buffer.from('<html><script>alert(1)</script>').toString('base64') },
+    { type: 'choice', id: 'tone', prompt: 'Tone?', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
+  ], { model: 'example/model' });
+  assert.deepEqual(parts.map((part) => part.type), ['text', 'artifact', 'artifact', 'choice']);
+  assert.deepEqual(dropped.map((entry) => entry.index), [3, 4]);
+  const [code, image] = parts.filter((part) => part.type === 'artifact');
+  assert.equal(code.content, undefined, 'turns hold a reference, not the content');
+  assert.equal((await store.artifactContent(code.artifactId)).content.toString('utf8'), 'export const x = 1;');
+  assert.equal((await store.artifact(image.artifactId)).mediaType, 'image/png');
+  assert.equal((await store.artifacts()).length, 2);
+  assert.match(parts[3].promptId, /^prompt-[a-f0-9]{16}$/);
+  await assert.rejects(() => store.artifact('../../manuscript/x'), /Invalid artifact id/);
+});
+test('answers are validated against the stored prompt and recorded once', async (context) => {
+  const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
+  const { parts } = await store.storeParts('book', [
+    { type: 'choice', id: 'tone', prompt: 'Which tone?', options: [{ id: 'dark', label: 'Darker' }, { id: 'light', label: 'Lighter' }], allowOther: true },
+    { type: 'form', id: 'facts', title: 'Book facts', fields: [{ id: 'title', label: 'Title', kind: 'text', required: true }, { id: 'trim', label: 'Trim', kind: 'select', options: ['6 × 9 in'] }, { id: 'pages', label: 'Pages', kind: 'number' }, { id: 'heads', label: 'Running heads', kind: 'checkbox' }] },
+  ]);
+  await store.appendTurn('book', { role: 'assistant', commentary: 'Two questions.', parts });
+  const [choice, form] = parts;
+  for (const values of [{ selected: ['nope'] }, { selected: [] }, { selected: ['dark', 'light'] }, { selected: ['dark'], other: 'and grim' }, null]) {
+    await assert.rejects(() => store.recordAnswer('book', choice.promptId, values), { code: 'INVALID_ANSWER' });
+  }
+  for (const values of [{ trim: '6 × 9 in' }, { title: 'X', trim: 'A4' }, { title: 'X', pages: 'many' }, { title: 'X', extra: 1 }]) {
+    await assert.rejects(() => store.recordAnswer('book', form.promptId, values), { code: 'INVALID_ANSWER' });
+  }
+  await assert.rejects(() => store.recordAnswer('book', 'prompt-0000000000000000', { selected: ['dark'] }), { code: 'UNKNOWN_PROMPT' });
+  await assert.rejects(() => store.recordAnswer('scope-other-scope', choice.promptId, { selected: ['dark'] }), /scope|not found|not part/i);
+  const outcomes = await Promise.allSettled([store.recordAnswer('book', choice.promptId, { other: 'Bleaker' }), store.recordAnswer('book', choice.promptId, { selected: ['light'] })]);
+  assert.deepEqual(outcomes.map((outcome) => outcome.status), ['fulfilled', 'rejected']);
+  assert.equal(outcomes[1].reason.code, 'ALREADY_ANSWERED');
+  assert.equal(outcomes[0].value.message, 'Which tone? — Other: Bleaker');
+  const answered = await store.recordAnswer('book', form.promptId, { title: '  Lift Wind  ', pages: '96', heads: true });
+  assert.deepEqual(answered.values, { title: 'Lift Wind', trim: '', pages: 96, heads: true });
+  assert.equal(answered.message, 'Book facts — Title: Lift Wind; Pages: 96; Running heads: yes');
+});
+test('an answer Hermes never received leaves the question open to answer again', async (context) => {
+  const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
+  const { parts } = await store.storeParts('book', [{ type: 'choice', id: 'tone', prompt: 'Tone?', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }]);
+  await store.appendTurn('book', { role: 'assistant', commentary: 'One question.', parts });
+  const pending = await store.reserveAnswer('book', parts[0].promptId, { selected: ['a'] });
+  await assert.rejects(() => store.reserveAnswer('book', parts[0].promptId, { selected: ['b'] }), { code: 'ALREADY_ANSWERED' }, 'an answer on its way to Hermes holds the question');
+  store.releaseAnswer(pending);
+  assert.deepEqual((await store.recordAnswer('book', parts[0].promptId, { selected: ['b'] })).values, { selected: ['b'] });
+  assert.equal((await store.turns('book')).filter((turn) => turn.kind === 'answer').length, 1);
+});

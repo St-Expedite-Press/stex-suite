@@ -4,20 +4,23 @@ function assistantResult(commentary, availability = 'available', graphSuggestion
   return { commentary, availability, proposal: null, graphSuggestions };
 }
 
-// A conversation turn about a whole book, a section or a page (stex.texgraph.scope-turn.v2).
-// The director sees the scope's offered sources and may propose replacements for those
-// nodes only; TexGraph re-validates every change against what it offered.
-export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message }) {
+// A conversation turn with Hermes about a whole book, a section or a page
+// (stex.texgraph.scope-turn.v3). Hermes sees the scope's offered sources and may
+// reply with typed parts and with changes for those nodes only; TexGraph
+// re-validates every change against what it offered and stores the parts.
+const empty = { changes: [], parts: [], droppedParts: [], meta: null };
+const gatewayHeaders = () => ({ 'content-type': 'application/json', ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}) });
+
+export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
   const endpoint = process.env.STEX_INFERENCE_URL;
-  if (!endpoint) return { ...assistantResult('The inference gateway is not configured. Your message was saved, but Hermes did not reply.', 'unconfigured'), changes: [] };
+  if (!endpoint) return { ...assistantResult('Hermes did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
     const response = await fetch(new URL('/v1/texgraph/scope-turn', endpoint), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}) },
+      method: 'POST', headers: gatewayHeaders(), signal: controller.signal,
       body: JSON.stringify({
-        contract: 'stex.texgraph.scope-turn.v2',
+        contract: 'stex.texgraph.scope-turn.v3',
         book: { id: book.id, title: book.title, settings: book.settings || {} },
         scope: { id: scope.id, kind: scope.kind, title: scope.title, nodeIds: scope.nodeIds || [] },
         scopeSources: sources.map(({ nodeId, relativePath, title, kind, hash, source }) => ({ nodeId, relativePath, title, kind, sourceHash: hash, source })),
@@ -26,21 +29,54 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         approvedSourceExcerpts: approvedSourceExcerpts.map((entry) => ({ id: entry.id, name: entry.name, excerpt: String(entry.excerpt || '').slice(0, 6000) })).slice(0, 8),
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
+        ...(answer ? { answer } : {}),
       }),
-      signal: controller.signal,
     });
-    if (!response.ok) return { ...assistantResult(`The inference gateway returned ${response.status}. Your message was saved; nothing was changed.`, 'unavailable'), changes: [] };
+    if (!response.ok) {
+      // The gateway explains its failures with a code and a message safe to show.
+      const failure = await response.json().catch(() => ({}));
+      return { ...assistantResult(`Hermes did not reply: ${String(failure.error || `the gateway returned ${response.status}`).replace(/\.$/, '')}. Your message was saved; nothing was changed.`, failure.code === 'UNCONFIGURED' ? 'unconfigured' : 'unavailable'), ...empty, failure: { status: response.status, code: failure.code || null } };
+    }
     const payload = await response.json();
-    const commentary = typeof payload.commentary === 'string' ? payload.commentary : 'The gateway returned no commentary.';
+    const commentary = typeof payload.commentary === 'string' ? payload.commentary : '';
     const graphSuggestions = Array.isArray(payload.graphSuggestions) ? payload.graphSuggestions.filter((entry) => entry && typeof entry.message === 'string').slice(0, 12) : [];
     const changes = Array.isArray(payload.changes) ? payload.changes.filter((entry) => entry && typeof entry.nodeId === 'string' && typeof entry.source === 'string').slice(0, 40) : [];
-    return { commentary, availability: 'available', changes, graphSuggestions };
+    const parts = Array.isArray(payload.parts) ? payload.parts.slice(0, 12) : [];
+    const droppedParts = Array.isArray(payload.droppedParts) ? payload.droppedParts.slice(0, 20) : [];
+    // Models passed over in the director's stack are kept so the reply can say so.
+    const skipped = Array.isArray(payload.meta?.skipped) ? payload.meta.skipped.slice(0, 6).map((entry) => String(entry?.model || '').slice(0, 120)).filter(Boolean) : [];
+    const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}) } : null;
+    return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta };
   } catch (error) {
-    const reason = error.name === 'AbortError' ? 'timed out' : 'is unreachable';
-    return { ...assistantResult(`The inference gateway ${reason}. Your message was saved, but Hermes did not reply.`, 'unavailable'), changes: [] };
+    const reason = error.name === 'AbortError' ? 'the gateway timed out' : 'the gateway is unreachable';
+    return { ...assistantResult(`Hermes did not reply: ${reason}. Your message was saved, but nothing was changed.`, 'unavailable'), ...empty };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// The gateway's own report on its provider: configured, model, and whether the key works.
+export async function inferenceHealth() {
+  const endpoint = process.env.STEX_INFERENCE_URL;
+  if (!endpoint) return { state: 'unconfigured', detail: 'STEX_INFERENCE_URL is not set.' };
+  try {
+    const response = await fetch(new URL('/health?probe=1', endpoint), { signal: AbortSignal.timeout(8_000) });
+    const health = await response.json();
+    if (!health.configured) return { state: 'unconfigured', detail: `Set ${(health.missing || []).join(' and ')} for the inference gateway.`, model: health.model };
+    const state = { reachable: 'ready', 'key-rejected': 'key-rejected', unreachable: 'provider-unreachable' }[health.provider_status] || 'unknown';
+    return { state, model: health.model, provider: health.provider };
+  } catch { return { state: 'gateway-unreachable', detail: 'The inference gateway is not running.' }; }
+}
+
+// Model roster settings live in the gateway; TexGraph relays them with the shared
+// secret so the browser never holds it. Returns the gateway's status and body.
+export async function gatewaySettings(method, pathname, payload) {
+  const endpoint = process.env.STEX_INFERENCE_URL;
+  if (!endpoint) return { status: 503, body: { error: 'STEX_INFERENCE_URL is not set.', code: 'UNCONFIGURED' } };
+  try {
+    const response = await fetch(new URL(pathname, endpoint), { method, headers: gatewayHeaders(), signal: AbortSignal.timeout(15_000), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
+    return { status: response.status, body: await response.json().catch(() => ({ error: `The gateway returned ${response.status}.` })) };
+  } catch { return { status: 503, body: { error: 'The inference gateway is not running.', code: 'GATEWAY_UNREACHABLE' } }; }
 }
 
 export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {

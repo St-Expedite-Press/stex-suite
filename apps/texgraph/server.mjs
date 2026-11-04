@@ -11,7 +11,7 @@ import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
 import { runPreflight } from './src/preflight.mjs';
-import { requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
+import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
@@ -119,14 +119,47 @@ async function reviewAttachment(store, id) { const manifest = await attachmentMa
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
 async function scopeTurn(store, scopeId, payload) {
-  if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
-  const userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim() });
-  const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
-  const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-  const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, approvedSourceExcerpts, turns: priorTurns.slice(0, -1), message: userTurn.message });
-  const { changeSet, dropped } = result.changes.length ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes }, context.sources) : { changeSet: null, dropped: [] };
-  const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
-  return { userTurn, assistantTurn, changeSet, availability: result.availability };
+  // A turn is either a message or an answer to one of Hermes's choices or forms.
+  // An answer is reserved, not recorded, until Hermes replies to it.
+  let userTurn = null; let reservation = null;
+  if (payload.answer && typeof payload.answer === 'object') {
+    reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values);
+  } else {
+    if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim() });
+  }
+  try {
+    const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
+    if (reservation) {
+      // Hermes did not receive the answer: leave the question open and say why.
+      if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
+      userTurn = await store.commitAnswer(reservation);
+    }
+    const { changeSet, dropped } = result.changes.length ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes }, context.sources) : { changeSet: null, dropped: [] };
+    const stored = await store.storeParts(scopeId, result.parts, result.meta);
+    const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
+    return { userTurn, assistantTurn, changeSet, availability: result.availability };
+  } finally { if (reservation) store.releaseAnswer(reservation); }
+}
+
+// Artifact content is served as inert data: images by their checked type, text as
+// plain text, never as HTML or script, with a sandboxing policy and no sniffing.
+async function artifactResponse(response, store, id, content, download) {
+  if (!content) { const record = await store.artifact(id); return record ? json(response, 200, record) : json(response, 404, { error: 'Artifact not found.' }); }
+  const found = await store.artifactContent(id);
+  if (!found) return json(response, 404, { error: 'Artifact not found.' });
+  const { record } = found;
+  const type = record.kind === 'image' ? record.mediaType : 'text/plain; charset=utf-8';
+  const textExtensions = new Set(['txt', 'md', 'json', 'csv', 'tsv', 'tex', 'yaml', 'yml', 'toml', 'css', 'sql', 'log']);
+  const declared = String(record.language || '').toLowerCase();
+  const extension = record.kind === 'image' ? record.mediaType.split('/')[1].replace('jpeg', 'jpg') : record.kind === 'document' ? 'md' : textExtensions.has(declared) ? declared : 'txt';
+  const base = record.title.replace(/[^A-Za-z0-9 ._-]/g, '').trim().slice(0, 80) || record.id; const suffix = String(extension).replace(/[^a-z0-9]/gi, '').slice(0, 10) || 'txt';
+  // A title that already ends with its extension keeps a single one.
+  const name = base.toLowerCase().endsWith(`.${suffix.toLowerCase()}`) ? base : `${base}.${suffix}`;
+  response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox", 'cache-control': 'private, max-age=31536000, immutable', ...(download ? { 'content-disposition': `attachment; filename="${name}"` } : {}) });
+  response.end(found.content);
 }
 
 async function vaultApi(request, response, url, store) {
@@ -147,6 +180,10 @@ async function vaultApi(request, response, url, store) {
   }
   if (request.method === 'GET' && url.pathname === '/api/project/design') { const design = await store.design(); return json(response, 200, { design, hash: designHash(design), defaultHash: designHash({}), trimSizes: [...TRIM_SIZES.keys()] }); }
   if (request.method === 'PUT' && url.pathname === '/api/project/design') { const design = await store.saveDesign(await body(request)); return json(response, 200, { design, hash: designHash(design) }); }
+  if (request.method === 'GET' && url.pathname === '/api/inference/health') return json(response, 200, await inferenceHealth());
+  if (request.method === 'GET' && url.pathname === '/api/project/artifacts') return json(response, 200, await store.artifacts());
+  const artifactRoute = url.pathname.match(/^\/api\/artifacts\/(art-[a-f0-9]{16})(\/content)?$/);
+  if (request.method === 'GET' && artifactRoute) return artifactResponse(response, store, artifactRoute[1], Boolean(artifactRoute[2]), url.searchParams.get('download') === '1');
   if (request.method === 'GET' && url.pathname === '/api/project/reference-map') return json(response, 200, await store.referenceMap());
   if (request.method === 'GET' && url.pathname === '/api/project/live-build') return json(response, 200, await store.liveBuildStatus());
   if (request.method === 'GET' && url.pathname === '/api/project/page-map') {
@@ -223,6 +260,9 @@ await defaultStore.initialize();
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
   try {
+    // Suite settings belong to the gateway, not to a book.
+    const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
+    if (relay) { const result = await gatewaySettings(relay[0], relay[1], relay[0] === 'PUT' ? await body(request) : undefined); return json(response, result.status, result.body); }
     if (url.pathname.startsWith('/api/')) {
       const activeStore = await storeFor(url);
       const handled = await api(request, response, url, activeStore);
@@ -236,7 +276,7 @@ http.createServer(async (request, response) => {
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await serveFile(response, file);
   } catch (error) {
-    json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' ? 409 : 400, { error: error.message || 'Unexpected server error.' });
+    json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400, { error: error.message || 'Unexpected server error.' });
   }
 }).listen(port, '127.0.0.1', () => {
   console.log(`TexGraph Studio is ready at http://127.0.0.1:${port}`);
