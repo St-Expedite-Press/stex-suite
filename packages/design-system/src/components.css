@@ -1,0 +1,52 @@
+/* Shared components. Add one only when a page needs it (see ../AGENTS.md). */
+
+/* Button: an <a> or <button>. Primary is the one main action on a screen. */
+.stex-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--stex-space-2);
+  min-height: var(--stex-control-height); padding: 0 var(--stex-space-5);
+  border: var(--stex-hairline) solid transparent; border-radius: var(--stex-radius-control);
+  font: 500 15px/1.2 var(--stex-font-sans); letter-spacing: .01em; text-decoration: none; text-align: center;
+  cursor: pointer;
+  transition: background-color var(--stex-duration) var(--stex-ease), border-color var(--stex-duration) var(--stex-ease), color var(--stex-duration) var(--stex-ease);
+}
+.stex-button--primary { background: var(--stex-action); color: var(--stex-action-text); }
+.stex-button--primary:hover { background: var(--stex-action-hover); }
+.stex-button--secondary { background: transparent; border-color: var(--stex-border-control); color: var(--stex-text); }
+.stex-button--secondary:hover { background: var(--stex-surface-hover); }
+.stex-button--destructive { background: transparent; border-color: var(--stex-destructive); color: var(--stex-destructive); }
+.stex-button--destructive:hover { background: var(--stex-surface-hover); }
+.stex-button:is(:disabled, [aria-disabled="true"]) { opacity: .5; cursor: not-allowed; }
+
+/* Frame: a solid, hairline-bordered plate. No blur, glow, or gradient. */
+.stex-frame { background: var(--stex-bg); border: var(--stex-hairline) solid var(--stex-frame); border-radius: 0; }
+
+/* Wordmark: STEX over the product name in spaced capitals. The source text
+   stays in normal case so screen readers say "Pantheon", not P-A-N-T-H-E-O-N.
+   Negative end margins cancel the trailing letter-space so it centres optically. */
+.stex-wordmark {
+  --stex-wordmark-size: 52px;
+  display: grid; justify-items: center; margin: 0;
+  font-family: var(--stex-font-display); font-weight: 500; line-height: 1; text-transform: uppercase; color: var(--stex-text);
+}
+.stex-wordmark__org { font-size: calc(var(--stex-wordmark-size) * .4); letter-spacing: .42em; margin-inline-end: -.42em; margin-block-end: .4em; }
+.stex-wordmark__org abbr { text-decoration: none; }
+.stex-wordmark__name { font-size: var(--stex-wordmark-size); letter-spacing: .16em; margin-inline-end: -.16em; }
+
+/* Emblem and ornament: single-colour SVGs drawn with currentColor via a mask. */
+.stex-emblem, .stex-laurel { display: inline-block; flex: none; background: currentColor; -webkit-mask: var(--stex-mark) center / contain no-repeat; mask: var(--stex-mark) center / contain no-repeat; }
+.stex-emblem { --stex-mark: url("../brand/pantheon-emblem.svg"); width: 64px; height: 64px; color: var(--stex-frame); }
+.stex-emblem--small { --stex-mark: url("../brand/pantheon-emblem-small.svg"); width: 16px; height: 16px; }
+.stex-laurel { --stex-mark: url("../brand/pantheon-laurel.svg"); width: 32px; height: 32px; }
+
+/* Rule: hairlines either side of an optional centred mark. */
+.stex-rule { display: flex; align-items: center; gap: var(--stex-space-4); color: var(--stex-frame); }
+.stex-rule::before, .stex-rule::after { content: ""; flex: 1; height: var(--stex-hairline); background: currentColor; }
+
+/* Quiet metadata: status lines, timestamps, counts. */
+.stex-meta { margin: 0; font: 400 13px/1.4 var(--stex-font-sans); color: var(--stex-text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stex-button { transition: none; }
+}
+
+.stex-visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

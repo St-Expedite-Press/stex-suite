@@ -43,7 +43,7 @@ function basePath(value) {
   return normalized;
 }
 const mountedAt = basePath(configuration('STEX_FRIGE_BASE_PATH', 'TEXGRAPH_BASE_PATH', ''));
-const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/' : '')).trim() || '/';
+const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/home/' : '')).trim() || '/';
 
 const mimeTypes = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf' };
 // The proof viewer's PDF.js browser build; only these two files are exposed.

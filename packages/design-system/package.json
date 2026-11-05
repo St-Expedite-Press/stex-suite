@@ -1,0 +1,16 @@
+{
+  "name": "@stex/design-system",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shared STEX tokens, typography, components, and brand marks as plain CSS and SVG",
+  "type": "module",
+  "exports": {
+    "./stex.css": "./src/stex.css",
+    "./tokens.css": "./src/tokens.css",
+    "./fonts/*": "./fonts/*",
+    "./brand/*": "./brand/*",
+    "./package.json": "./package.json"
+  },
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=22.13.0" }
+}

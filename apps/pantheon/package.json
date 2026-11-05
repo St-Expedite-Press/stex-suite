@@ -4,5 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": { "dev": "node server.mjs", "start": "node server.mjs", "test": "node --test" },
+  "dependencies": { "@stex/design-system": "workspace:*" },
   "engines": { "node": ">=22.13.0" }
 }

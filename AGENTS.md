@@ -16,8 +16,10 @@ the authoritative status table and [`docs/verification/`](docs/verification/)
 holds acceptance evidence; update those, not this file, when status moves.
 
 - **Active, implemented and tested locally:** Frige (`apps/frige`),
-  Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`), and the
-  `stex.hermes.turn.v1` fake/remote client in `services/inference`.
+  Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`) with its
+  public splash, the shared design system (`packages/design-system`), the
+  brand asset library (`assets`), and the `stex.hermes.turn.v1` fake/remote
+  client in `services/inference`.
 - **Registered but deferred:** Eostre (`apps/eostre`) and Woden
   (`apps/woden`) — shell entries with an honest deferred state only.
 - **Not done or unverified:** any real remote Hermes exchange, provider calls,
@@ -51,6 +53,8 @@ and authorization.
 | `services/knowledge` | Optional read-only User Graph adapter | — | — | `test:knowledge` |
 | `vault` | Optional, portable Obsidian User Graph | — | — | adapter tests |
 | `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
+| `packages/design-system` | Shared CSS tokens, type, components, brand marks; no app logic | `/design-system/` | — | `test:design-system` |
+| `assets` | Brand masters, reference comps, and the asset manifest (Git LFS) | — | — | `test:assets` |
 | `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
 
 Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
@@ -61,7 +65,7 @@ for Frige proof tests.
 
 ```powershell
 corepack pnpm install --frozen-lockfile
-corepack pnpm test                  # Lab, Frige, inference, Seaxneat suites
+corepack pnpm test                  # assets, design system, and every app suite
 corepack pnpm run test:<suite>      # one owning suite
 corepack pnpm build:seaxneat        # React production build
 corepack pnpm dev:alpha             # shell + apps + fake inference, loopback only
@@ -76,6 +80,9 @@ and the `protocol/` contracts you will cross. Current nested charters:
 - `apps/frige/AGENTS.md` — Frige engineering rules.
 - `apps/frige/books/*/AGENTS.md` — per-manuscript editorial rules.
 - `hermes/AGENTS.md` — declarative Hermes configuration rules.
+- `packages/design-system/AGENTS.md` — interface engineering rules. **Read it
+  for any UI, styling, artwork, or asset change in any application**, not only
+  inside `packages/`.
 - `.github/agents/stex-documentation-director.agent.md` — documentation work.
 
 Each `AGENTS.md` has a sibling `CLAUDE.md` that only imports it (`@AGENTS.md`);
@@ -150,6 +157,10 @@ workflow requires it.
 
 - Pantheon routes and proxies; it owns no product state and adds no shared store.
   Deferred products render an honest deferred state, not partial workflows.
+- `/` is the public splash; `/home/` is the command center. The splash's
+  **Sign in** is a local single-user entry with no credential check or
+  session. Do not present it as authentication or add account flows without
+  an authorised identity milestone.
 - **Known conflict:** `apps/pantheon/server.mjs` still serves legacy `/api/books`
   routes. Do not extend them or add similar routes; moving that behavior behind
   a Frige-owned API remains a candidate milestone.

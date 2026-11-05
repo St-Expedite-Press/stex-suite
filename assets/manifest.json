@@ -1,0 +1,299 @@
+{
+  "schemaVersion": "stex.assets.manifest.v1",
+  "assets": [
+    {
+      "id": "P01",
+      "title": "Splash still",
+      "owner": "pantheon",
+      "kind": "illustration",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/pantheon/pantheon-splash-still.png",
+        "sourceName": "pantheon_v2_subtle_s27.mp4 (frame 24)",
+        "sha256": "88288642919b577afcc75261f7d65abfd2c722eb5bf953726343a925ed265b45",
+        "bytes": 3302002,
+        "width": 1920,
+        "height": 1080
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Lossless extraction of frame 24 of the P10 master, which is the first frame of the built loop, so the still and the motion meet without a jump. No higher-resolution original exists; 1920x1080 is the master of record."
+      },
+      "usage": "Splash background before and instead of motion (reduced motion, data saver, no JavaScript). Source for the command-center masthead crop (P02).",
+      "alt": "Decorative on the splash (empty alt). Where it is content: a seated youth on a rocky outcrop beneath an old tree looks up at a radiant figure who reaches out from storm clouds across a river valley.",
+      "focal": {
+        "seatedFigure": [
+          0.07,
+          0.5,
+          0.4,
+          0.95
+        ],
+        "celestialFigure": [
+          0.57,
+          0,
+          0.99,
+          0.5
+        ],
+        "gaze": [
+          0.245,
+          0.555,
+          0.745,
+          0.162
+        ],
+        "reachingHand": [
+          0.6,
+          0.23
+        ],
+        "panelLimit": [
+          0.42,
+          0.52
+        ],
+        "panelZone": [
+          0.7,
+          0.52,
+          0.97,
+          0.96
+        ]
+      },
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-still-1920w.webp",
+          "sha256": "933ad7a0814dc48d450885bc5a6f9ebb8ceb9ce16de52137fbbfd874929d622e",
+          "bytes": 326914,
+          "width": 1920,
+          "height": 1080,
+          "budgetBytes": 420000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-still-1280w.webp",
+          "sha256": "885bf7299f24b688d6be06990bf563161cb906705d35050753b576191376da0d",
+          "bytes": 191844,
+          "width": 1280,
+          "height": 720,
+          "budgetBytes": 240000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-still-960w.webp",
+          "sha256": "8cff8bba76bf2bbeb0cb0e666cc4b155f048b014c8fec093a0f486745cbb93cc",
+          "bytes": 124070,
+          "width": 960,
+          "height": 540,
+          "budgetBytes": 150000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        }
+      ]
+    },
+    {
+      "id": "P03",
+      "title": "Pantheon emblem",
+      "owner": "pantheon",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "packages/design-system/brand/pantheon-emblem.svg",
+        "sha256": "3a261689865bad057ba7bd08e893e1bc42144fd0376c3b4bbf21cc607cb14050",
+        "bytes": 284,
+        "viewBox": "0 0 64 64"
+      },
+      "variants": [
+        {
+          "path": "packages/design-system/brand/pantheon-emblem-small.svg",
+          "sha256": "8fea4fa1ec1b88881bac5964d9b78a496f86ce39c5fbe28b7860258f47ec97d8",
+          "bytes": 243,
+          "viewBox": "0 0 16 16",
+          "usage": "Heavier hairlines for 16-24px."
+        }
+      ],
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Engraved cross-star of near-uniform hairlines around an open centre, redrawn as vector geometry from the four-point star in R01. Deliberately not a tapered sparkle, which reads as the generic AI-feature icon."
+      },
+      "usage": "Institutional mark: splash panel, compact headers, favicon (P07). Single colour via currentColor or a CSS mask.",
+      "alt": "Decorative beside the wordmark (aria-hidden). Standalone: \"STEX Pantheon\".",
+      "derivatives": []
+    },
+    {
+      "id": "P04",
+      "title": "Laurel rule ornament",
+      "owner": "pantheon",
+      "kind": "ornament",
+      "revision": 1,
+      "master": {
+        "path": "packages/design-system/brand/pantheon-laurel.svg",
+        "sha256": "5ef88a461227e9ea868b43262409fa39e684fea9c816197c1283b71ad3bb2169",
+        "bytes": 1775,
+        "viewBox": "0 0 32 32"
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Open laurel with crossed stems, vector redraw of the laurel in R01. Paired with CSS hairline rules, never an image of a rule."
+      },
+      "usage": "Ceremonial divider on the splash panel only. Not for editorial or instrumental screens.",
+      "alt": "Decorative (aria-hidden).",
+      "derivatives": []
+    },
+    {
+      "id": "P07",
+      "title": "Favicon",
+      "owner": "pantheon",
+      "kind": "icon",
+      "revision": 1,
+      "master": {
+        "path": "packages/design-system/brand/pantheon-favicon.svg",
+        "sha256": "217355f49c436961da0ac1308d0d5190e9ed84a809af8e7d80a9ba2573f3dcc3",
+        "bytes": 290,
+        "viewBox": "0 0 32 32"
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "P03 hairline star in Warm Vellum on an Abyssal Ink tile, so it reads on light and dark browser chrome."
+      },
+      "usage": "Browser tab icon for Pantheon pages.",
+      "alt": "Not applicable.",
+      "derivatives": []
+    },
+    {
+      "id": "P10",
+      "title": "Splash animation",
+      "owner": "pantheon",
+      "kind": "motion",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/pantheon/pantheon-splash-loop.mp4",
+        "sourceName": "pantheon_v2_subtle_s27.mp4",
+        "sha256": "4f0424f4b12805a9119f016f389fbcc647cc167617b9aef1d773d7f23f08888f",
+        "bytes": 11782355,
+        "width": 1920,
+        "height": 1080,
+        "frames": 289,
+        "frameRate": 24
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Original 12.04 s render; no audio track. Locked camera; motion is confined to sky, sun rays, and river shimmer."
+      },
+      "usage": "Splash background loop. Built loop is 265 frames (11.04 s): see scripts/assets/build-splash.mjs for the seam treatment.",
+      "alt": "Decorative; hidden from assistive technology. See P01 for a description.",
+      "focal": {
+        "seatedFigure": [
+          0.07,
+          0.5,
+          0.4,
+          0.95
+        ],
+        "celestialFigure": [
+          0.57,
+          0,
+          0.99,
+          0.5
+        ],
+        "gaze": [
+          0.245,
+          0.555,
+          0.745,
+          0.162
+        ],
+        "reachingHand": [
+          0.6,
+          0.23
+        ],
+        "panelLimit": [
+          0.42,
+          0.52
+        ],
+        "panelZone": [
+          0.7,
+          0.52,
+          0.97,
+          0.96
+        ]
+      },
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1920w.webm",
+          "sha256": "7a5e17137e31edf8225d6b364ffd6343e1e7a59378634889d7853e4c5db31868",
+          "bytes": 2046582,
+          "width": 1920,
+          "height": 1080,
+          "budgetBytes": 2500000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1920w.mp4",
+          "sha256": "4ed80b82f4ee4d98a3082c2be5d94b8a0b61bf0b588ba0edde8c2a6b4c12fffc",
+          "bytes": 3404003,
+          "width": 1920,
+          "height": 1080,
+          "budgetBytes": 3500000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1280w.webm",
+          "sha256": "712b0504ad2ab3be71eb945ea96d44b09c78957bfe6882566bd7f1fa92fccdac",
+          "bytes": 1041027,
+          "width": 1280,
+          "height": 720,
+          "budgetBytes": 1400000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1280w.mp4",
+          "sha256": "8cc0881b3d4d5ee03a09431af18aa2eb7dfd099b70969a7be3e39352ac9aa634",
+          "bytes": 1612522,
+          "width": 1280,
+          "height": 720,
+          "budgetBytes": 1800000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-960w.webm",
+          "sha256": "835e8c3ba0d995991433843110d7ebeac7eee1836583f033d5052ecfa65b172d",
+          "bytes": 665322,
+          "width": 960,
+          "height": 540,
+          "budgetBytes": 800000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        },
+        {
+          "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-960w.mp4",
+          "sha256": "fda36647d564400fc91ccb7025325e70c5182e006e8fd3ca93fe4daea9ea3598",
+          "bytes": 993186,
+          "width": 960,
+          "height": 540,
+          "budgetBytes": 1000000,
+          "recipe": "scripts/assets/build-splash.mjs"
+        }
+      ]
+    },
+    {
+      "id": "R01",
+      "title": "Splash panel comp",
+      "owner": "pantheon",
+      "kind": "reference",
+      "revision": 1,
+      "master": {
+        "path": "assets/reference/pantheon-splash-panel-comp.png",
+        "sourceName": "2904b63b-ec96-4932-8c17-0c29e2d6cb80.png",
+        "sha256": "b4f5dc34ddd20d41ba2d0f2b7b4ac4e16e583be2c241a7a1ebe04427b4cb75a3",
+        "bytes": 1549094,
+        "width": 1199,
+        "height": 1312
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Approved design comp for the splash entrance panel. Reference only: its lettering and buttons are raster and must never ship."
+      },
+      "usage": "Visual comparison for the live HTML panel.",
+      "alt": "Not shipped.",
+      "derivatives": []
+    }
+  ]
+}

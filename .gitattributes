@@ -1,0 +1,9 @@
+# Binary brand media lives in Git LFS (see assets/README.md). SVG, CSS, font
+# files, and manifests stay in ordinary Git so they diff and review.
+assets/masters/** filter=lfs diff=lfs merge=lfs -text
+assets/reference/** filter=lfs diff=lfs merge=lfs -text
+apps/*/public/media/** filter=lfs diff=lfs merge=lfs -text
+
+# Brand SVGs are checksummed in assets/manifest.json: keep their bytes (LF)
+# identical on every platform, whatever core.autocrlf says.
+packages/design-system/brand/*.svg text eol=lf

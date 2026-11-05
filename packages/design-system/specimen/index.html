@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-stex-app="pantheon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Design system specimen · STEX</title>
+  <link rel="icon" href="../brand/pantheon-favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../src/stex.css">
+  <style>
+    /* Specimen layout only; nothing here is part of the design system. */
+    body { max-width: 1040px; margin: 0 auto; padding: 48px 16px 64px; }
+    h1 { margin: 0 0 8px; font: 500 44px/1.1 var(--stex-font-display); }
+    h2 { margin: 48px 0 16px; padding-top: 16px; border-top: 1px solid var(--stex-border-decor); font: 500 13px/1 var(--stex-font-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--stex-text-muted); }
+    .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+    .swatches li { display: grid; gap: 4px; font: 400 12px/1.3 var(--stex-font-mono); color: var(--stex-text-secondary); }
+    .swatches i { display: block; height: 56px; border: 1px solid var(--stex-border-decor); background: var(--c); }
+    .studios { display: grid; gap: 1px; background: var(--stex-border-decor); border: 1px solid var(--stex-border-decor); }
+    .studio { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 16px 24px; background: var(--stex-surface); }
+    .studio strong { min-width: 9rem; font: 500 24px/1.2 var(--stex-font-serif); border-inline-start: 2px solid var(--stex-accent); padding-inline-start: 12px; }
+    .studio code { font: 400 13px/1 var(--stex-font-mono); color: var(--stex-accent); }
+    .type > * { margin: 0 0 16px; }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .status { display: flex; flex-wrap: wrap; gap: 24px; font: 500 14px/1.4 var(--stex-font-sans); }
+  </style>
+</head>
+<body>
+  <h1>Design system specimen</h1>
+  <p class="stex-meta">@stex/design-system · tokens, type roles, controls, and the five studio accents. Values are checked by packages/design-system/test.</p>
+
+  <h2>Surfaces and text</h2>
+  <ul class="swatches">
+    <li><i style="--c: var(--stex-abyssal-ink)"></i>Abyssal Ink #0B1518</li>
+    <li><i style="--c: var(--stex-cabinet-black)"></i>Cabinet Black #111D20</li>
+    <li><i style="--c: var(--stex-raised-slate)"></i>Raised Slate #19272B</li>
+    <li><i style="--c: var(--stex-mineral-slate)"></i>Mineral Slate #25353A</li>
+    <li><i style="--c: var(--stex-engraving-slate)"></i>Engraving Slate #4D6268 · decoration only</li>
+    <li><i style="--c: var(--stex-primary-parchment)"></i>Primary Parchment #F0E2C8</li>
+    <li><i style="--c: var(--stex-secondary-text)"></i>Secondary Text #BFC8C2</li>
+    <li><i style="--c: var(--stex-muted-text)"></i>Muted Text #9FA9A5</li>
+    <li><i style="--c: var(--stex-warm-vellum)"></i>Warm Vellum #DBC39B</li>
+    <li><i style="--c: var(--stex-antique-ochre)"></i>Antique Ochre #BA9866</li>
+    <li><i style="--c: var(--stex-oxidized-copper)"></i>Oxidized Copper #76503D · decoration only</li>
+  </ul>
+
+  <h2>Studio accents</h2>
+  <div class="studios">
+    <div class="studio" data-stex-app="pantheon"><strong>Pantheon</strong><code>Antique Ochre #BA9866</code><button class="stex-button stex-button--secondary" type="button">Focus me</button></div>
+    <div class="studio" data-stex-app="frige"><strong>Frige</strong><code>Dusty Garnet #C58F96</code><button class="stex-button stex-button--secondary" type="button">Compile proof</button></div>
+    <div class="studio" data-stex-app="seaxneat"><strong>Seaxneat</strong><code>Azurite #8CAEC4</code><button class="stex-button stex-button--secondary" type="button">Inspect build</button></div>
+    <div class="studio" data-stex-app="eostre"><strong>Ēostre</strong><code>Burnished Amber #D69B65</code><button class="stex-button stex-button--secondary" type="button">Export separation</button></div>
+    <div class="studio" data-stex-app="woden"><strong>Woden</strong><code>Juniper #A9B998</code><button class="stex-button stex-button--secondary" type="button">Open story graph</button></div>
+  </div>
+
+  <h2>Type roles</h2>
+  <div class="type">
+    <p style="font: 500 52px/1.05 var(--stex-font-display)">Cormorant Garamond — display, 28px and above</p>
+    <p style="font: 400 24px/1.35 var(--stex-font-serif)">EB Garamond — studio and project names, Ēostre, <em>Books, images, software, and stories.</em></p>
+    <p style="font: 400 16px/1.5 var(--stex-font-sans)">Inter — navigation, controls, labels, metadata, notices, and form text. Ēostre · 0123456789</p>
+    <p style="font: 400 14px/1.5 var(--stex-font-mono)">IBM Plex Mono — apps/seaxneat/.local-data/projects/field-notes · stex://frige/book/field-notes</p>
+  </div>
+
+  <h2>Controls</h2>
+  <div class="row">
+    <a class="stex-button stex-button--primary" href="#controls">Review revision</a>
+    <button class="stex-button stex-button--secondary" type="button">Open manuscript</button>
+    <button class="stex-button stex-button--destructive" type="button">Delete draft</button>
+    <button class="stex-button stex-button--secondary" type="button" disabled>Unavailable</button>
+  </div>
+
+  <h2>Status</h2>
+  <div class="status">
+    <span style="color: var(--stex-success)">✓ Proof compiled</span>
+    <span style="color: var(--stex-warning)">! Overfull line on page 12</span>
+    <span style="color: var(--stex-error)">✕ Build failed</span>
+    <span style="color: var(--stex-info)">i Revision pending review</span>
+  </div>
+
+  <h2>Marks</h2>
+  <div class="row" style="color: var(--stex-frame)">
+    <span class="stex-emblem" aria-hidden="true"></span>
+    <span class="stex-emblem stex-emblem--small" aria-hidden="true"></span>
+    <span class="stex-laurel" aria-hidden="true"></span>
+    <h3 class="stex-wordmark" style="--stex-wordmark-size: 40px"><span class="stex-wordmark__org"><abbr title="St. Expedite Press">STEX</abbr></span> <span class="stex-wordmark__name">Pantheon</span></h3>
+  </div>
+  <div class="stex-rule" style="margin-top: 24px"><span class="stex-laurel" aria-hidden="true"></span></div>
+</body>
+</html>

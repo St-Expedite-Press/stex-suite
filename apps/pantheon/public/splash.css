@@ -1,0 +1,103 @@
+/* Pantheon public splash (ceremonial register): the P10 loop behind a live
+   entrance panel. The panel never covers the two figures or the gaze between
+   them; regions are recorded in assets/manifest.json and checked by
+   scripts/verify-splash.mjs. Three layouts:
+   - stacked (portrait and narrow): art band above the panel;
+   - split (short landscape): art beside the panel;
+   - overlay (landscape with room): panel set into the art's lower right. */
+
+.splash { min-height: 100svh; background: var(--stex-bg); }
+
+.splash-art { position: relative; overflow: hidden; aspect-ratio: 16 / 10; background: var(--stex-bg); }
+.splash-art :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 42% 35%; }
+.splash-motion { opacity: 0; transition: opacity 600ms var(--stex-ease); }
+.splash.has-motion .splash-motion { opacity: 1; }
+
+.splash-entrance { display: grid; justify-items: center; padding: var(--stex-space-4) var(--stex-space-4) var(--stex-space-7); }
+
+.splash-panel {
+  --gap: 18px; --pad: 36px; --emblem: 52px; --mark: 40px; --tagline: 20px;
+  display: grid; justify-items: center; gap: var(--gap);
+  width: min(100%, 440px);
+  padding: var(--pad) clamp(18px, 5%, 32px) calc(var(--pad) * .75);
+  text-align: center;
+}
+.splash-emblem { width: var(--emblem); height: var(--emblem); }
+.splash-wordmark { --stex-wordmark-size: clamp(36px, 11vw, 52px); justify-self: stretch; }
+/* The presenter line is far longer than "STEX": text-size serif, modest
+   tracking, and balanced wrapping on the narrowest panels. */
+.splash-wordmark .stex-wordmark__org {
+  max-width: 100%; font-family: var(--stex-font-serif); font-size: max(12px, calc(var(--stex-wordmark-size) * .26));
+  letter-spacing: .16em; margin-inline-end: -.16em; margin-block-end: .55em; line-height: 1.3; text-wrap: balance;
+}
+.splash-rule { width: 100%; }
+.splash-rule .stex-laurel { width: var(--mark); height: var(--mark); }
+.splash-tagline { margin: 0; font: italic 400 var(--tagline) / 1.35 var(--stex-font-serif); color: var(--stex-text); }
+.splash-action { width: 100%; }
+
+.splash-footer { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--stex-space-1) var(--stex-space-3); }
+.splash-motion-toggle {
+  min-height: 24px; padding: 0 var(--stex-space-1); border: 0; border-radius: var(--stex-radius);
+  background: none; color: var(--stex-text-muted); font: 400 13px / 1.4 var(--stex-font-sans);
+  text-decoration: underline; text-decoration-color: var(--stex-border-decor); text-underline-offset: 3px; cursor: pointer;
+}
+.splash-motion-toggle:hover { color: var(--stex-text); text-decoration-color: currentColor; }
+
+/* The smallest phones: keep Sign in on the first screen. */
+@media (max-width: 359px) {
+  .splash-panel { --gap: 14px; --pad: 28px; --emblem: 44px; --mark: 34px; }
+}
+
+/* Landscape (split and overlay): the entrance is a size container and the
+   panel scales to it. When the region is short the panel sheds the emblem,
+   then the laurel rule; the wordmark and Sign in always stay. */
+@media (min-aspect-ratio: 5 / 4) {
+  .splash-entrance { container-type: size; }
+  .splash-panel {
+    --gap: clamp(6px, 3.2cqh, 20px); --pad: clamp(14px, 7cqh, 40px); --emblem: clamp(24px, 10cqh, 56px);
+    --mark: clamp(24px, 8cqh, 40px); --tagline: clamp(16px, 4.6cqh, 21px);
+  }
+  .splash-wordmark { --stex-wordmark-size: clamp(28px, 11cqh, 52px); }
+  @container (max-height: 340px) { .splash-emblem { display: none; } }
+  .splash-panel { padding-inline: 20px; }
+  @container (max-height: 300px) { .splash-panel { --pad: 12px; } .splash-wordmark .stex-wordmark__org { letter-spacing: .1em; margin-inline-end: -.1em; } }
+  @container (max-height: 270px) { .splash-rule { display: none; } }
+}
+
+/* Short landscape screens (phones turned sideways, small windows): art beside
+   the panel, framed to keep both figures and the gaze in view. */
+@media (min-aspect-ratio: 5 / 4) and (max-width: 899.98px), (min-aspect-ratio: 5 / 4) and (max-height: 639.98px) {
+  .splash { display: grid; grid-template-columns: minmax(0, 1fr) auto; height: 100svh; overflow: hidden; }
+  .splash-art { aspect-ratio: auto; height: 100svh; }
+  .splash-art :is(img, video) { object-position: 40% 35%; }
+  .splash-entrance { width: clamp(300px, 40vw, 440px); height: 100svh; padding: var(--stex-space-3) var(--stex-space-4); display: flex; align-items: center; justify-content: center; }
+  .splash-panel { width: 100%; }
+}
+
+/* Landscape screens with room: the art covers the viewport and the panel is
+   set into its lower right. The entrance region is computed from the same
+   cover geometry as the 16:9 artwork, so it always begins at artwork
+   y = --zone-top (below the celestial figure) and x >= --zone-left (right of
+   the seated figure and the gaze between them), whatever the screen shape.
+   Wider than 16:9 crops the river rather than the sun (--art-y). */
+@media (min-width: 900px) and (min-height: 640px) and (min-aspect-ratio: 5 / 4) {
+  .splash {
+    --art-y: .35; --zone-top: .52; --zone-left: .42;
+    --art-height: max(100svh, 56.25vw); --art-width: max(100vw, 177.78svh);
+    position: relative; height: 100svh; overflow: hidden;
+  }
+  .splash-art { position: absolute; inset: 0; aspect-ratio: auto; }
+  .splash-art :is(img, video) { object-position: 50% calc(var(--art-y) * 100%); }
+  .splash-entrance {
+    position: absolute; padding: 0;
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    top: calc(var(--art-y) * 100svh + (var(--zone-top) - var(--art-y)) * var(--art-height));
+    left: calc(50vw + (var(--zone-left) - .5) * var(--art-width));
+    right: clamp(32px, 4vw, 96px); bottom: clamp(20px, 4vh, 64px);
+  }
+  .splash-panel { width: min(100cqw, clamp(336px, 23vw, 460px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-motion { transition: none; }
+}

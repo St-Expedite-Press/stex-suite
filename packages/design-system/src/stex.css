@@ -1,0 +1,8 @@
+/* @stex/design-system entry point. The layer order is declared once here.
+   Application styles stay unlayered (or in a later layer) so they always win. */
+@layer stex.tokens, stex.base, stex.components;
+
+@import url("fonts.css");
+@import url("tokens.css") layer(stex.tokens);
+@import url("base.css") layer(stex.base);
+@import url("components.css") layer(stex.components);

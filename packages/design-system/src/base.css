@@ -1,0 +1,19 @@
+/* Base defaults, scoped to pages that opt in with data-stex-app and wrapped in
+   :where() so they have zero specificity. No element typography lives here:
+   manuscripts, proofs, generated sites, and canvases keep their own styles. */
+:where(html[data-stex-app]) {
+  color-scheme: dark;
+  background: var(--stex-bg);
+  color: var(--stex-text);
+  font: 400 16px/1.5 var(--stex-font-sans);
+  font-synthesis: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+:where([data-stex-app]) :where(body) { margin: 0; }
+:where([data-stex-app]) :where(*, *::before, *::after) { box-sizing: border-box; }
+:where([data-stex-app]) :where(:focus-visible) { outline: 2px solid var(--stex-focus); outline-offset: 2px; }
+
+/* Reduced motion is handled by each component that moves (see components.css),
+   not by a global override that would also freeze proof viewers, editors, and
+   canvases inside the applications. */

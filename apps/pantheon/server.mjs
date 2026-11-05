@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { deferredPage, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
 
@@ -18,7 +20,13 @@ const proxyTargets = {
   frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310'),
   seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
 };
-const mime = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+const mime = {
+  '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
+};
+// The shared design system is served from its own package; only its public folders are reachable.
+const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
+const designSystemFolders = new Set(['src', 'fonts', 'brand', 'specimen']);
 
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
 function requireBookId(id) { if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id)) throw new Error('Invalid book id.'); return id; }
@@ -168,7 +176,36 @@ async function reviewDocument(id, documentId, payload) {
   await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return document;
 }
 
-async function staticFile(response, file) { try { await access(file); response.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' }); createReadStream(file).pipe(response); } catch { send(response, 404, { error: 'Not found.' }); } }
+// Static files revalidate by ETag and honour a single byte range, which browsers
+// (Safari in particular) require before they will play <video>.
+async function staticFile(request, response, file) {
+  let info;
+  try { info = await stat(file); } catch { return send(response, 404, { error: 'Not found.' }); }
+  if (!info.isFile()) return send(response, 404, { error: 'Not found.' });
+  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  const headers = { 'content-type': mime[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache', etag, 'last-modified': info.mtime.toUTCString(), 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff' };
+  if (request.headers['if-none-match'] === etag) { response.writeHead(304, headers); response.end(); return; }
+  let start = 0; let end = info.size - 1; let status = 200;
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range || '');
+  // An invalid range (last before first) is ignored and the whole file is sent.
+  if (range && (range[1] || range[2]) && !(range[1] && range[2] && Number(range[2]) < Number(range[1]))) {
+    if (range[1]) { start = Number(range[1]); end = range[2] ? Math.min(Number(range[2]), info.size - 1) : info.size - 1; }
+    else { start = Math.max(0, info.size - Number(range[2])); }
+    if (start >= info.size || start > end) { response.writeHead(416, { ...headers, 'content-range': `bytes */${info.size}` }); response.end(); return; }
+    status = 206; headers['content-range'] = `bytes ${start}-${end}/${info.size}`;
+  }
+  response.writeHead(status, { ...headers, 'content-length': info.size ? end - start + 1 : 0 });
+  if (request.method === 'HEAD' || !info.size) { response.end(); return; }
+  // pipeline closes the file when a browser aborts a range request and contains read errors.
+  pipeline(createReadStream(file, { start, end }), response, () => {});
+}
+
+function designSystemFile(pathname) {
+  const relative = pathname.slice('/design-system/'.length);
+  const file = path.resolve(designSystemDirectory, relative.endsWith('/') || !relative ? `${relative}index.html` : relative);
+  const folder = path.relative(designSystemDirectory, file).split(path.sep)[0];
+  return file.startsWith(`${designSystemDirectory}${path.sep}`) && designSystemFolders.has(folder) ? file : null;
+}
 
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
@@ -199,9 +236,15 @@ http.createServer(async (request, response) => {
     if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));
     const reviewMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents\/([a-f0-9]{16})\/review$/.exec(url.pathname);
     if (reviewMatch && request.method === 'POST') return send(response, 200, await reviewDocument(reviewMatch[1], reviewMatch[2], await body(request)));
-    const target = url.pathname === '/' ? '/suite.html' : url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
+    if (url.pathname === '/home') { response.writeHead(308, { location: `/home/${url.search}` }); response.end(); return; }
+    if (url.pathname.startsWith('/design-system/')) {
+      const file = designSystemFile(url.pathname);
+      return file ? await staticFile(request, response, file) : send(response, 404, { error: 'Not found.' });
+    }
+    // "/" is the public splash (index.html); "/home/" is the command center.
+    const target = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
     const file = path.resolve(publicDirectory, `.${target}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });
-    await staticFile(response, file);
+    await staticFile(request, response, file);
   } catch (error) { send(response, 400, { error: error.message || 'Request failed.' }); }
 }).listen(port, '127.0.0.1', () => console.log(`Pantheon is ready at http://127.0.0.1:${port}`));

@@ -57,6 +57,95 @@ test('routes compatibility aliases, deferred applications, and mounted loopback 
   assert.equal(unsafe.status, 404);
 });
 
+test('serves the public splash with a real local entry and no counterfeit authentication', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
+  await startPantheon(root, 4401, context);
+  const response = await fetch('http://127.0.0.1:4401/');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/html/);
+  const html = await response.text();
+  assert.match(html, /<html lang="en" data-stex-app="pantheon">/);
+  assert.match(html, /<h1[^>]*id="splash-title"/);
+  assert.match(html, /<a class="stex-button stex-button--primary splash-action" href="\/home\/" aria-describedby="splash-status">Sign in<\/a>/);
+  assert.match(html, /id="splash-status">Local workspace · single user/);
+  assert.doesNotMatch(html, /<form|type="password"|Create an account/i);
+  assert.match(html, /<div class="splash-art" aria-hidden="true">/);
+  assert.match(html, /<img class="splash-still" alt=""/);
+  const video = /<video[^>]*>/.exec(html)[0];
+  assert.doesNotMatch(video, /autoplay/);
+  for (const attribute of ['muted', 'loop', 'playsinline', 'preload="none"']) assert.ok(video.includes(attribute), attribute);
+  assert.match(html, /<button class="splash-motion-toggle" type="button" hidden>/);
+
+  const types = { '.webm': 'video/webm', '.mp4': 'video/mp4', '.webp': 'image/webp', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
+  const references = new Set([...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map(([, reference]) => reference));
+  for (const [, list] of html.matchAll(/srcset="([^"]+)"/g)) for (const candidate of list.split(',')) references.add(candidate.trim().split(/\s+/)[0]);
+  for (const reference of [...references].filter((entry) => !entry.endsWith('/'))) {
+    const asset = await fetch(`http://127.0.0.1:4401${reference}`, { method: 'HEAD' });
+    assert.equal(asset.status, 200, reference);
+    assert.equal(asset.headers.get('content-type'), types[path.extname(reference)], reference);
+    assert.equal(asset.headers.get('x-content-type-options'), 'nosniff');
+  }
+});
+
+test('moves the command center to /home/ and names deferred studios honestly', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
+  await startPantheon(root, 4402, context);
+  const bare = await fetch('http://127.0.0.1:4402/home', { redirect: 'manual' });
+  assert.equal(bare.status, 308); assert.equal(bare.headers.get('location'), '/home/');
+  const home = await (await fetch('http://127.0.0.1:4402/home/')).text();
+  for (const route of ['/frige/', '/seaxneat/', '/eostre/', '/woden/']) assert.ok(home.includes(`href="${route}"`), route);
+  assert.match(home, /Ēostre/);
+  const deferred = await (await fetch('http://127.0.0.1:4402/eostre/')).text();
+  assert.match(deferred, /data-stex-app="eostre"/);
+  assert.match(deferred, /<h1 class="home-title">Ēostre<\/h1>/);
+  assert.match(deferred, /Visual work and print production/);
+  assert.doesNotMatch(deferred, /undefined/);
+});
+
+test('serves byte ranges, revalidation, and HEAD for media', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
+  await startPantheon(root, 4403, context);
+  const url = 'http://127.0.0.1:4403/media/splash/pantheon-splash-loop-960w.webm';
+  const full = await fetch(url, { method: 'HEAD' });
+  const size = Number(full.headers.get('content-length'));
+  assert.equal(full.status, 200); assert.equal(full.headers.get('accept-ranges'), 'bytes'); assert.ok(size > 1000);
+  assert.equal((await full.arrayBuffer()).byteLength, 0);
+  const head = await fetch(url, { headers: { range: 'bytes=0-99' } });
+  assert.equal(head.status, 206); assert.equal(head.headers.get('content-range'), `bytes 0-99/${size}`);
+  assert.equal((await head.arrayBuffer()).byteLength, 100);
+  const tail = await fetch(url, { headers: { range: 'bytes=-10' } });
+  assert.equal(tail.status, 206); assert.equal(tail.headers.get('content-range'), `bytes ${size - 10}-${size - 1}/${size}`);
+  assert.equal((await tail.arrayBuffer()).byteLength, 10);
+  const open = await fetch(url, { headers: { range: `bytes=${size - 5}-` } });
+  assert.equal(open.status, 206); assert.equal((await open.arrayBuffer()).byteLength, 5);
+  const beyond = await fetch(url, { headers: { range: `bytes=${size}-` } });
+  assert.equal(beyond.status, 416); assert.equal(beyond.headers.get('content-range'), `bytes */${size}`);
+  const multiple = await fetch(url, { headers: { range: 'bytes=0-1,4-5' } });
+  assert.equal(multiple.status, 200); await multiple.arrayBuffer();
+  const reversed = await fetch(url, { headers: { range: 'bytes=5-3' } });
+  assert.equal(reversed.status, 200); assert.equal((await reversed.arrayBuffer()).byteLength, size);
+  // Aborting mid-stream must not take the server down.
+  const aborted = new AbortController();
+  const partial = await fetch(url, { signal: aborted.signal });
+  aborted.abort(); await partial.body?.cancel().catch(() => {});
+  assert.equal((await fetch(url, { method: 'HEAD' })).status, 200);
+  const cached = await fetch(url, { headers: { 'if-none-match': full.headers.get('etag') } });
+  assert.equal(cached.status, 304);
+});
+
+test('serves only the public folders of the shared design system', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
+  await startPantheon(root, 4404, context);
+  const css = await fetch('http://127.0.0.1:4404/design-system/src/stex.css');
+  assert.equal(css.status, 200); assert.match(await css.text(), /@layer stex\.tokens, stex\.base, stex\.components;/);
+  const specimen = await fetch('http://127.0.0.1:4404/design-system/specimen/');
+  assert.equal(specimen.status, 200); assert.match(specimen.headers.get('content-type'), /text\/html/); await specimen.arrayBuffer();
+  for (const blocked of ['/design-system/package.json', '/design-system/test/tokens.test.mjs', '/design-system/', '/design-system/brand/%2e%2e%2fpackage.json']) {
+    const response = await fetch(`http://127.0.0.1:4404${blocked}`);
+    assert.equal(response.status, 404, blocked); await response.arrayBuffer();
+  }
+});
+
 test('discovers a manuscript graph without changing it', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
   const manuscript = path.join(root, 'existing-book', 'manuscript');

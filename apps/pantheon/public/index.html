@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-stex-app="pantheon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>STEX Pantheon</title>
+  <meta name="description" content="STEX Pantheon: local studios for books, images, software, and stories.">
+  <meta name="theme-color" content="#0B1518">
+  <link rel="icon" href="/design-system/brand/pantheon-favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/design-system/fonts/cormorant-garamond-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/design-system/src/stex.css">
+  <link rel="stylesheet" href="/splash.css">
+  <script type="module" src="/splash.js"></script>
+</head>
+<body class="splash">
+  <div class="splash-art" aria-hidden="true">
+    <img class="splash-still" alt="" width="1920" height="1080" fetchpriority="high" decoding="async"
+      src="/media/splash/pantheon-splash-still-1920w.webp"
+      srcset="/media/splash/pantheon-splash-still-960w.webp 960w, /media/splash/pantheon-splash-still-1280w.webp 1280w, /media/splash/pantheon-splash-still-1920w.webp 1920w"
+      sizes="100vw">
+    <!-- No autoplay attribute: splash.js starts motion only when it is welcome. -->
+    <video class="splash-motion" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback tabindex="-1">
+      <source media="(max-width: 899px)" src="/media/splash/pantheon-splash-loop-960w.webm" type='video/webm; codecs="av01.0.04M.10"'>
+      <source media="(max-width: 899px)" src="/media/splash/pantheon-splash-loop-960w.mp4" type='video/mp4; codecs="avc1.64001F"'>
+      <source media="(max-width: 1279px)" src="/media/splash/pantheon-splash-loop-1280w.webm" type='video/webm; codecs="av01.0.05M.10"'>
+      <source media="(max-width: 1279px)" src="/media/splash/pantheon-splash-loop-1280w.mp4" type='video/mp4; codecs="avc1.64001F"'>
+      <source src="/media/splash/pantheon-splash-loop-1920w.webm" type='video/webm; codecs="av01.0.08M.10"'>
+      <source src="/media/splash/pantheon-splash-loop-1920w.mp4" type='video/mp4; codecs="avc1.640032"'>
+    </video>
+  </div>
+
+  <main class="splash-entrance">
+    <section class="splash-panel stex-frame" aria-labelledby="splash-title">
+      <span class="stex-emblem splash-emblem" aria-hidden="true"></span>
+      <h1 class="stex-wordmark splash-wordmark" id="splash-title">
+        <span class="stex-wordmark__org">St. Expedite Press Presents:</span>
+        <span class="stex-wordmark__name">Pantheon</span>
+      </h1>
+      <div class="stex-rule splash-rule" aria-hidden="true"><span class="stex-laurel"></span></div>
+      <p class="splash-tagline">Books, images, software, and stories.</p>
+      <!-- Local single-user entry until an identity milestone exists: no credentials, no session. -->
+      <a class="stex-button stex-button--primary splash-action" href="/home/" aria-describedby="splash-status">Sign in</a>
+      <div class="splash-footer">
+        <p class="stex-meta" id="splash-status">Local workspace · single user</p>
+        <button class="splash-motion-toggle" type="button" hidden>Pause motion</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

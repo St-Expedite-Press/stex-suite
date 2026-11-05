@@ -41,7 +41,7 @@ const children = [
   run(['pnpm', '--dir', 'apps/frige', 'dev'], {
     STEX_FRIGE_PORT: frigePort,
     STEX_FRIGE_BASE_PATH: '/frige',
-    STEX_FRIGE_SHELL_URL: '/',
+    STEX_FRIGE_SHELL_URL: '/home/',
     STEX_FRIGE_INFERENCE_MODE: 'fake',
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,
