@@ -50,3 +50,11 @@ provider call, deployment, or paid workload is part of A0 verification.
 See [MONOREPO.md](MONOREPO.md), [the protocol contracts](protocol/README.md),
 the [baseline evidence](docs/verification/alpha-baseline.md), and the
 [acceptance report](docs/verification/alpha-report.md).
+
+## Documentation
+
+- [Architecture whitepaper](docs/WHITEPAPER.md)
+- [User manual](docs/USER-MANUAL.md)
+- [Developer guide](docs/DEVELOPER-GUIDE.md)
+- [Design system](docs/DESIGN-SYSTEM.md)
+- [Implementation status](docs/STATUS.md)
