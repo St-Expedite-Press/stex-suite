@@ -3,16 +3,9 @@
    contrast limits are recorded for P02/P11 in assets/manifest.json. Light text
    over the art fails contrast except at its outer edges, so the brand never
    sits on visible art: wide screens fade the art out under it, narrower
-   screens give the brand its own solid row.
+   screens give the brand its own solid row. */
 
-   Romantic treatment (docs/DESIGN-SYSTEM.md, "Romantic voice"): the art
-   dissolves into the page instead of ending in a hard edge; one faint warm
-   light falls from the masthead's sun; surfaces are engraved plates rather
-   than boxes; italic serif carries the secondary voice. */
-
-/* The single light source: the masthead sun's warmth on the page, upper right.
-   Under 8% ochre, behind content only; it never tints a control. */
-.shell { min-height: 100svh; background: radial-gradient(ellipse 70% 45% at 82% 0%, color-mix(in srgb, var(--stex-antique-ochre) 7%, transparent), transparent 72%) no-repeat, var(--stex-bg); }
+.shell { min-height: 100svh; background: var(--stex-bg); }
 .skip-link { position: absolute; left: var(--stex-space-4); top: -48px; z-index: 2; padding: var(--stex-space-2) var(--stex-space-3); background: var(--stex-action); color: var(--stex-action-text); }
 .skip-link:focus { top: var(--stex-space-2); }
 
@@ -22,12 +15,7 @@
 .masthead-brand .stex-emblem { width: 40px; height: 40px; }
 .masthead-wordmark { --stex-wordmark-size: 28px; justify-items: start; }
 .masthead-wordmark .stex-wordmark__org { font-size: 13px; letter-spacing: .5em; margin-block-end: .5em; }
-/* The art dissolves downward into the page: no hard lower edge. */
-.masthead-art {
-  position: relative; overflow: hidden; height: clamp(80px, 20vw, 128px);
-  -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
-          mask-image: linear-gradient(to bottom, #000 58%, transparent);
-}
+.masthead-art { position: relative; overflow: hidden; height: clamp(72px, 18vw, 120px); background: var(--stex-bg); }
 .masthead-art :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 46%; }
 .masthead-motion { opacity: 0; transition: opacity 600ms var(--stex-ease); }
 .shell.has-motion .masthead-motion { opacity: 1; }
@@ -35,20 +23,16 @@
 
 @media (min-width: 1100px) {
   .masthead { --brand-inset: clamp(24px, 4vw, 64px); --clear: calc(var(--brand-inset) + 300px); position: relative; display: block; }
-  /* Two fades intersected: clear under the brand, dissolving into the page below. */
   .masthead-art {
-    height: clamp(120px, 16vh, 168px);
-    -webkit-mask-image: linear-gradient(to right, transparent var(--clear), #000 calc(var(--clear) + 18vw)), linear-gradient(to bottom, #000 55%, transparent);
-            mask-image: linear-gradient(to right, transparent var(--clear), #000 calc(var(--clear) + 18vw)), linear-gradient(to bottom, #000 55%, transparent);
-    -webkit-mask-composite: source-in;
-            mask-composite: intersect;
+    height: clamp(112px, 14vh, 150px);
+    -webkit-mask-image: linear-gradient(to right, transparent var(--clear), #000 calc(var(--clear) + 18vw));
+            mask-image: linear-gradient(to right, transparent var(--clear), #000 calc(var(--clear) + 18vw));
   }
   .masthead-brand { position: absolute; inset-block: 0; left: var(--brand-inset); padding: 0; }
 }
 
 /* Tabs */
-/* No rule above the tabs: the art fades into them. One hairline closes the head. */
-.tabs { display: flex; align-items: center; gap: var(--stex-space-4); padding-inline: clamp(8px, 4vw, 64px); border-block-end: var(--stex-hairline) solid var(--stex-border-decor); }
+.tabs { display: flex; align-items: center; gap: var(--stex-space-4); padding-inline: clamp(8px, 4vw, 64px); border-block: var(--stex-hairline) solid var(--stex-border-decor); }
 /* min-width: 0 lets the list shrink and scroll sideways instead of widening the page. */
 .tabs ul { display: flex; flex: 1; min-width: 0; gap: var(--stex-space-1); margin: 0; padding: 0; list-style: none; overflow-x: auto; scrollbar-width: none; }
 .tabs a { display: block; padding: var(--stex-space-3) var(--stex-space-4); color: var(--stex-text-secondary); font: 500 15px / 1.4 var(--stex-font-sans); text-decoration: none; white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; }
@@ -66,12 +50,10 @@
 /* Page */
 .page { max-width: 1200px; margin: 0 auto; padding: var(--stex-space-6) clamp(16px, 4vw, 64px) var(--stex-space-8); }
 .page > section + section { margin-top: var(--stex-space-7); }
-.page-title { margin: 0 0 var(--stex-space-3); font: 500 clamp(36px, 4.4vw, 52px) / 1.05 var(--stex-font-display); letter-spacing: .005em; }
-.page-lede { max-width: 40rem; margin: 0 0 var(--stex-space-6); font: italic 400 19px / 1.5 var(--stex-font-serif); color: var(--stex-text-secondary); }
+.page-title { margin: 0 0 var(--stex-space-3); font: 500 clamp(32px, 4vw, 44px) / 1.1 var(--stex-font-display); }
+.page-lede { max-width: 40rem; margin: 0 0 var(--stex-space-6); color: var(--stex-text-secondary); }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--stex-space-4); }
-.section-title { margin: 0 0 var(--stex-space-5); font: 500 clamp(32px, 3.4vw, 40px) / 1.1 var(--stex-font-display); letter-spacing: .005em; }
-/* The page's one ornament: an engraved rule with the small emblem. */
-.section-ornament { max-width: 28rem; margin: 0 auto var(--stex-space-7); color: color-mix(in srgb, var(--stex-frame) 70%, transparent); }
+.section-title { margin: 0 0 var(--stex-space-4); font: 500 32px / 1.15 var(--stex-font-display); }
 .section-link { color: var(--stex-text); font: 500 15px / 1.4 var(--stex-font-sans); text-decoration: none; }
 .section-link:hover { text-decoration: underline; }
 .eyebrow { margin: 0 0 var(--stex-space-2); color: var(--stex-accent); font: 600 12px / 1.2 var(--stex-font-sans); letter-spacing: .14em; text-transform: uppercase; }
@@ -83,14 +65,10 @@
 /* minmax(0, …) lets the panels shrink below their content's intrinsic width (the text input). */
 .home-lead { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--stex-space-5); margin-bottom: var(--stex-space-7); }
 @media (min-width: 900px) { .home-lead { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-/* Plates (packages/design-system): padding stays clear of the inner rule. */
-.continue, .igor { padding: var(--stex-space-6) clamp(24px, 4vw, 40px); }
-/* Continue working belongs to a studio: its inner rule takes that accent. */
-.continue { --stex-plate-rule: var(--stex-accent); }
-.continue-title { margin: 0 0 var(--stex-space-2); font: 500 clamp(30px, 3.2vw, 42px) / 1.1 var(--stex-font-display); }
-.continue-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--stex-space-1) var(--stex-space-4); margin: 0 0 var(--stex-space-5); font: italic 400 18px / 1.4 var(--stex-font-serif); color: var(--stex-text-secondary); }
-/* Status is data, not prose: it stays in the sans. */
-.continue-meta .status { font: 400 14px / 1.4 var(--stex-font-sans); }
+.continue, .igor { padding: var(--stex-space-5) clamp(16px, 4vw, 32px); background: var(--stex-surface); border: var(--stex-hairline) solid var(--stex-border-decor); border-radius: var(--stex-radius); }
+.continue { border-inline-start: 3px solid var(--stex-accent); }
+.continue-title { margin: 0 0 var(--stex-space-2); font: 500 clamp(28px, 3vw, 36px) / 1.15 var(--stex-font-display); }
+.continue-meta { display: flex; flex-wrap: wrap; gap: var(--stex-space-1) var(--stex-space-4); margin: 0 0 var(--stex-space-5); color: var(--stex-text-secondary); }
 .continue-actions { margin: 0; }
 
 .igor-head { display: flex; align-items: center; gap: var(--stex-space-4); margin-bottom: var(--stex-space-4); }
@@ -111,29 +89,27 @@
 .studio-cards { display: grid; gap: var(--stex-space-4); margin: 0; padding: 0; list-style: none; }
 @media (min-width: 560px) { .studio-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1000px) { .studio-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-/* A centred title-page composition: emblem, name, accent rule, italic descriptor. */
-.studio-card { --stex-plate-rule: var(--stex-border-decor); display: grid; justify-items: center; align-content: start; gap: var(--stex-space-1); height: 100%; padding: var(--stex-space-6) var(--stex-space-5) var(--stex-space-5); color: var(--stex-text); text-align: center; text-decoration: none; transition: outline-color var(--stex-duration) var(--stex-ease), background-color var(--stex-duration) var(--stex-ease); }
-.studio-card:hover { --stex-plate-rule: var(--stex-accent); background: var(--stex-surface-raised); }
-.studio-emblem { height: 68px; width: auto; max-width: 100%; margin-bottom: var(--stex-space-3); }
-.studio-name { font: 500 30px / 1.1 var(--stex-font-display); }
-.studio-name::after { content: ""; display: block; width: 32px; height: 1px; margin: var(--stex-space-3) auto var(--stex-space-1); background: var(--stex-accent); }
-.studio-descriptor { font: italic 400 17px / 1.4 var(--stex-font-serif); color: var(--stex-text-secondary); }
-.studio-state { margin-top: var(--stex-space-2); color: var(--stex-text-muted); font: 500 12px / 1.3 var(--stex-font-sans); letter-spacing: .12em; text-transform: uppercase; }
+.studio-card { display: grid; justify-items: start; gap: var(--stex-space-1); height: 100%; padding: var(--stex-space-5); background: var(--stex-surface); border: var(--stex-hairline) solid var(--stex-border-decor); border-radius: var(--stex-radius); color: var(--stex-text); text-decoration: none; transition: border-color var(--stex-duration) var(--stex-ease); }
+.studio-card:hover { border-color: var(--stex-accent); }
+.studio-emblem { justify-self: center; height: 64px; width: auto; max-width: 100%; margin-bottom: var(--stex-space-3); }
+.studio-name { font: 500 24px / 1.2 var(--stex-font-serif); }
+.studio-name::after { content: ""; display: block; width: 40px; height: 2px; margin-top: var(--stex-space-2); background: var(--stex-accent); }
+.studio-descriptor { color: var(--stex-text-secondary); font-size: 14px; }
+.studio-state { color: var(--stex-text-muted); font-size: 13px; }
 
 /* Projects */
-/* An open, ruled list (like a book's contents page) rather than a closed box. */
-.project-list { margin: 0; padding: 0; list-style: none; border-block: var(--stex-hairline) solid var(--stex-border-decor); }
-.project-list li + li { border-top: var(--stex-hairline) solid color-mix(in srgb, var(--stex-border-decor) 60%, transparent); }
-.project-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: var(--stex-space-2) var(--stex-space-5); padding: var(--stex-space-5) var(--stex-space-4); color: var(--stex-text); text-decoration: none; transition: background-color var(--stex-duration) var(--stex-ease); }
-.project-row:hover { background: color-mix(in srgb, var(--stex-surface-raised) 70%, transparent); }
+.project-list { margin: 0; padding: 0; list-style: none; border: var(--stex-hairline) solid var(--stex-border-decor); border-radius: var(--stex-radius); background: var(--stex-surface); }
+.project-list li + li { border-top: var(--stex-hairline) solid var(--stex-border-decor); }
+.project-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: var(--stex-space-2) var(--stex-space-5); padding: var(--stex-space-4) var(--stex-space-5); color: var(--stex-text); text-decoration: none; }
+.project-row:hover { background: var(--stex-surface-raised); }
 .project-row .status { grid-column: 2; }
 @media (min-width: 640px) { .project-row { grid-template-columns: 32px minmax(0, 1fr) auto; } .project-row .status { grid-column: auto; } }
 .project-icon { width: 28px; height: 28px; background: var(--stex-accent); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .project-icon--book-open { --icon: url("/design-system/icons/book-open.svg"); }
 .project-icon--code-xml { --icon: url("/design-system/icons/code-xml.svg"); }
 .project-text { display: grid; min-width: 0; }
-.project-title { overflow: hidden; font: 500 21px / 1.3 var(--stex-font-serif); text-overflow: ellipsis; white-space: nowrap; }
-.project-meta { font: italic 400 16px / 1.4 var(--stex-font-serif); color: var(--stex-text-secondary); }
+.project-title { overflow: hidden; font: 500 19px / 1.3 var(--stex-font-serif); text-overflow: ellipsis; white-space: nowrap; }
+.project-meta { color: var(--stex-text-secondary); font-size: 14px; }
 .status { color: var(--stex-text-secondary); font-size: 14px; }
 .status--working { color: var(--stex-info); }
 .status--attention { color: var(--stex-warning); }

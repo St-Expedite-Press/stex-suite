@@ -107,7 +107,7 @@ test('serves the command-center pages with honest states and no mockup records',
   }
   const home = await (await fetch(`${base}/home/`)).text();
   for (const [studio, state] of [['frige', 'Open'], ['seaxneat', 'Open'], ['eostre', 'Deferred'], ['woden', 'Deferred']]) {
-    assert.match(home, new RegExp(`<li data-stex-app="${studio}"><a class="studio-card stex-plate" href="/${studio}/">[\\s\\S]*?<span class="studio-state">${state}`), studio);
+    assert.match(home, new RegExp(`<li data-stex-app="${studio}"><a class="studio-card" href="/${studio}/">[\\s\\S]*?<span class="studio-state">${state}`), studio);
   }
   assert.match(home, /<h2 class="igor-name" id="igor-title">Igor<\/h2>/);
   assert.match(home, /<input class="igor-input"[^>]* disabled>/);

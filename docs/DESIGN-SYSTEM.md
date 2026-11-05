@@ -198,51 +198,14 @@ split panes, toolbars, and dockable panels when their functions require them.
   card, information block, or sidebar unless it performs a real function.
 - Never choose spacing solely to match a generated mockup.
 
-### Romantic voice in the editorial register
+### Rejected direction: "Romantic voice" restyle
 
-Precision alone reads as angular: a grid of hard boxes is a SaaS dashboard
-with a serif. The editorial register earns its romanticism through a small set
-of rules, each tied to the doctrine's sources (the engraved plate, the title
-page, Romantic light). They apply to Pantheon's editorial pages now and to
-studio landing screens as those adopt the system. They never apply inside
-instrumental workspaces.
-
-1. **Artwork dissolves; it never ends in a hard edge.** Where artwork meets the
-   page it fades into the page colour (`mask-image`) along that edge, as
-   atmosphere does in a Romantic landscape. Fades follow the art; they are
-   never applied to surfaces or controls. Text still never sits on visible art
-   (see the masthead rule in II).
-2. **One light source per page.** A page may carry one faint, warm wash that
-   reads as the light of its artwork: a radial wash of Antique Ochre at no
-   more than 8%, falling from where the artwork's light is (the masthead sun,
-   upper right). It lies behind content only, never tints a control, and does
-   not count as glow. At its brightest it lifts Abyssal Ink to `#171E1D`, where
-   every text colour still passes (Muted Text 7.0:1, status colours ≥ 6.4:1).
-3. **Plates, not boxes.** A surface that must be framed (a featured item, a
-   studio entry, the assistant) is a `stex-plate`: an outer hairline with an
-   inner rule inset 7 px, like a printed plate border. The inner rule takes the
-   owning studio's accent when the plate belongs to a studio, and reaches it
-   on hover for navigation plates. Lists are not framed at all: they are open
-   and ruled, like a book's contents page.
-4. **Italic serif is the secondary voice.** Ledes, descriptors, and prose-like
-   metadata ("Seaxneat · Website") use the `stex-lede` voice, EB Garamond
-   italic at 16 px or more. Status, counts, controls, labels, and data stay in
-   the sans; italic is never used for anything a user must parse quickly.
-5. **Title-page composition for identities.** Studio entries centre their
-   emblem, display-serif name, a short accent hairline, and italic
-   descriptor, with their state in small spaced capitals beneath, the way an
-   engraved title page centres its matter.
-6. **Display serif carries hierarchy.** Page and section titles are Cormorant
-   Garamond at 32 px and above with generous space below; the larger type
-   offsets the flatter surfaces.
-7. **One ornament per page.** At most one engraved rule with the small emblem
-   (`stex-rule` + `stex-emblem--small`) marks the page's main turn (on Home,
-   from the working area to the studios). Never repeat it between every
-   section.
-
-What stays fixed: the radii (2–4 px), the palette, the contrast limits, no
-glow on components, and no ornament on controls. Romanticism comes from
-light, line, type, and composition, not from added decoration.
+On 2026-11-05 the command center was restyled to soften its angularity:
+engraved double-rule plates instead of boxes, italic serif for descriptors and
+metadata, artwork dissolving into the page, a faint warm light wash, centred
+studio entries, and an ornamental rule between sections. The owner judged the
+result too sanitary and kept the bolder boxed editorial treatment. Do not
+reintroduce these devices as a set without the owner asking for them.
 
 ## VI. Avoiding generic AI web design
 
@@ -260,9 +223,7 @@ Mandatory for all Pantheon frontend work.
 3. **Avoid gradient dependence.** Prefer flat mineral colour, slight tonal
    separation, fine engraved lines, selected illustration, typographic
    contrast, and negative space. Gradients only for actual lighting,
-   atmosphere, or ceremonial artwork — never default button backgrounds. The
-   artwork dissolve and the single light source in V ("Romantic voice") are
-   the sanctioned editorial uses.
+   atmosphere, or ceremonial artwork — never default button backgrounds.
 4. **Eliminate decorative redundancy.** Do not combine engraved illustration,
    emblem, gold frame, gradient, shadow, ornament, accent stripe, and animated
    effect on one component. Choose one identifying feature. (The splash panel

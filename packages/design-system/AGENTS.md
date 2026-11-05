@@ -74,10 +74,10 @@ The interface type is **CSS-first, platform-native web UI**:
    or controls into imagery.
 2. **Editorial** — Pantheon home, project libraries, settings, studio landing
    screens: flat surfaces, fine rules, disciplined serif/sans hierarchy. The
-   command center is sidebar-free by default. Apply the "Romantic voice" rules
-   in docs/DESIGN-SYSTEM.md (V): art dissolves at its edges, one light source,
-   plates not boxes, italic serif as the secondary voice, title-page
-   composition for identities, one ornament per page.
+   command center is sidebar-free by default. A softer "Romantic voice" restyle
+   (plates, italic-serif metadata, dissolving art, warm wash) was tried and
+   rejected as too sanitary; keep the boxed editorial treatment unless the
+   owner asks otherwise.
 3. **Instrumental** — editors, code tools, canvases, story graphs: compact,
    predictable controls, task inspectors, persistent context; decoration
    withdraws almost completely.

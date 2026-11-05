@@ -82,7 +82,7 @@ function studioList(applications, { counts = false } = {}) {
   const entries = studios.map((studio) => {
     const application = applications.find((entry) => entry.id === studio.id);
     const deferred = application?.state !== 'active';
-    return `<li data-stex-app="${studio.id}"><a class="studio-card stex-plate" href="/${studio.id}/">
+    return `<li data-stex-app="${studio.id}"><a class="studio-card" href="/${studio.id}/">
       ${emblemImage(studio)}
       <span class="studio-name">${escape(studio.name)}</span>
       <span class="studio-descriptor">${escape(studio.descriptor)}</span>
@@ -98,12 +98,12 @@ export function homePage(applications) {
   return shell({ active: 'home', title: 'Home', scripts: ['/projects.js', '/igor.js'], body: `
     <h1 class="stex-visually-hidden">Pantheon home</h1>
     <div class="home-lead">
-      <section class="continue stex-plate" aria-labelledby="continue-title" data-projects="continue">
+      <section class="continue" aria-labelledby="continue-title" data-projects="continue">
         <p class="eyebrow" id="continue-title">Continue working</p>
         <p class="stex-meta" data-projects-status>Loading projects…</p>
         ${noscript}
       </section>
-      <section class="igor stex-plate" aria-labelledby="igor-title">
+      <section class="igor" aria-labelledby="igor-title">
         <div class="igor-head"><span class="igor-emblem" aria-hidden="true"></span><h2 class="igor-name" id="igor-title">Igor</h2></div>
         <form class="igor-form" novalidate>
           <input class="igor-input" id="igor-input" name="message" type="text" maxlength="2000" autocomplete="off" placeholder="Ask Igor…" aria-labelledby="igor-title" aria-describedby="igor-note" required disabled>
@@ -113,7 +113,6 @@ export function homePage(applications) {
         <ol class="igor-log" aria-live="polite"></ol>
       </section>
     </div>
-    <div class="stex-rule section-ornament" aria-hidden="true"><span class="stex-emblem stex-emblem--small"></span></div>
     <section aria-labelledby="studios-title">
       <h2 class="section-title" id="studios-title">Studios</h2>
       ${studioList(applications)}

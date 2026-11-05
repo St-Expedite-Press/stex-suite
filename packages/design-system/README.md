@@ -11,7 +11,7 @@ are in [AGENTS.md](AGENTS.md).
 | `src/stex.css` | Entry point: declares the layers and imports everything below |
 | `src/tokens.css` | Palette, role tokens, type, spacing, geometry, motion; `[data-stex-app]` accents |
 | `src/base.css` | Zero-specificity defaults scoped to `[data-stex-app]`: colours, sans, box sizing, focus ring (no global motion or typography rules) |
-| `src/components.css` | `stex-button`, `stex-frame`, `stex-plate` (engraved double rule; `--stex-plate-rule` sets the inner rule), `stex-wordmark`, `stex-emblem`, `stex-laurel`, `stex-rule`, `stex-lede` (italic serif secondary voice), `stex-meta`, `stex-visually-hidden` |
+| `src/components.css` | `stex-button`, `stex-frame`, `stex-wordmark`, `stex-emblem`, `stex-laurel`, `stex-rule`, `stex-meta`, `stex-visually-hidden` |
 | `src/fonts.css` | `@font-face` for Cormorant Garamond, EB Garamond, Inter, IBM Plex Mono |
 | `fonts/` | WOFF2 files (Fontsource 5.3.0 builds, Latin and Latin Extended-A) and their OFL licences |
 | `brand/` | P03 emblem (and small variant), P04 laurel, P07 favicon, H01 Igor emblem — recorded in `assets/manifest.json` |
