@@ -74,7 +74,10 @@ The interface type is **CSS-first, platform-native web UI**:
    or controls into imagery.
 2. **Editorial** — Pantheon home, project libraries, settings, studio landing
    screens: flat surfaces, fine rules, disciplined serif/sans hierarchy. The
-   command center is sidebar-free by default.
+   command center is sidebar-free by default. Apply the "Romantic voice" rules
+   in docs/DESIGN-SYSTEM.md (V): art dissolves at its edges, one light source,
+   plates not boxes, italic serif as the secondary voice, title-page
+   composition for identities, one ornament per page.
 3. **Instrumental** — editors, code tools, canvases, story graphs: compact,
    predictable controls, task inspectors, persistent context; decoration
    withdraws almost completely.
@@ -95,11 +98,16 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   form, no stored session, labelled *Local workspace · single user*. Do not
   add account creation or present the entry as authentication until an
   identity milestone is authorised.
-- `/home/` — command center. Currently an interim editorial studio list. The
-  target (next milestone): institutional masthead from a controlled crop of the
-  splash master (P02), Continue Working, New Project, the four studios, Recent
-  Projects, compact Hermes access, all from real data with honest empty or
-  deferred states. No permanent sidebar.
+- `/home/` — command center: P11 masthead, tabs (Home, Projects, Studios,
+  Graph, Activity), Continue working, Igor, the four studios, and Recent
+  projects. Project data comes only from each studio's
+  `stex.projects.summary.v1` endpoint (`protocol/projects`), with honest empty,
+  unavailable, and deferred states. Graph and Activity render "not built yet"
+  until real features exist; never fill them with sample data. No permanent
+  sidebar.
+- **Igor** is the user-facing name of the assistant; Hermes stays the internal
+  name. Igor turns go browser → Pantheon `/api/igor/turn` → `services/inference`
+  only, and every simulated reply is labelled.
 - Settings and account controls belong in a user menu or labelled utility
   navigation, not a decorative card.
 - Studio homes: project selection/creation and domain tools. Global
@@ -148,7 +156,7 @@ same files. The integrating agent owns the final review and status evidence.
 | --- | --- | --- |
 | A | Baseline, tokens, specimen proving all five accents | Done |
 | B | Pantheon public entrance (splash) | Done; real identity deferred |
-| C | Pantheon command center from real data | Next |
+| C | Pantheon command center from real data | Done; Igor on the fake transport |
 | D | Frige and Seaxneat adoption without workflow regressions | Planned |
 | E | Ēostre and Woden foundations on authentic placeholders | Planned |
 | F | Stabilisation: trim, consolidate, compare to approved art | Planned |
@@ -162,7 +170,7 @@ For each meaningful change:
 2. Branding, surfaces, type, and studio colour come from shared tokens;
    illustration is not required for comprehension.
 3. Desktop, tablet, and phone layouts have no accidental cropping, overflow,
-   or unreachable actions (`corepack pnpm verify:splash` for the splash).
+   or unreachable actions (`corepack pnpm verify:splash`, `verify:home`).
 4. Focus, keyboard order, labels, targets, and contrast work; motion respects
    reduced motion. Contrast and token drift: `corepack pnpm test:design-system`;
    keyboard order, focus, and motion on the splash: `corepack pnpm verify:splash`.

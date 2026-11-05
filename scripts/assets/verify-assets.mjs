@@ -7,7 +7,8 @@ import { fileRecord, manifestPath, readManifest, repositoryRoot } from './manife
 // checksums, byte budgets, unresolved Git LFS pointers, and unlisted files.
 // Rules are documented in assets/README.md.
 
-export const owners = ['stex', 'pantheon', 'frige', 'seaxneat', 'eostre', 'woden', 'hermes', 'graph'];
+// `igor` is the user-facing assistant (internally the Hermes layer).
+export const owners = ['stex', 'pantheon', 'frige', 'seaxneat', 'eostre', 'woden', 'hermes', 'igor', 'graph'];
 const fileName = new RegExp(`^(${owners.join('|')})(-[a-z0-9]+)+\\.(png|webp|avif|mp4|webm|svg)$`);
 const assetId = /^[PFSEWHGR]\d{2}$/;
 // Every file under these roots must be listed in the manifest.

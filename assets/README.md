@@ -38,7 +38,7 @@ Status is **recorded** (in `manifest.json` and verified), **planned**, or
 | ID | Asset | Format | Status |
 | --- | --- | --- | --- |
 | P01 | Splash still: seated youth, tree, river, mountains, celestial figure | PNG master, WebP derivatives | Recorded |
-| P02 | Command-center masthead: controlled crop of P01 | WebP/AVIF | Planned (command center) |
+| P02 | Command-center masthead still: frame 24 of P11 | PNG master; derivatives with the command center | Recorded |
 | P03 | Pantheon emblem: hairline engraved cross-star, plus small variant | SVG | Recorded |
 | P04 | Laurel rule ornament | SVG | Recorded |
 | P05 | Pantheon wordmark (outlined, for contexts without web fonts) | SVG | Planned |
@@ -47,19 +47,41 @@ Status is **recorded** (in `manifest.json` and verified), **planned**, or
 | P08 | Open Graph image, 1200×630 | PNG/WebP | Later |
 | P09 | Light-engraving texture (rare institutional use) | PNG/WebP | Later |
 | P10 | Splash animation | MP4 master; AV1 WebM and H.264 MP4 derivatives | Recorded |
+| P11 | Command-center masthead animation: the celestial figure reaching for the sun, in a 3.18:1 band | MP4 master; derivatives with the command center | Recorded |
+
+**Approved exception.** The doctrine asks for the masthead to be a crop of the
+splash master. The owner chose a separate panoramic render (P11) instead, on
+2026-11-05. It shares the splash's figure, palette, and engraving, so the
+family resemblance holds; future derived art should still come from P01 or
+P11 rather than new scenes.
 
 ### Reference comps (R)
 
 | ID | Asset | Status |
 | --- | --- | --- |
 | R01 | Splash entrance panel comp (wordmark, star, laurel, tagline, buttons) | Recorded; reference only, never shipped |
+| R02 | Command-center comp (masthead, Continue Working, assistant box, studios, Recent Projects) | Recorded; reference only, never shipped |
 
 ### Studio identities (F, S, E, W)
 
-For each studio, three assets from one source design: **04** primary emblem
-(SVG), **05** small icon (simplified SVG), **06** identity illustration
-(transparent PNG/WebP) — F04–F06, S04–S06, E04–E06, W04–W06. Planned with the
-command center.
+For each studio, three assets from one source design: **04** primary emblem,
+**05** small icon (simplified SVG), **06** identity illustration
+(transparent PNG/WebP) — F04–F06, S04–S06, E04–E06, W04–W06.
+
+| ID | Emblem | Status |
+| --- | --- | --- |
+| F04 | Frige: open book | Recorded |
+| S04 | Seaxneat: drafting compass on a set square | Recorded |
+| E04 | Ēostre: sun rising over clouds | Recorded |
+| W04 | Woden: raven beside an oak branch | Recorded |
+
+The four emblems were carved out of R02 at the owner's direction (2026-11-05).
+Each has a transparent background, colour un-blended from the comp's dark
+ground, and published at native width and 2x as WebP. They are raster rather
+than SVG because their tonal engraving is the point; the provenance notes
+record each crop box and the method. Dark shading becomes transparent, so use
+them on dark surfaces only. The 05 small icons and 06 illustrations are still
+planned.
 
 ### Studio illustrations (later library)
 
@@ -74,12 +96,19 @@ Frige stays typographic (no image behind manuscript text); Seaxneat is the
 least pictorial (code, previews, and diffs are never decorated); Ēostre needs
 little ornament because it shows user imagery.
 
-### Hermes and User Graph (H, G)
+### Igor and User Graph (H, G)
 
-H01 Hermes emblem, H02 compact Hermes mark, H03 agent status indicators
-(CSS/vector); G01 User Graph emblem, G02 empty-graph illustration, G03
-relationship legend. Agents get no mythological portraits: the roster is an
-operational system, not a cast of characters.
+The assistant is called **Igor** in the interface (Hermes internally), so its
+files use the owner `igor`.
+
+| ID | Asset | Status |
+| --- | --- | --- |
+| H01 | Igor emblem: ring around a unicursal hexagram, redrawn as SVG from R02 (`packages/design-system/brand/igor-emblem.svg`) | Recorded; owner-approved exception to the occult-symbol rule |
+| H02, H03 | Compact Igor mark; agent status indicators (CSS/vector) | Planned |
+| G01–G03 | User Graph emblem, empty-graph illustration, relationship legend | Planned |
+
+Agents get no mythological portraits: the roster is an operational system,
+not a cast of characters.
 
 ### Not in this library
 
@@ -106,8 +135,8 @@ operational system, not a cast of characters.
 ```
 
 - Lowercase ASCII, hyphen-separated. `owner` is one of `stex`, `pantheon`,
-  `frige`, `seaxneat`, `eostre`, `woden`, `hermes`, `graph` (ASCII `eostre`;
-  the interface shows Ēostre).
+  `frige`, `seaxneat`, `eostre`, `woden`, `hermes`, `igor`, `graph` (ASCII
+  `eostre`; the interface shows Ēostre; `igor` is the user-facing assistant).
 - `subject` names the content, not the screen: `splash-still`, `emblem`,
   `laurel`. `variant` names a separately drawn version: `emblem-small`.
 - A derivative is its master's name plus its pixel width:
@@ -160,14 +189,25 @@ over its byte budget, an unresolved LFS pointer, a file under a managed folder
 that is not in the manifest, a duplicate ID, or missing provenance or alt
 guidance.
 
-## Pipeline: splash media
+## Pipeline
 
 ```powershell
-corepack pnpm assets:splash   # requires ffmpeg and ffprobe on PATH
+corepack pnpm assets:build                     # all jobs; requires ffmpeg and ffprobe
+corepack pnpm assets:build masthead emblems    # or named jobs: splash, masthead, emblems
 ```
 
-`scripts/assets/build-splash.mjs` regenerates every P01 and P10 derivative and
-records it in the manifest. Recipe, with the measurements behind it:
+`scripts/assets/build-media.mjs` regenerates every derivative from its master
+and records it in the manifest, including the exact RFC 6381 codec string of
+each video (read from the encoded profile and level). Pages must declare that
+string; a Pantheon test compares them. With the same FFmpeg build, output is
+bit-exact: unchanged masters reproduce every hash (verified across rebuilds
+with FFmpeg 8.1.2, including after the refactor from the earlier splash-only
+script). A different FFmpeg build may produce different bytes, so rebuild only
+when a master or recipe changes.
+
+### Splash (P10, P01)
+
+Recipe, with the measurements behind it:
 
 - **Seamless loop.** The 12.04 s source does not loop: its last→first frame
   change (SSIM 0.894) is about ten times a normal frame step (median 0.993).
@@ -196,3 +236,31 @@ records it in the manifest. Recipe, with the measurements behind it:
 AVIF stills were tested and were no smaller than WebP on the engraved texture,
 so only WebP ships. The masters are 1920×1080 and no higher-resolution
 original exists, so larger screens see the artwork upscaled.
+
+### Masthead (P11, P02)
+
+- **Same seamless loop** as the splash. The source's last→first change (SSIM
+  0.787) is about 15 times a normal step (0.986). Loop length: 168 frames,
+  7.0 s. During the 1 s crossfade the fast-moving hair and drapery show a soft
+  double exposure; it falls in the left third, which fades out under the
+  wordmark.
+- **Crop to what is shown.** The art fills rows 220–821 between near-black
+  bars. Desktop widths (1920, 1280) use a 6.7:1 stripe around the face, arm,
+  and sun (rows 300–587); the 960 phone width uses a 4:1 window (rows
+  220–699) for its taller header. Encoding the whole band cost 3.7 MB at 1920.
+- **Weighted as editorial.** Dense engraving and fast motion cost more bits
+  than the splash, and the masthead loads on every visit. AV1 CRF 48 (H.264 CRF
+  28, WebP quality 72). On the stripe, AV1 CRF 48 measured SSIM 0.971 at
+  1.55 MB against 0.940 for H.264 CRF 29 at 1.41 MB, so AV1 stays first.
+
+| Derivative | Budget | Built |
+| --- | --- | --- |
+| Loop 1920w WebM / MP4 | 1.8 MB / 2.0 MB | 1.34 MB / 1.56 MB |
+| Loop 1280w WebM / MP4 | 0.9 MB / 1.0 MB | 0.58 MB / 0.65 MB |
+| Loop 960w WebM / MP4 | 0.65 MB / 0.75 MB | 0.47 MB / 0.53 MB |
+| Still 1920w / 1280w / 960w WebP | 230 / 115 / 110 KB | 196 / 93 / 87 KB |
+
+### Studio emblems (F04, S04, E04, W04)
+
+WebP with alpha at native width and 2x (lanczos), quality 90, 60 KB budget
+each; built sizes are 5–48 KB.

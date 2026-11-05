@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { readManifest, repositoryRoot } from './assets/manifest.mjs';
+import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser verification of the Pantheon splash. Drives an installed Chrome or
 // Edge over the DevTools protocol (no npm dependencies), measures the entrance
@@ -11,64 +11,13 @@ import { readManifest, repositoryRoot } from './assets/manifest.mjs';
 // checks motion preferences, keyboard order, and the no-JavaScript fallback,
 // and saves screenshots.
 //   corepack pnpm verify:splash [--out <directory>]
-// Set STEX_BROWSER to a Chrome/Edge executable if it is not found automatically.
 
 // Full-screen sizes plus real browser viewports (screen minus browser chrome and taskbar),
 // which are wider than 16:9 and leave the least room under the artwork.
 const viewports = [[1920, 1080], [1920, 969], [1536, 730], [1440, 789], [1366, 657], [1280, 689], [1280, 600], [1920, 640], [900, 720],
   [2560, 1080], [1024, 768], [768, 1024], [390, 844], [844, 390], [320, 568]];
 const port = Number(process.env.STEX_VERIFY_PORT || 4419);
-const outIndex = process.argv.indexOf('--out');
-const outDirectory = path.resolve(outIndex > 0 ? process.argv[outIndex + 1] : path.join(os.tmpdir(), 'stex-splash-verification'));
-const browserCandidates = [process.env.STEX_BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean);
-
-function started(child, pattern, label) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} did not start.`)), 15_000);
-    const listen = (data) => { const match = pattern.exec(data.toString()); if (match) { clearTimeout(timer); resolve(match); } };
-    child.stdout?.on('data', listen); child.stderr?.on('data', listen); child.once('error', reject);
-  });
-}
-
-class DevTools {
-  constructor(url) { this.socket = new WebSocket(url); this.id = 0; this.pending = new Map(); this.listeners = new Set(); }
-  async open() {
-    await new Promise((resolve, reject) => { this.socket.onopen = resolve; this.socket.onerror = reject; });
-    this.socket.onmessage = ({ data }) => {
-      const message = JSON.parse(data);
-      if (message.id && this.pending.has(message.id)) {
-        const { resolve, reject } = this.pending.get(message.id); this.pending.delete(message.id);
-        if (message.error) reject(new Error(message.error.message)); else resolve(message.result);
-      } else for (const listener of this.listeners) listener(message);
-    };
-  }
-  send(method, params = {}, sessionId) {
-    const id = ++this.id;
-    this.socket.send(JSON.stringify({ id, method, params, sessionId }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-  once(method, sessionId) {
-    return new Promise((resolve) => { const listener = (message) => { if (message.method === method && message.sessionId === sessionId) { this.listeners.delete(listener); resolve(message.params); } }; this.listeners.add(listener); });
-  }
-}
-
-async function page(devtools) {
-  const { browserContextId } = await devtools.send('Target.createBrowserContext');
-  const { targetId } = await devtools.send('Target.createTarget', { url: 'about:blank', browserContextId });
-  const { sessionId } = await devtools.send('Target.attachToTarget', { targetId, flatten: true });
-  const send = (method, params) => devtools.send(method, params, sessionId);
-  await send('Page.enable');
-  const evaluate = async (expression) => {
-    const { result, exceptionDetails } = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text);
-    return result.value;
-  };
-  const go = async (url) => { const loaded = devtools.once('Page.loadEventFired', sessionId); await send('Page.navigate', { url }); await loaded; };
-  const close = () => devtools.send('Target.disposeBrowserContext', { browserContextId });
-  return { send, evaluate, go, close };
-}
+const outDirectory = outDirectoryFromArgs('stex-splash-verification');
 
 const measure = `(async () => {
   await document.fonts.ready;
@@ -99,21 +48,18 @@ const crossesSegment = (rect, [x1, y1, x2, y2]) => Array.from({ length: 201 }, (
 const overlapShare = (rect, zone) => { const w = Math.max(0, Math.min(rect[2], zone[2]) - Math.max(rect[0], zone[0])); const h = Math.max(0, Math.min(rect[3], zone[3]) - Math.max(rect[1], zone[1])); return (w * h) / ((rect[2] - rect[0]) * (rect[3] - rect[1])); };
 
 async function main() {
-  const browserPath = browserCandidates.find((candidate) => existsSync(candidate));
-  if (!browserPath) throw new Error('No Chrome or Edge found; set STEX_BROWSER.');
   const focal = (await readManifest()).assets.find((asset) => asset.id === 'P10').focal;
   const heads = { seatedHead: focal.gaze.slice(0, 2), celestialFace: focal.gaze.slice(2), reachingHand: focal.reachingHand };
   await mkdir(outDirectory, { recursive: true });
   const books = await mkdtemp(path.join(os.tmpdir(), 'stex-verify-books-'));
-  const profile = await mkdtemp(path.join(os.tmpdir(), 'stex-verify-browser-'));
   const server = spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, 'apps', 'pantheon'), env: { ...process.env, STEX_PANTHEON_PORT: String(port), STEX_FRIGE_BOOKS_DIR: books } });
-  const browser = spawn(browserPath, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--mute-audio']);
-  const failures = []; const report = { browser: browserPath, viewports: [], motion: {} };
+  const failures = []; const report = { viewports: [], motion: {} };
+  let browser;
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   try {
     await started(server, /ready/, 'Pantheon');
-    const [, endpoint] = await started(browser, /DevTools listening on (ws:\/\/\S+)/, 'Browser');
-    const devtools = new DevTools(endpoint); await devtools.open();
+    browser = await launchBrowser();
+    const { devtools } = browser; report.browser = browser.browserPath;
     const base = `http://127.0.0.1:${port}`;
 
     for (const [width, height] of viewports) {
@@ -164,15 +110,13 @@ async function main() {
     check(loops.wrapped && Math.abs(loops.duration - 265 / 24) < 0.1, `Loop did not wrap or has the wrong duration (${loops.duration}s).`);
     const keyboard = [];
     for (let index = 0; index < 2; index += 1) {
-      await motion.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-      await motion.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+      await motion.key('Tab', 'Tab', 9);
       keyboard.push(await motion.evaluate(`({ name: document.activeElement.textContent.trim(), outline: getComputedStyle(document.activeElement).outlineStyle })`));
     }
     report.motion.keyboard = keyboard;
     check(keyboard[0].name === 'Sign in' && keyboard[1].name === 'Pause motion' && keyboard.every((entry) => entry.outline === 'solid'), 'Keyboard order or focus ring is wrong.');
-    await motion.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
-    await motion.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    const paused = await motion.evaluate(`new Promise((resolve) => setTimeout(() => resolve({ paused: document.querySelector('.splash-motion').paused, toggle: document.querySelector('.splash-motion-toggle').textContent, stored: localStorage.getItem('stex.splash.motion') }), 300))`);
+    await motion.key('Enter', 'Enter', 13, '\r');
+    const paused = await motion.evaluate(`new Promise((resolve) => setTimeout(() => resolve({ paused: document.querySelector('.splash-motion').paused, toggle: document.querySelector('.splash-motion-toggle').textContent, stored: localStorage.getItem('stex.pantheon.motion') }), 300))`);
     await motion.go(`${base}/`);
     const remembered = await motion.evaluate(`new Promise((resolve) => setTimeout(() => resolve({ paused: document.querySelector('.splash-motion').paused, toggle: document.querySelector('.splash-motion-toggle').textContent }), 1500))`);
     report.motion.pause = { paused, remembered };
@@ -197,21 +141,9 @@ async function main() {
     check(report.motion.noScript.still && report.motion.noScript.toggleHidden && report.motion.noScript.href === '/home/', 'The no-JavaScript fallback is incomplete.');
     await plain.close();
 
-    for (const [width, height] of [[1440, 900], [390, 844]]) {
-      const tab = await page(devtools);
-      await tab.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
-      await tab.go(`${base}/home/`);
-      await tab.evaluate('document.fonts.ready.then(() => true)');
-      const overflow = await tab.evaluate('document.documentElement.scrollWidth');
-      check(overflow <= width, `/home/ ${width}x${height}: horizontal overflow.`);
-      const { data } = await tab.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-      await writeFile(path.join(outDirectory, `home-${width}x${height}.png`), Buffer.from(data, 'base64'));
-      await tab.close();
-    }
   } finally {
-    browser.kill(); server.kill();
+    await browser?.close(); server.kill();
     await rm(books, { recursive: true, force: true });
-    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
   }
   report.failures = failures;
   await writeFile(path.join(outDirectory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);

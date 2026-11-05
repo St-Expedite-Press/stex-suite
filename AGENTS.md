@@ -104,6 +104,9 @@ rather than editing a contract another product relies on. The application
 registry is `protocol/applications/registry.v1.json`; it declares navigation
 identities and grants no storage or authority. Use `stex://<product>/<kind>/<id>`
 references where useful; resolving one is an operation of the owning app.
+Pantheon lists projects only through each studio's read-only
+`stex.projects.summary.v1` endpoint (`protocol/projects`); it never reads a
+studio's files.
 
 The Obsidian-compatible vault is optional user knowledge — notes, sources,
 attachments, preferences, references. It is never a shared operational
@@ -112,11 +115,16 @@ workflow requires it.
 
 ## Hermes and inference
 
+- **Igor** is the user-facing name of the assistant in interfaces and user
+  docs; **Hermes** remains the internal layer (`hermes/`, `services/inference`,
+  `stex.hermes.turn.v1`). Do not rename internal identifiers or contracts.
 - STEX-owned Hermes profiles, roster, skills, and policies live in `hermes/`.
   Do not vendor or assume an upstream Hermes runtime; development and tests
   use the deterministic fake transport.
 - `services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
+  Browsers talk to their product server (Frige, or Pantheon's
+  `/api/igor/turn`), which holds the shared secret.
 - Authenticate remote calls; validate every request and reply against
   `protocol/hermes/*.v1.json`; bound payload, context, time, output, retries,
   and cancellation; classify failures (validation, authentication,

@@ -16,6 +16,13 @@ Use the shell route `http://127.0.0.1:4300/seaxneat/`. Create a project to seed
 an isolated Next.js workspace, start its preview, request a heading edit,
 inspect/apply it explicitly, and restore a validated revision when needed.
 State defaults to ignored `.local-data/`, or set `STEX_SEAXNEAT_DATA_DIR`.
+`?project=<id>` opens that project directly (Pantheon's project lists use it).
+
+`GET /api/stex/projects` serves the projects as
+[`stex.projects.summary.v1`](../../protocol/projects/README.md) for Pantheon
+(mapping in `src/project-summary.mjs`): status labels come from the real
+operation and project state ("Building", "Build failed", "Needs attention",
+"Build ready").
 
 The deterministic simulator is not a claim of real Hermes/model behavior.
 Builds and previews run loopback-only; a failed build never advances the last

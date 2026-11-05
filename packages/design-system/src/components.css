@@ -42,6 +42,19 @@
 .stex-rule { display: flex; align-items: center; gap: var(--stex-space-4); color: var(--stex-frame); }
 .stex-rule::before, .stex-rule::after { content: ""; flex: 1; height: var(--stex-hairline); background: currentColor; }
 
+/* Plate: an engraved double rule (outer hairline, inner rule inset like a
+   printed plate border) instead of a hard box. Set --stex-plate-rule to a
+   studio accent to mark ownership. Keep content padding above 12px. */
+.stex-plate {
+  --stex-plate-rule: var(--stex-frame);
+  background: var(--stex-surface); border: var(--stex-hairline) solid var(--stex-border-decor); border-radius: var(--stex-radius);
+  outline: var(--stex-hairline) solid color-mix(in srgb, var(--stex-plate-rule) 45%, transparent); outline-offset: -7px;
+}
+
+/* Lede: the romantic secondary voice, an italic text serif for ledes,
+   descriptors, and metadata that reads as prose. Not for controls or data. */
+.stex-lede { margin: 0; font: italic 400 18px / 1.5 var(--stex-font-serif); color: var(--stex-text-secondary); }
+
 /* Quiet metadata: status lines, timestamps, counts. */
 .stex-meta { margin: 0; font: 400 13px/1.4 var(--stex-font-sans); color: var(--stex-text-muted); }
 

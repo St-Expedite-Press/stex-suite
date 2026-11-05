@@ -11,8 +11,9 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm run test:knowledge` | Validate the optional User Graph adapter |
 | `corepack pnpm run test:design-system` | Tokens, contrast, status colours, font coverage |
 | `corepack pnpm run test:assets` | Asset manifest, naming, checksums, budgets, LFS pointers |
-| `corepack pnpm assets:splash` | Rebuild splash media from masters (needs FFmpeg) |
-| `corepack pnpm verify:splash` | Browser check of the splash at 10 viewports (needs Chrome or Edge) |
+| `corepack pnpm assets:build [splash\|masthead\|emblems]` | Rebuild web media from masters, bit-exact (needs FFmpeg) |
+| `corepack pnpm verify:splash` | Browser check of the splash at 15 viewports (needs Chrome or Edge) |
+| `corepack pnpm verify:home` | Browser check of the command center with an isolated stack and disposable data (needs Chrome or Edge) |
 
 Use disposable temp data for Seaxneat through `STEX_SEAXNEAT_DATA_DIR`. Canonical
 Pantheon and Frige settings are `STEX_PANTHEON_*` and `STEX_FRIGE_*`; legacy

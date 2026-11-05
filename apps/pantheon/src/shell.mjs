@@ -53,13 +53,3 @@ export function proxyApplication(request, response, target, url, prefix) {
     request.pipe(upstream);
   });
 }
-
-// Registry names stay ASCII; the interface shows the correct spelling.
-const displayNames = { eostre: 'Ēostre' };
-
-export function deferredPage(application) {
-  const name = displayNames[application.id] || application.name;
-  // The versioned registry carries no description, so it comes from the built-in identities.
-  const description = shellApplications.find((entry) => entry.id === application.id)?.description || '';
-  return `<!doctype html><html lang="en" data-stex-app="${application.id}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} · STEX Pantheon</title><link rel="icon" href="/design-system/brand/pantheon-favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/design-system/src/stex.css"><link rel="stylesheet" href="/home/home.css"></head><body><main class="home"><a class="home-back" href="/home/">← Studios</a><h1 class="home-title">${name}</h1><p class="home-lede">${description}</p><p class="stex-meta">This application is registered in the STEX alpha but is not implemented yet.</p></main></body></html>`;
-}

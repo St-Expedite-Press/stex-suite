@@ -1,5 +1,5 @@
 import { createReadStream, existsSync } from 'node:fs';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
@@ -120,6 +120,32 @@ async function availableBooks() {
     return { id: entry.name, title, reference: `stex://frige/project/${entry.name}` };
   }));
   return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
+}
+
+// Newest modification time in a book, from file metadata only (manuscripts are
+// never opened). Hidden folders (.git, .texgraph, .obsidian) and node_modules
+// are tooling, not author changes. Symlinks are not followed (Dirent uses
+// lstat). At most 5,000 entries per book are visited; files in a folder are
+// stat-ed together.
+async function newestChange(root, budget = { entries: 5000 }) {
+  const entries = (await readdir(root, { withFileTypes: true }).catch(() => []))
+    .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
+    .slice(0, Math.max(0, budget.entries));
+  budget.entries -= entries.length;
+  const files = await Promise.all(entries.filter((entry) => entry.isFile()).map((entry) => stat(path.join(root, entry.name)).then((info) => info.mtimeMs, () => 0)));
+  let newest = Math.max(0, ...files);
+  for (const entry of entries) if (entry.isDirectory() && budget.entries > 0) newest = Math.max(newest, await newestChange(path.join(root, entry.name), budget));
+  return newest;
+}
+
+// stex.projects.summary.v1 (protocol/projects): read-only summaries for Pantheon.
+async function projectSummaries() {
+  const books = await availableBooks();
+  const projects = await Promise.all(books.map(async (book) => {
+    const changed = await newestChange(path.join(booksDirectory, book.id));
+    return { reference: book.reference, id: book.id, title: book.title, kind: 'book', updatedAt: changed ? new Date(changed).toISOString() : null, status: { state: 'ready', label: 'Manuscript' }, openPath: `/?book=${encodeURIComponent(book.id)}` };
+  }));
+  return { schemaVersion: 'stex.projects.summary.v1', application: 'frige', projects };
 }
 
 async function createBookProject(payload) {
@@ -324,6 +350,7 @@ http.createServer(async (request, response) => {
     const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
     if (relay) { const result = await gatewaySettings(relay[0], relay[1], relay[0] === 'PUT' ? await body(request) : undefined); return json(response, result.status, result.body); }
     if (request.method === 'GET' && url.pathname === '/api/books') return json(response, 200, await availableBooks());
+    if (request.method === 'GET' && url.pathname === '/api/stex/projects') return json(response, 200, await projectSummaries());
     if (request.method === 'POST' && url.pathname === '/api/books') return json(response, 201, await createBookProject(await body(request)));
     if (url.pathname.startsWith('/api/')) {
       const activeStore = await storeFor(url);

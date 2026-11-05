@@ -28,8 +28,8 @@ pinned in `pnpm-lock.yaml`. System tools are installed separately:
 | Git LFS | Required | Brand masters and splash media (`git lfs install` once per machine). Without it the splash media are pointer files. |
 | LuaLaTeX with `fontspec`, `microtype`, `geometry` | Recommended | Frige proofs. Proof tests skip without it. TeX Live or MiKTeX. |
 | `pdffonts` | Optional | Frige font-embedding preflight. Ships with Poppler and MiKTeX. |
-| FFmpeg (`ffmpeg`, `ffprobe`) | Optional | Rebuilding splash media (`assets:splash`). |
-| Chrome or Edge | Optional | Browser verification of the splash (`verify:splash`). |
+| FFmpeg (`ffmpeg`, `ffprobe`) | Optional | Rebuilding web media from masters (`assets:build`). |
+| Chrome or Edge | Optional | Browser verification (`verify:splash`, `verify:home`). |
 
 Run `corepack pnpm check:prereqs` to check them. It exits non-zero only when a
 required tool is missing.

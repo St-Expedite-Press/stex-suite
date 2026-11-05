@@ -75,11 +75,11 @@ const checks = [
     run: () => { const found = probe('pdffonts', ['-v']); return found && firstLine(found); },
   },
   {
-    level: 'optional', name: 'FFmpeg', need: 'rebuilding splash media (assets:splash)',
+    level: 'optional', name: 'FFmpeg', need: 'rebuilding web media from masters (assets:build)',
     run: () => { const found = probe('ffmpeg', ['-version']); return found && probe('ffprobe', ['-version']) ? firstLine(found) : null; },
   },
   {
-    level: 'optional', name: 'Chrome or Edge', need: 'splash browser verification (verify:splash; or set STEX_BROWSER)',
+    level: 'optional', name: 'Chrome or Edge', need: 'browser verification (verify:splash, verify:home; or set STEX_BROWSER)',
     run: () => [process.env.STEX_BROWSER, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((candidate) => candidate && existsSync(candidate)) || null,
   },

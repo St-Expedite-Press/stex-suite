@@ -14,7 +14,8 @@ institution, or precision creative workstation — not a fantasy game interface,
 a luxury-brand website, or a GPT wrapper.
 
 **Status.** Implemented and tested: tokens, typography, shared components, the
-Pantheon splash (`/`), and an interim command center (`/home/`). Motion
+Pantheon splash (`/`), and the command center (`/home/`, `/projects/`,
+`/studios/`, with honest Graph and Activity placeholders). Motion
 preferences are honoured per component; the design system applies no global
 motion override, so proof viewers, editors, and canvases keep their own. Not yet
 adopted: Frige and Seaxneat still carry pre-doctrine styles (see
@@ -73,9 +74,12 @@ without repeating the same celestial artwork everywhere.
   carries frame, emblem, laurel rule, and wordmark together; no other
   component may combine them (see VI.4).
 - *Command center (editorial):* artistic presentation takes roughly 15–20% of
-  the visible height at most — a brief, controlled crop of the splash master
-  (P02). Studio entries need only a modest emblem, a title, a precise
-  descriptor, and a clear navigation affordance.
+  the visible height at most (measured 8.5–17% across verified viewports). The
+  masthead plays P11, a panoramic render of the celestial figure the owner
+  chose over a crop of the splash master (recorded exception). Light text
+  never sits on the visible art: the art fades out under the brand. Studio
+  entries carry a modest emblem, a title, a precise descriptor, their real
+  state, and a clear navigation affordance.
 
 ## III. Shared colour system
 
@@ -194,6 +198,52 @@ split panes, toolbars, and dockable panels when their functions require them.
   card, information block, or sidebar unless it performs a real function.
 - Never choose spacing solely to match a generated mockup.
 
+### Romantic voice in the editorial register
+
+Precision alone reads as angular: a grid of hard boxes is a SaaS dashboard
+with a serif. The editorial register earns its romanticism through a small set
+of rules, each tied to the doctrine's sources (the engraved plate, the title
+page, Romantic light). They apply to Pantheon's editorial pages now and to
+studio landing screens as those adopt the system. They never apply inside
+instrumental workspaces.
+
+1. **Artwork dissolves; it never ends in a hard edge.** Where artwork meets the
+   page it fades into the page colour (`mask-image`) along that edge, as
+   atmosphere does in a Romantic landscape. Fades follow the art; they are
+   never applied to surfaces or controls. Text still never sits on visible art
+   (see the masthead rule in II).
+2. **One light source per page.** A page may carry one faint, warm wash that
+   reads as the light of its artwork: a radial wash of Antique Ochre at no
+   more than 8%, falling from where the artwork's light is (the masthead sun,
+   upper right). It lies behind content only, never tints a control, and does
+   not count as glow. At its brightest it lifts Abyssal Ink to `#171E1D`, where
+   every text colour still passes (Muted Text 7.0:1, status colours ≥ 6.4:1).
+3. **Plates, not boxes.** A surface that must be framed (a featured item, a
+   studio entry, the assistant) is a `stex-plate`: an outer hairline with an
+   inner rule inset 7 px, like a printed plate border. The inner rule takes the
+   owning studio's accent when the plate belongs to a studio, and reaches it
+   on hover for navigation plates. Lists are not framed at all: they are open
+   and ruled, like a book's contents page.
+4. **Italic serif is the secondary voice.** Ledes, descriptors, and prose-like
+   metadata ("Seaxneat · Website") use the `stex-lede` voice, EB Garamond
+   italic at 16 px or more. Status, counts, controls, labels, and data stay in
+   the sans; italic is never used for anything a user must parse quickly.
+5. **Title-page composition for identities.** Studio entries centre their
+   emblem, display-serif name, a short accent hairline, and italic
+   descriptor, with their state in small spaced capitals beneath, the way an
+   engraved title page centres its matter.
+6. **Display serif carries hierarchy.** Page and section titles are Cormorant
+   Garamond at 32 px and above with generous space below; the larger type
+   offsets the flatter surfaces.
+7. **One ornament per page.** At most one engraved rule with the small emblem
+   (`stex-rule` + `stex-emblem--small`) marks the page's main turn (on Home,
+   from the working area to the studios). Never repeat it between every
+   section.
+
+What stays fixed: the radii (2–4 px), the palette, the contrast limits, no
+glow on components, and no ornament on controls. Romanticism comes from
+light, line, type, and composition, not from added decoration.
+
 ## VI. Avoiding generic AI web design
 
 Mandatory for all Pantheon frontend work.
@@ -210,7 +260,9 @@ Mandatory for all Pantheon frontend work.
 3. **Avoid gradient dependence.** Prefer flat mineral colour, slight tonal
    separation, fine engraved lines, selected illustration, typographic
    contrast, and negative space. Gradients only for actual lighting,
-   atmosphere, or ceremonial artwork — never default button backgrounds.
+   atmosphere, or ceremonial artwork — never default button backgrounds. The
+   artwork dissolve and the single light source in V ("Romantic voice") are
+   the sanctioned editorial uses.
 4. **Eliminate decorative redundancy.** Do not combine engraved illustration,
    emblem, gold frame, gradient, shadow, ornament, accent stripe, and animated
    effect on one component. Choose one identifying feature. (The splash panel
@@ -257,7 +309,9 @@ Mandatory for all Pantheon frontend work.
    proportion, letterform, and image — not obsolete interaction conventions.
 6. **Avoid fantasy and occult kitsch:** magic circles, alchemical diagrams,
    glowing runes, arcane terminology, celestial borders, tarot cards,
-   pseudo-sacred buttons.
+   pseudo-sacred buttons. *Recorded exception:* Igor's emblem (H01), a ring
+   around a unicursal hexagram, was kept at the owner's direction
+   (2026-11-05). It is used only beside the Igor label, never as ornament.
 7. **Distinguish atmosphere from darkness.** Dark, not uniformly black; keep
    the distinctions between Abyssal Ink, Cabinet Black, Raised Slate, and
    Mineral Slate.
@@ -284,9 +338,12 @@ contrast, adequate targets, and reduced motion.
   editing state.
 - **Tables and lists:** clear alignment over ornamental rows; do not force
   editorial lists into cards.
-- **Hermes:** an integrated command and conversation capability that does not
-  replace specialised interactions. Proposals, pending approvals, running
-  operations, and completed tasks are visually distinct.
+- **Igor (the assistant):** an integrated command and conversation capability
+  that does not replace specialised interactions. *Igor* is the user-facing
+  name; *Hermes* remains the internal layer (`hermes/`, `services/inference`,
+  `stex.hermes.turn.v1`). Proposals, pending approvals, running operations,
+  and completed tasks are visually distinct, and every simulated reply is
+  labelled as simulated.
 
 ## IX. Studio-specific design authority
 

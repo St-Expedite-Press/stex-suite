@@ -53,6 +53,8 @@ const children = [
     STEX_PANTHEON_PORT: shellPort,
     STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`,
     STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}`,
+    STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
+    STEX_INFERENCE_SHARED_SECRET: shared,
   }),
 ];
 

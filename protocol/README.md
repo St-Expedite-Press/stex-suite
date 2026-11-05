@@ -7,6 +7,9 @@ runtime memory or implementation modules as an integration API.
 - `vault/` defines the user-wide knowledge-base boundary.
 - `texgraph/` defines the existing, product-specific editorial turn contract.
 - `hermes/` defines the product-neutral v1 remote-Hermes turn envelope.
+- `projects/` defines `stex.projects.summary.v1`, the read-only project
+  summaries each studio serves for Pantheon's project lists.
+- `applications/` holds the versioned application registry.
 
 Contracts are versioned before two products rely on them. They describe data
 ownership and failure behavior; they do not grant authority.

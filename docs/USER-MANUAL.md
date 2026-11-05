@@ -4,11 +4,21 @@ Run `corepack pnpm install --frozen-lockfile`, then `corepack pnpm dev:alpha`. O
 
 ## Entering Pantheon
 
-The splash shows the Pantheon artwork and an entrance panel. Choose **Sign in** to reach the studio list at `/home/`. This is a local, single-user workspace: there is no account, password, or session yet. **Pause motion** stops the background animation, and the choice is remembered in this browser. If your system asks for reduced motion, the animation stays still until you choose **Play motion**.
+The splash shows the Pantheon artwork and an entrance panel. Choose **Sign in** to reach the command center at `/home/`. This is a local, single-user workspace: there is no account, password, or session yet. **Pause motion** stops the background animation on every Pantheon page, and the choice is remembered in this browser. If your system asks for reduced motion, the animation stays still until you choose **Play motion**.
+
+## The command center
+
+- **Continue working** opens the project you changed most recently, in whichever studio owns it.
+- **Igor** is the assistant. Type a question and press the arrow. Replies are simulated for now and say so ("Simulated reply · fake transport"); nothing you type is stored.
+- **Studios** opens Frige or Seaxneat. Ēostre and Woden are marked **Deferred** because they are not built yet.
+- **Recent projects** lists your latest five; **View all** (or the **Projects** tab) shows every project with its studio and current status, such as "Building" or "Build failed".
+- **Graph** and **Activity** say plainly that they are not built yet.
+
+If a studio is not running, the command center says so ("Seaxneat is not responding") and still shows the other studio's projects.
 
 ## Frige
 
-Choose **Frige** in the studio list. Select an existing local book or create a new scaffold. A book opens only after explicit selection. Edit a source node, save it, typeset a proof, inspect the PDF and preflight, and review any fake-Hermes proposal before accepting it. Do not use a protected manuscript as a test fixture.
+Choose **Frige** on the command center, or open a book from its project lists. Select an existing local book or create a new scaffold. A book opens only after explicit selection. Edit a source node, save it, typeset a proof, inspect the PDF and preflight, and review any fake-Hermes proposal before accepting it. Do not use a protected manuscript as a test fixture.
 
 ## Seaxneat
 

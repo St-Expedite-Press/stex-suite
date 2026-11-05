@@ -2,6 +2,108 @@
   "schemaVersion": "stex.assets.manifest.v1",
   "assets": [
     {
+      "id": "E04",
+      "title": "Ēostre emblem: rising sun",
+      "owner": "eostre",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/eostre/eostre-emblem.png",
+        "sourceName": "R02 crop",
+        "sha256": "79a17b3dc5c55b3cb998a0b7803f541e1b15b2ea7064dfb652775e022af64e21",
+        "bytes": 23950
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Carved from R02 (assets/reference/pantheon-command-center-comp.png), box 832,482,1062,560 (x0,y0,x1,y1), at the comp's native resolution. Background estimated from the crop border; alpha from luminance above it (linear ramp +10 to +70); colour un-blended from the background; trimmed to content. Dark shading becomes transparent, so use on dark surfaces only. A higher-resolution source would sharpen the 2x derivative."
+      },
+      "usage": "Studio identity on Pantheon studio entries (dark surfaces). Decorative beside the studio name.",
+      "alt": "Decorative beside the studio name (empty alt). Standalone: A sun rising over clouds, with engraved rays.",
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/studios/eostre-emblem-199w.webp",
+          "sha256": "d480d547918596a51ac1ca0949772eb2c843470caffaf24c607b4bba19099077",
+          "bytes": 10654,
+          "width": 199,
+          "height": 74,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        },
+        {
+          "path": "apps/pantheon/public/media/studios/eostre-emblem-398w.webp",
+          "sha256": "dc9b36dbaf909aaf3edcda8f5734e80d77ddb6b8515516b13f2d53ae96f27be2",
+          "bytes": 48092,
+          "width": 398,
+          "height": 148,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        }
+      ]
+    },
+    {
+      "id": "F04",
+      "title": "Frige emblem: open book",
+      "owner": "frige",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/frige/frige-emblem.png",
+        "sourceName": "R02 crop",
+        "sha256": "886cdbc3162ce0aa4580cbb5969b50b92f1f7cc07fe143748269ced25a4e7be1",
+        "bytes": 28021
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Carved from R02 (assets/reference/pantheon-command-center-comp.png), box 128,484,342,562 (x0,y0,x1,y1), at the comp's native resolution. Background estimated from the crop border; alpha from luminance above it (linear ramp +10 to +70); colour un-blended from the background; trimmed to content. Dark shading becomes transparent, so use on dark surfaces only. A higher-resolution source would sharpen the 2x derivative."
+      },
+      "usage": "Studio identity on Pantheon studio entries (dark surfaces). Decorative beside the studio name.",
+      "alt": "Decorative beside the studio name (empty alt). Standalone: An open book, engraved in fine lines.",
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/studios/frige-emblem-194w.webp",
+          "sha256": "da21b4bfefd247c08c2002e00e02c19438879c44a506f978b0a1d7faca04404d",
+          "bytes": 10794,
+          "width": 194,
+          "height": 65,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        },
+        {
+          "path": "apps/pantheon/public/media/studios/frige-emblem-388w.webp",
+          "sha256": "3e0b1ad374da29afb3dae7bf1ed8e679891372141dc11526f68f6674dcb472d3",
+          "bytes": 42422,
+          "width": 388,
+          "height": 130,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        }
+      ]
+    },
+    {
+      "id": "H01",
+      "title": "Igor emblem",
+      "owner": "igor",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "packages/design-system/brand/igor-emblem.svg",
+        "sourceName": "redrawn from R02",
+        "sha256": "37fcabe1e834314fb3cabe25ac98e6eb4aee0458125263764315cd5dc4606fef",
+        "bytes": 269,
+        "viewBox": "0 0 64 64"
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Ring around a unicursal hexagram, redrawn as exact geometry from the R02 comp; the comp's indistinct generated centre glyph is omitted. Owner-approved exception (2026-11-05): the doctrine rejects occult-looking symbols, and this figure is associated with Thelema; the owner chose to keep the mockup mark."
+      },
+      "usage": "Igor (assistant) identity beside the Ask box. Single colour via currentColor or a CSS mask.",
+      "alt": "Decorative beside the \"Igor\" label (aria-hidden).",
+      "derivatives": []
+    },
+    {
       "id": "P01",
       "title": "Splash still",
       "owner": "pantheon",
@@ -64,7 +166,7 @@
           "width": 1920,
           "height": 1080,
           "budgetBytes": 420000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-still-1280w.webp",
@@ -73,7 +175,7 @@
           "width": 1280,
           "height": 720,
           "budgetBytes": 240000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-still-960w.webp",
@@ -82,7 +184,109 @@
           "width": 960,
           "height": 540,
           "budgetBytes": 150000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash"
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "title": "Command-center masthead still",
+      "owner": "pantheon",
+      "kind": "illustration",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/pantheon/pantheon-masthead-still.png",
+        "sourceName": "pantheon_veo_fast_s11.mp4 (frame 24)",
+        "sha256": "f39eaf0d3a0f0c142d223305855fa54612a077ec511351f89946ba8c28d870fb",
+        "bytes": 2747609,
+        "width": 1920,
+        "height": 1080
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Lossless extraction of frame 24 of the P11 master, the first frame of a loop built with a 24-frame crossfade. Approved exception: the doctrine asks for the masthead to be a crop of P01; the owner chose this separate panoramic master instead (2026-11-05)."
+      },
+      "usage": "Command-center masthead before and instead of motion (reduced motion, data saver, no JavaScript).",
+      "alt": "Decorative (empty alt). Where it is content: a radiant figure with streaming hair flies through engraved clouds, arm outstretched toward a blazing sun.",
+      "focal": {
+        "artBand": [
+          0,
+          0.204,
+          1,
+          0.761
+        ],
+        "figure": [
+          0.15,
+          0.33,
+          0.62,
+          0.76
+        ],
+        "face": [
+          0.453,
+          0.435
+        ],
+        "fingertips": [
+          0.83,
+          0.42
+        ],
+        "sun": [
+          0.73,
+          0.3,
+          0.85,
+          0.5
+        ],
+        "mastheadStripe": [
+          0,
+          0.3,
+          1,
+          0.52
+        ],
+        "textSafe": [
+          [
+            0,
+            0.3,
+            0.1,
+            0.52
+          ],
+          [
+            0.9,
+            0.3,
+            1,
+            0.52
+          ]
+        ]
+      },
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-still-1920w.webp",
+          "sha256": "32fd6dea87a7ab9a6539ff1dfa65e310b80a2e56f4fa705fe2658217687efd57",
+          "bytes": 196364,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 230000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-still-1280w.webp",
+          "sha256": "68f2ac6a937db9fa622004f3aa22ffb6ed75b713ab844f6d01525445802221d8",
+          "bytes": 93028,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 115000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-still-960w.webp",
+          "sha256": "dc65b46be9bd57588ef06ab5168287d81c268b705179b6b848dd5f82e060ba3a",
+          "bytes": 86522,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 110000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:480:0:220"
         }
       ]
     },
@@ -179,7 +383,7 @@
         "rights": "Owned by St. Expedite Press; all rights reserved.",
         "notes": "Original 12.04 s render; no audio track. Locked camera; motion is confined to sky, sun rays, and river shimmer."
       },
-      "usage": "Splash background loop. Built loop is 265 frames (11.04 s): see scripts/assets/build-splash.mjs for the seam treatment.",
+      "usage": "Splash background loop. Built loop is 265 frames (11.04 s): see scripts/assets/build-media.mjs (splash job) for the seam treatment.",
       "alt": "Decorative; hidden from assistive technology. See P01 for a description.",
       "focal": {
         "seatedFigure": [
@@ -223,7 +427,8 @@
           "width": 1920,
           "height": 1080,
           "budgetBytes": 2500000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "av01.0.08M.10"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1920w.mp4",
@@ -232,7 +437,8 @@
           "width": 1920,
           "height": 1080,
           "budgetBytes": 3500000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "avc1.640032"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1280w.webm",
@@ -241,7 +447,8 @@
           "width": 1280,
           "height": 720,
           "budgetBytes": 1400000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "av01.0.05M.10"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-1280w.mp4",
@@ -250,7 +457,8 @@
           "width": 1280,
           "height": 720,
           "budgetBytes": 1800000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "avc1.64001F"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-960w.webm",
@@ -259,7 +467,8 @@
           "width": 960,
           "height": 540,
           "budgetBytes": 800000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "av01.0.04M.10"
         },
         {
           "path": "apps/pantheon/public/media/splash/pantheon-splash-loop-960w.mp4",
@@ -268,7 +477,148 @@
           "width": 960,
           "height": 540,
           "budgetBytes": 1000000,
-          "recipe": "scripts/assets/build-splash.mjs"
+          "recipe": "scripts/assets/build-media.mjs splash",
+          "codecs": "avc1.64001F"
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "title": "Command-center masthead animation",
+      "owner": "pantheon",
+      "kind": "motion",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/pantheon/pantheon-masthead-loop.mp4",
+        "sourceName": "pantheon_veo_fast_s11.mp4",
+        "sha256": "f946c38851cd53c81cc883e3fa778828b86853c459ee61c5e725c0bbad061a43",
+        "bytes": 14875922,
+        "width": 1920,
+        "height": 1080,
+        "frames": 192,
+        "frameRate": 24
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Original 8.00 s render, 14.9 Mbit/s, no audio. The art occupies a 3.18:1 band (rows 220-822) between near-black bars (#09161C). Last-to-first SSIM 0.787 against a normal step of 0.986: needs the crossfade loop. Motion concentrates in the hair, drapery, and low clouds; face, arm, and sun are steadier. Parchment text over the stripe fails contrast except at x < 0.10 and x > 0.90."
+      },
+      "usage": "Command-center masthead loop. Derivatives to be cropped to the art band.",
+      "alt": "Decorative; hidden from assistive technology. See P02 for a description.",
+      "focal": {
+        "artBand": [
+          0,
+          0.204,
+          1,
+          0.761
+        ],
+        "figure": [
+          0.15,
+          0.33,
+          0.62,
+          0.76
+        ],
+        "face": [
+          0.453,
+          0.435
+        ],
+        "fingertips": [
+          0.83,
+          0.42
+        ],
+        "sun": [
+          0.73,
+          0.3,
+          0.85,
+          0.5
+        ],
+        "mastheadStripe": [
+          0,
+          0.3,
+          1,
+          0.52
+        ],
+        "textSafe": [
+          [
+            0,
+            0.3,
+            0.1,
+            0.52
+          ],
+          [
+            0.9,
+            0.3,
+            1,
+            0.52
+          ]
+        ]
+      },
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.webm",
+          "sha256": "442c810e56fc2279892f47c22032a0b98bd24cc272efd7a4e6f62a78bae88067",
+          "bytes": 1342195,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 1800000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300",
+          "codecs": "av01.0.04M.10"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.mp4",
+          "sha256": "6c71e0b65f63aa870aa54a8518307752f294e283b35a1705efd31fc46d91281a",
+          "bytes": 1560921,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 2000000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300",
+          "codecs": "avc1.64001F"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.webm",
+          "sha256": "462c10d896a86756b7ee634b856f223f2dedb5ebf86019abca1d4989e194e9e3",
+          "bytes": 584798,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 900000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300",
+          "codecs": "av01.0.01M.10"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.mp4",
+          "sha256": "f4721a61e9741024747b213cb96c407cb5202911cb0cb57c9af3a5d9a687d842",
+          "bytes": 649240,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 1000000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:288:0:300",
+          "codecs": "avc1.64001E"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.webm",
+          "sha256": "47565f5359c21be55499b042040be2f3ad5ce0569c8910a29c50f788d517416f",
+          "bytes": 471594,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 650000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:480:0:220",
+          "codecs": "av01.0.01M.10"
+        },
+        {
+          "path": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.mp4",
+          "sha256": "ba436b286c8021b417a211f09d87e1e71fc737966ba41e7ef65f41415683af8a",
+          "bytes": 530605,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 750000,
+          "recipe": "scripts/assets/build-media.mjs masthead",
+          "crop": "1920:480:0:220",
+          "codecs": "avc1.64001E"
         }
       ]
     },
@@ -294,6 +644,109 @@
       "usage": "Visual comparison for the live HTML panel.",
       "alt": "Not shipped.",
       "derivatives": []
+    },
+    {
+      "id": "R02",
+      "title": "Command-center comp",
+      "owner": "pantheon",
+      "kind": "reference",
+      "revision": 1,
+      "master": {
+        "path": "assets/reference/pantheon-command-center-comp.png",
+        "sourceName": "pasted into the design conversation, 2026-11-05 (original filename unknown)",
+        "sha256": "628a8f5bbd0403b4d26a15d29348eb5b284ff9927b68ebd162b9ab0b0af2365c",
+        "bytes": 2020799,
+        "width": 1536,
+        "height": 1024
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Approved direction for the command center. Reference only: its text, icons, project names, timestamps, and studio illustrations are mockup content and must never ship as production records."
+      },
+      "usage": "Visual comparison for the command-center build.",
+      "alt": "Not shipped.",
+      "derivatives": []
+    },
+    {
+      "id": "S04",
+      "title": "Seaxneat emblem: drafting compass",
+      "owner": "seaxneat",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/seaxneat/seaxneat-emblem.png",
+        "sourceName": "R02 crop",
+        "sha256": "51ad52cfe4550862740bf3c4ab690a0f79167f83ac807636f1359f5612384bee",
+        "bytes": 9734
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Carved from R02 (assets/reference/pantheon-command-center-comp.png), box 515,484,680,562 (x0,y0,x1,y1), at the comp's native resolution. Background estimated from the crop border; alpha from luminance above it (linear ramp +10 to +70); colour un-blended from the background; trimmed to content. Dark shading becomes transparent, so use on dark surfaces only. A higher-resolution source would sharpen the 2x derivative."
+      },
+      "usage": "Studio identity on Pantheon studio entries (dark surfaces). Decorative beside the studio name.",
+      "alt": "Decorative beside the studio name (empty alt). Standalone: A drafting compass standing on a set square.",
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/studios/seaxneat-emblem-138w.webp",
+          "sha256": "f8c40e19fea40122c136786bc001ce45dc5ffbdac92b2e99edb8888ee81ff33e",
+          "bytes": 5010,
+          "width": 138,
+          "height": 74,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        },
+        {
+          "path": "apps/pantheon/public/media/studios/seaxneat-emblem-276w.webp",
+          "sha256": "6a44350cb5941459231442b3ddd5fd483f8d29a46edb4532197c8bf4e30a282a",
+          "bytes": 17896,
+          "width": 276,
+          "height": 148,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "title": "Woden emblem: raven",
+      "owner": "woden",
+      "kind": "emblem",
+      "revision": 1,
+      "master": {
+        "path": "assets/masters/woden/woden-emblem.png",
+        "sourceName": "R02 crop",
+        "sha256": "03960575239dc437610605948996fa39c2313080d9cf818f7957e6b7b7ebc823",
+        "bytes": 19090
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Carved from R02 (assets/reference/pantheon-command-center-comp.png), box 1218,482,1418,560 (x0,y0,x1,y1), at the comp's native resolution. Background estimated from the crop border; alpha from luminance above it (linear ramp +10 to +70); colour un-blended from the background; trimmed to content. Dark shading becomes transparent, so use on dark surfaces only. A higher-resolution source would sharpen the 2x derivative."
+      },
+      "usage": "Studio identity on Pantheon studio entries (dark surfaces). Decorative beside the studio name.",
+      "alt": "Decorative beside the studio name (empty alt). Standalone: A raven perched beside an oak branch.",
+      "derivatives": [
+        {
+          "path": "apps/pantheon/public/media/studios/woden-emblem-171w.webp",
+          "sha256": "82997a9b0103905cabd8731c31ee0cd81297097d0dec17432caeda72b2a50afd",
+          "bytes": 8038,
+          "width": 171,
+          "height": 73,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        },
+        {
+          "path": "apps/pantheon/public/media/studios/woden-emblem-342w.webp",
+          "sha256": "bc61c33655511c312bd8ce2721b542bfaf6ae9c1bb692ea6884eb33052a83970",
+          "bytes": 37584,
+          "width": 342,
+          "height": 146,
+          "budgetBytes": 60000,
+          "recipe": "scripts/assets/build-media.mjs emblems"
+        }
+      ]
     }
   ]
 }

@@ -36,6 +36,12 @@ project** makes a new, isolated scaffold under `apps/frige/books/` and then
 opens it explicitly as `?book=<id>`. Selecting or creating a project never
 rewrites an existing manuscript.
 
+`GET /api/stex/projects` serves the books as
+[`stex.projects.summary.v1`](../../protocol/projects/README.md) for Pantheon's
+project lists. Its `updatedAt` is the newest file modification time in the
+book, excluding Frige's private `.texgraph` and `.obsidian` folders. It reads
+file metadata only and never opens a manuscript.
+
 ## Current contract
 
 - `book.json` and `pages/*.tex` are the canonical local book and page source.

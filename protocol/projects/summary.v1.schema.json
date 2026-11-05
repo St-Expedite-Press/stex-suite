@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stex.projects.summary.v1",
+  "title": "STEX project summaries",
+  "type": "object",
+  "required": ["schemaVersion", "application", "projects"],
+  "properties": {
+    "schemaVersion": { "const": "stex.projects.summary.v1" },
+    "application": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$" },
+    "projects": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["reference", "id", "title", "kind", "updatedAt", "status", "openPath"],
+        "properties": {
+          "reference": { "type": "string", "pattern": "^stex://[a-z][a-z0-9-]*/[a-z][a-z0-9-]*/[A-Za-z0-9._-]+$" },
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "kind": { "type": "string", "pattern": "^[a-z][a-z-]{0,31}$" },
+          "updatedAt": { "oneOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }] },
+          "status": {
+            "type": "object",
+            "required": ["state", "label"],
+            "properties": {
+              "state": { "enum": ["ready", "working", "attention", "failed"] },
+              "label": { "type": "string", "minLength": 1, "maxLength": 60 }
+            }
+          },
+          "openPath": { "type": "string", "pattern": "^/(?!/)(?!(.*/)?\\.\\.(/|\\?|$))" }
+        }
+      }
+    }
+  }
+}

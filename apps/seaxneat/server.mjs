@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SeaxneatStore } from './src/project-store.mjs';
 import { previewPath, previewTarget } from './src/preview-proxy.mjs';
+import { projectSummaries } from './src/project-summary.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.SEAXNEAT_PORT || 4320);
@@ -47,6 +48,7 @@ function proxyPreview(request, response, target, relative, search, mountPrefix) 
 const server = http.createServer(async (request, response) => { const url = new URL(request.url, `http://${request.headers.host}`); const pathname = url.pathname === basePath ? '/' : url.pathname.startsWith(`${basePath}/`) ? url.pathname.slice(basePath.length) : url.pathname; try {
   if (pathname === '/api/health') return send(response, 200, { ok: true, dataDirectory, vault: 'disabled', transport: 'deterministic' });
   if (pathname === '/api/projects' && request.method === 'GET') return send(response, 200, store.list());
+  if (pathname === '/api/stex/projects' && request.method === 'GET') return send(response, 200, projectSummaries(store.list()));
   if (pathname === '/api/projects' && request.method === 'POST') return send(response, 201, await store.create(await body(request)));
   const previewMatch = /^\/api\/projects\/([a-z0-9][a-z0-9-]{0,62})\/preview(?:\/(.*))?$/.exec(pathname);
   if (previewMatch && ['GET', 'HEAD'].includes(request.method)) { const project = store.get(previewMatch[1]); return proxyPreview(request, response, project.preview?.target, previewMatch[2], url.search, `${basePath}/api/projects/${project.id}/preview`); }

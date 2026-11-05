@@ -6,7 +6,10 @@
 | Design system (`@stex/design-system`) | Implemented and tested | `test:design-system`; tokens, type, components, specimen |
 | Brand asset library and manifest | Implemented and tested | `test:assets`; masters and media in Git LFS |
 | Pantheon splash (`/`) | Implemented and tested | `test:pantheon`, `verify:splash` (Chrome, 15 viewports); Safari and Firefox not run |
-| Pantheon command center (`/home/`) | Interim | Studio list on shared tokens; real-data command center is the next milestone |
+| Pantheon command center (`/home/`, `/projects/`, `/studios/`) | Implemented and tested | `test:pantheon`, `verify:home` (Chrome, 9 viewports, isolated stack with a synthetic book and a labelled Seaxneat stub) |
+| Project summaries (`stex.projects.summary.v1`) | Implemented and tested | Frige and Seaxneat endpoints; `test:frige`, `test:seaxneat` |
+| Igor (assistant) in Pantheon | Implemented on the fake transport | `test:pantheon` against a stub, `verify:home` against the real inference service; replies labelled simulated; remote Hermes unverified |
+| Graph and Activity tabs | Unimplemented | Honest "not built yet" pages; no sample data |
 | Accounts and sign-in | Unimplemented | Splash **Sign in** is a local single-user entry, not authentication |
 | Frige and Seaxneat visual identity | Conflict | Still pre-doctrine styles (Frige living palette, Seaxneat light theme); adoption planned |
 | Frige migration, proofs, and preflight | Implemented and tested | `test:frige`; protected manuscript bytes preserved |
@@ -20,4 +23,5 @@
 Consolidation evidence: [baseline](verification/naming-consolidation-baseline.md)
 and [verification report](verification/pantheon-consolidation-report.md).
 Identity foundation and splash evidence:
-[identity-splash-report](verification/identity-splash-report.md).
+[identity-splash-report](verification/identity-splash-report.md). Command
+center evidence: [command-center-report](verification/command-center-report.md).

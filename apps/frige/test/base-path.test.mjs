@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -43,6 +43,30 @@ test('returns to the Pantheon command center by default when mounted', async (co
   await startFrige(root, 4412, context, { STEX_FRIGE_SHELL_URL: '', TEXGRAPH_SHELL_URL: '' });
   const runtime = await fetch('http://127.0.0.1:4412/frige/runtime-config.js');
   assert.match(await runtime.text(), /STEX_SHELL_URL="\/home\/"/);
+});
+
+test('serves stex.projects.summary.v1 from file times without touching the manuscript', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-summary-'));
+  const book = path.join(root, 'books', 'field-notes');
+  await mkdir(path.join(book, 'manuscript'), { recursive: true });
+  await mkdir(path.join(book, '.texgraph'), { recursive: true });
+  await writeFile(path.join(book, 'README.md'), '# Field Notes\n');
+  await writeFile(path.join(book, 'manuscript', 'Programme.md'), '# Programme\n');
+  await writeFile(path.join(book, '.texgraph', 'cache.json'), '{}');
+  await mkdir(path.join(book, '.git'), { recursive: true });
+  await writeFile(path.join(book, '.git', 'FETCH_HEAD'), '');
+  const authored = new Date('2026-03-04T05:06:07.000Z');
+  for (const file of ['README.md', 'manuscript/Programme.md']) await utimes(path.join(book, file), authored, authored);
+  // Tooling activity is newer but is not an author change.
+  const later = new Date('2026-10-01T00:00:00.000Z');
+  for (const file of ['.texgraph/cache.json', '.git/FETCH_HEAD']) await utimes(path.join(book, file), later, later);
+  await startFrige(root, 4413, context);
+  const summary = await (await fetch('http://127.0.0.1:4413/frige/api/stex/projects')).json();
+  assert.deepEqual(summary, {
+    schemaVersion: 'stex.projects.summary.v1', application: 'frige',
+    projects: [{ reference: 'stex://frige/project/field-notes', id: 'field-notes', title: 'Field Notes', kind: 'book', updatedAt: authored.toISOString(), status: { state: 'ready', label: 'Manuscript' }, openPath: '/?book=field-notes' }],
+  });
+  assert.equal(await readFile(path.join(book, 'manuscript', 'Programme.md'), 'utf8'), '# Programme\n');
 });
 
 test('offers a mount-aware Frige project selector and creates an isolated book project', async (context) => {

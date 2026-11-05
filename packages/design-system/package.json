@@ -9,6 +9,7 @@
     "./tokens.css": "./src/tokens.css",
     "./fonts/*": "./fonts/*",
     "./brand/*": "./brand/*",
+    "./icons/*": "./icons/*",
     "./package.json": "./package.json"
   },
   "scripts": { "test": "node --test" },
