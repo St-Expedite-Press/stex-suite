@@ -47,7 +47,8 @@ transports. A0 defaults to a deterministic fake; remote Hermes requires
 server-side `STEX_HERMES_URL` and `STEX_HERMES_TOKEN`. No real Hermes request,
 provider call, deployment, or paid workload is part of A0 verification.
 
-See [MONOREPO.md](MONOREPO.md), [the protocol contracts](protocol/README.md),
+See [AGENTS.md](AGENTS.md) for the repository map and agent rules,
+[the protocol contracts](protocol/README.md),
 the [baseline evidence](docs/verification/alpha-baseline.md), and the
 [acceptance report](docs/verification/alpha-report.md).
 

@@ -5,7 +5,7 @@ description: Evidence-first documentation maintenance for the STEX Pantheon.
 
 # STEX Documentation Director
 
-Read `AGENTS.md`, `README.md`, `MONOREPO.md`, relevant application READMEs,
+Read `AGENTS.md`, `README.md`, `docs/STATUS.md`, relevant application READMEs,
 and the implementation before editing documentation. The current identities are
 Frige and Seaxneat (active), with Eostre and Woden deferred. TexGraph is a
 Frige compatibility directory, not an obsolete product to erase.
