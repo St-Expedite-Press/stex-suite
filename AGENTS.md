@@ -3,55 +3,59 @@
 **Scope:** the entire `St-Expedite-Press/stex-suite` repository. Nested
 `AGENTS.md` files add rules for their subtree (see *Instruction sources*).
 
-STEX is a local-first suite of independently owned creative applications under
-one loopback shell. Build the smallest verified workflow that satisfies the
-current request; do not grow speculative infrastructure, runtime-agent swarms,
-or duplicate application state.
+STEX Pantheon is a local-first monorepo of independently owned creative
+applications under one loopback shell. Build the smallest verified workflow
+that satisfies the current request; do not grow speculative infrastructure,
+runtime-agent swarms, or duplicate application state.
 
 ## Where the project stands
 
-Pantheon Alpha **A0 is delivered** on `main` (behavior in `c7194dd`,
-consolidated documentation in `9de23a1`). [`docs/STATUS.md`](docs/STATUS.md)
-is the authoritative status table and [`docs/verification/`](docs/verification/)
-holds the acceptance evidence; update those, not this file, when status moves.
+Pantheon Consolidation Alpha is the active named milestone. The earlier A0
+acceptance evidence remains historical. [`docs/STATUS.md`](docs/STATUS.md) is
+the authoritative status table and [`docs/verification/`](docs/verification/)
+holds acceptance evidence; update those, not this file, when status moves.
 
-- **Active, implemented and tested locally:** Frige (`apps/texgraph`),
-  Seaxneat (`apps/seaxneat`), the Lab shell (`apps/lab`), and the
+- **Active, implemented and tested locally:** Frige (`apps/frige`),
+  Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`), and the
   `stex.hermes.turn.v1` fake/remote client in `services/inference`.
-- **Registered but deferred:** Eostre (`apps/screenlab`) and Woden
-  (`apps/novelgraph`) — shell entries with an honest deferred state only.
+- **Registered but deferred:** Eostre (`apps/eostre`) and Woden
+  (`apps/woden`) — shell entries with an honest deferred state only.
 - **Not done or unverified:** any real remote Hermes exchange, provider calls,
   vault integration, deployment, and cross-application workflows.
 
-The Agent Studio migration that produced A0 is closed. Agent Studio
+The historical Agent Studio migration that produced A0 is closed. Agent Studio
 (`St-Expedite-Press/agent-studio`) remains a read-only behavioral reference;
 never copy its Python/FastAPI, cloud, provider, credential, vault, or private
 Hermes runtime.
 
 **Default scope without a named milestone:** defects, tests, documentation,
-and incremental improvements to existing Frige, Seaxneat, Lab, inference, and
-protocol behavior. A new product workflow, a new or breaking cross-application
-contract, Eostre/Woden implementation, a shared database, universal graph,
-identity system, or generalized scheduler requires a milestone the user
-explicitly authorizes (see *Milestone loop*). The candidate next milestone in
-`docs/STATUS.md` — controlled remote-Hermes verification — additionally needs
-explicit credentials, budget, and authorization.
+and incremental improvements to existing Pantheon, Frige, Seaxneat, inference,
+Hermes configuration, User Graph adapter, and protocol behavior. A new product
+workflow, a breaking cross-application contract, Eostre/Woden implementation,
+a shared database, universal graph, identity system, or generalized scheduler
+requires a milestone the user explicitly authorizes (see *Milestone loop*).
+Remote Hermes verification additionally needs explicit credentials, budget,
+and authorization.
 
 ## Repository map
 
 | Path | Role and owner | Shell route | Dev port | Owning check |
 | --- | --- | --- | --- | --- |
-| `apps/lab` | Local shell, same-origin proxy, registry routes (see the Lab conflict below) | `/` | 4300 | `test:lab` |
-| `apps/texgraph` | **Frige** — manuscripts, proofs, preflight, revision authority (TexGraph compatibility identity) | `/frige/` (`/texgraph/` redirects) | 4310 | `test:texgraph` |
+| `apps/pantheon` | Pantheon shell, same-origin proxy, registry routes | `/` | 4300 | `test:pantheon` |
+| `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige` |
 | `apps/seaxneat` | **Seaxneat** — website workspaces, previews, revisions, UI | `/seaxneat/` | 4320 | `test:seaxneat`, `build:seaxneat` |
-| `apps/screenlab` | **Eostre** — registered, deferred | `/eostre/` | — | — |
-| `apps/novelgraph` | **Woden** — registered, deferred | `/woden/` | — | — |
+| `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
+| `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
 | `services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
+| `hermes` | Declarative STEX role, profile, skill, and policy configuration | — | — | `test:hermes` |
+| `services/knowledge` | Optional read-only User Graph adapter | — | — | `test:knowledge` |
+| `vault` | Optional, portable Obsidian User Graph | — | — | adapter tests |
 | `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
 | `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
 
-Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_LAB_PORT`,
-`TEXGRAPH_PORT`, `SEAXNEAT_PORT`, `STEX_INFERENCE_PORT`). Supported target:
+Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
+`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_INFERENCE_PORT`). Legacy
+`STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility aliases. Supported target:
 local development on Node ≥ 22.13, pnpm 9.15 via Corepack, Git, and LuaLaTeX
 for Frige proof tests.
 
@@ -69,8 +73,9 @@ Read, in order: this file, `README.md`, `docs/STATUS.md`, the owning
 application's `README.md`, any nested `AGENTS.md` on the path you will touch,
 and the `protocol/` contracts you will cross. Current nested charters:
 
-- `apps/texgraph/AGENTS.md` — Frige/TexGraph engineering rules.
-- `apps/texgraph/books/*/AGENTS.md` — per-manuscript editorial rules.
+- `apps/frige/AGENTS.md` — Frige engineering rules.
+- `apps/frige/books/*/AGENTS.md` — per-manuscript editorial rules.
+- `hermes/AGENTS.md` — declarative Hermes configuration rules.
 - `.github/agents/stex-documentation-director.agent.md` — documentation work.
 
 Each `AGENTS.md` has a sibling `CLAUDE.md` that only imports it (`@AGENTS.md`);
@@ -100,9 +105,9 @@ workflow requires it.
 
 ## Hermes and inference
 
-- Hermes source, profiles, runtime, and persistent memory live outside this
-  repository. Do not install, vendor, or assume a local Hermes runtime;
-  development and tests use the deterministic fake transport.
+- STEX-owned Hermes profiles, roster, skills, and policies live in `hermes/`.
+  Do not vendor or assume an upstream Hermes runtime; development and tests
+  use the deterministic fake transport.
 - `services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
 - Authenticate remote calls; validate every request and reply against
@@ -119,9 +124,10 @@ workflow requires it.
 
 ### Frige
 
-- `apps/texgraph/books/*/manuscript/` is protected creative source. Never
+- `apps/frige/books/*/manuscript/` is protected creative source. Never
   rewrite, normalize, reorder, rename, or delete it for implementation or
-  tests; use temporary synthetic fixtures. Do not rename `apps/texgraph`.
+  tests; use temporary synthetic fixtures. Do not rename or rewrite files
+  inside protected manuscript trees for implementation convenience.
 - Canonical text is distinct from rendering. Preserve intentional lineation,
   stanza boundaries, indentation, Unicode, provenance, and review authority.
 - Pagination is derived from compiler output. A successful build is not a
@@ -140,14 +146,13 @@ workflow requires it.
 - Interrupted work is durable and visible; it is not silently replayed or
   reported as successful.
 
-### Lab
+### Pantheon
 
-- Lab routes and proxies; it owns no product state and adds no shared store.
+- Pantheon routes and proxies; it owns no product state and adds no shared store.
   Deferred products render an honest deferred state, not partial workflows.
-- **Known conflict:** `apps/lab/server.mjs` still serves legacy `/api/books`
-  routes (list, create, add documents, review) that write directly into
-  `apps/texgraph/books/`. Do not extend them or add similar routes. Moving
-  that behavior behind a Frige-owned API is a candidate milestone.
+- **Known conflict:** `apps/pantheon/server.mjs` still serves legacy `/api/books`
+  routes. Do not extend them or add similar routes; moving that behavior behind
+  a Frige-owned API remains a candidate milestone.
 
 ## Operating loops
 

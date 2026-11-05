@@ -19,7 +19,8 @@ Run locally with `corepack pnpm dev:inference`. Configure only as needed:
 classified as validation, authentication, unavailable, timeout, cancellation,
 or malformed-response failures.
 
-The existing TexGraph v3 endpoints remain only as compatibility adapters:
+The existing Frige v3 compatibility endpoints remain adapters for historical
+TexGraph callers:
 `/v1/texgraph/interview-turn`, `/page-turn`, and `/scope-turn` convert their
 request into `stex.hermes.turn.v1` and return a no-change v3-shaped response.
 They do not contact a provider or expose credentials. The retired provider

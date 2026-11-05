@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "stex.hermes.roster.v1",
+  "director": "pantheon-director",
+  "profiles": ["pantheon-director", "architect", "developer", "designer", "artist", "editor", "knowledge", "auditor"],
+  "roles": [
+    {"slug":"pantheon-director","name":"Pantheon Director","profile":"pantheon-director","domain":"orchestration","tools":["delegate","report"],"skills":["delegation","documentation"],"modelTier":"high","budget":24000,"approval":"required-for-operations","output":"bounded plan and evidence"},
+    {"slug":"session-orchestrator","name":"Session Orchestrator","profile":"pantheon-director","domain":"session coordination","tools":["delegate","report"],"skills":["delegation"],"modelTier":"high","budget":16000,"approval":"required-for-operations","output":"task handoff"},
+    {"slug":"concept-interviewer","name":"Concept Interviewer","profile":"editor","domain":"briefing","tools":["context"],"skills":["documentation"],"modelTier":"medium","budget":8000,"approval":"proposal-only","output":"structured brief"},
+    {"slug":"structure-architect","name":"Structure Architect","profile":"architect","domain":"system design","tools":["context"],"skills":["software-engineering"],"modelTier":"high","budget":12000,"approval":"proposal-only","output":"design proposal"},
+    {"slug":"aesthetics-specialist","name":"Aesthetics Specialist","profile":"designer","domain":"visual direction","tools":["context"],"skills":["web-design"],"modelTier":"medium","budget":8000,"approval":"proposal-only","output":"design brief"},
+    {"slug":"artist","name":"Artist","profile":"artist","domain":"visual production","tools":["context"],"skills":["visual-production"],"modelTier":"medium","budget":8000,"approval":"proposal-only","output":"asset brief"},
+    {"slug":"copywriter","name":"Copywriter","profile":"editor","domain":"product writing","tools":["context"],"skills":["documentation"],"modelTier":"medium","budget":8000,"approval":"proposal-only","output":"reviewable copy"},
+    {"slug":"web-developer","name":"Web Developer","profile":"developer","domain":"website engineering","tools":["context"],"skills":["software-engineering","web-design"],"modelTier":"high","budget":12000,"approval":"proposal-only","output":"bounded change proposal"},
+    {"slug":"ai-dev-tendency-auditor","name":"AI-Dev-Tendency Auditor","profile":"auditor","domain":"quality review","tools":["context"],"skills":["security-audit"],"modelTier":"high","budget":10000,"approval":"proposal-only","output":"evidence-backed findings"},
+    {"slug":"ingestor","name":"Ingestor","profile":"knowledge","domain":"source ingestion","tools":["context"],"skills":["research","knowledge"],"modelTier":"medium","budget":8000,"approval":"user-content-review","output":"source record"},
+    {"slug":"fact-steward","name":"Fact Steward","profile":"knowledge","domain":"fact review","tools":["context"],"skills":["research"],"modelTier":"medium","budget":8000,"approval":"proposal-only","output":"claim ledger"},
+    {"slug":"graph-keeper","name":"Graph Keeper","profile":"knowledge","domain":"knowledge organization","tools":["context"],"skills":["knowledge"],"modelTier":"medium","budget":8000,"approval":"user-content-review","output":"reference map"},
+    {"slug":"publishing-director","name":"Publishing Director","profile":"pantheon-director","domain":"Frige workflow","tools":["context"],"skills":["publishing","typesetting"],"modelTier":"high","budget":12000,"approval":"proposal-only","output":"editorial proposal"},
+    {"slug":"typesetting-specialist","name":"Typesetting Specialist","profile":"architect","domain":"proof production","tools":["context"],"skills":["typesetting"],"modelTier":"high","budget":12000,"approval":"proposal-only","output":"typesetting findings"},
+    {"slug":"narrative-architect","name":"Narrative Architect","profile":"architect","domain":"narrative structure","tools":["context"],"skills":["narrative"],"modelTier":"high","budget":12000,"approval":"proposal-only","output":"narrative proposal"},
+    {"slug":"print-production-specialist","name":"Print Production Specialist","profile":"designer","domain":"print production","tools":["context"],"skills":["screen-printing","visual-production"],"modelTier":"medium","budget":10000,"approval":"proposal-only","output":"production brief"},
+    {"slug":"security-execution-engineer","name":"Security and Execution Engineer","profile":"auditor","domain":"execution safety","tools":["context"],"skills":["security-audit","software-engineering"],"modelTier":"high","budget":12000,"approval":"required-for-operations","output":"authorization review"},
+    {"slug":"documentation-director","name":"Documentation Director","profile":"editor","domain":"documentation","tools":["context"],"skills":["documentation"],"modelTier":"medium","budget":10000,"approval":"proposal-only","output":"documentation change"}
+  ]
+}

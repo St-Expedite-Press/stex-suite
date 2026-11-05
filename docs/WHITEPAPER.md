@@ -4,13 +4,20 @@ STEX is a local-first suite of independently owned creative applications. A0 imp
 
 ```mermaid
 flowchart LR
-  Shell[Lab shell] --> Frige[Frige /frige]
+  Shell[Pantheon shell] --> Frige[Frige /frige]
   Shell --> Seaxneat[Seaxneat /seaxneat]
   Frige -->|versioned server request| Gateway[services/inference]
   Seaxneat -->|optional server request| Gateway
   Gateway -->|optional stex.hermes.turn.v1| Hermes[remote Hermes]
 ```
 
-Each application owns its own state. Lab routes HTTP but stores no projects. Frige owns manuscript/proof state; Seaxneat owns ignored local workspaces and Git history. The optional vault is user knowledge, never a shared database. `stex.hermes.turn.v1` is an authenticated, bounded client contract; its local fake enables deterministic A0 workflows. Remote Hermes and providers are not verified in A0.
+Each application owns its own state. Pantheon routes HTTP but stores no
+projects. Frige owns manuscript/proof state; Seaxneat owns ignored local
+workspaces and Git history. `vault/` is an optional User Graph, never a shared
+database. `services/knowledge` exposes only a replaceable read-only adapter.
+`hermes/` holds declarative roles and profiles; `services/inference` remains
+the authenticated, bounded application-facing inference contract. The local
+fake enables deterministic workflows. Remote Hermes and providers are not
+verified.
 
 See [STATUS.md](STATUS.md) and [protocol documentation](../protocol/README.md).

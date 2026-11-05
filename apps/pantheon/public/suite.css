@@ -1,0 +1,98 @@
+/* STEX Pantheon splash: a misregistered press proof. Colours come from the living
+   palette (living.css + palette.js); everything else is local, with no web fonts. */
+:root {
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --sans: Inter, "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
+  --mx: 50vw; --my: 40vh;
+  --rule: color-mix(in srgb, var(--t1) 18%, transparent);
+}
+* { box-sizing: border-box; }
+html, body.press { overflow-x: clip; }
+body.press { margin: 0; min-height: 100vh; background: var(--s0); color: var(--t1); font-family: var(--sans); }
+
+/* Halftone field that sharpens around the pointer, like a loupe on a screen print. */
+.halftone { position: fixed; inset: 0; pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--signal) 70%, transparent) 1.1px, transparent 1.6px);
+  background-size: 9px 9px; opacity: .1;
+  -webkit-mask-image: radial-gradient(circle 32vmax at var(--mx) var(--my), #000 0, rgba(0,0,0,.25) 45%, rgba(0,0,0,.05) 100%);
+          mask-image: radial-gradient(circle 32vmax at var(--mx) var(--my), #000 0, rgba(0,0,0,.25) 45%, rgba(0,0,0,.05) 100%); }
+.grain { position: fixed; inset: -50%; pointer-events: none; opacity: .07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 1.2s steps(6) infinite; }
+@keyframes grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-3%, 2%); } 66% { transform: translate(2%, -3%); } 100% { transform: translate(-1%, 1%); } }
+
+/* Print furniture: crop marks and registration targets. */
+.crop { position: fixed; width: 34px; height: 34px; pointer-events: none; z-index: 3; }
+.crop::before, .crop::after { content: ''; position: absolute; background: var(--t2); }
+.crop::before { width: 22px; height: 1px; } .crop::after { width: 1px; height: 22px; }
+.crop-tl { top: 14px; left: 14px; } .crop-tl::before { top: 12px; left: 0; } .crop-tl::after { left: 12px; top: 0; }
+.crop-tr { top: 14px; right: 14px; } .crop-tr::before { top: 12px; right: 0; } .crop-tr::after { right: 12px; top: 0; }
+.crop-bl { bottom: 14px; left: 14px; } .crop-bl::before { bottom: 12px; left: 0; } .crop-bl::after { left: 12px; bottom: 0; }
+.crop-br { bottom: 14px; right: 14px; } .crop-br::before { bottom: 12px; right: 0; } .crop-br::after { right: 12px; bottom: 0; }
+.register { position: fixed; width: 30px; height: 30px; z-index: 3; pointer-events: none; fill: none; stroke: var(--signal); stroke-width: 1.2; }
+.register-a { top: 24px; left: 50%; translate: -50% 0; }
+.register-b { top: 50%; right: 22px; translate: 0 -50%; stroke: var(--signal-2); }
+
+/* The sheet. */
+.sheet { position: relative; z-index: 2; width: min(1320px, 100%); margin: 0 auto; padding: clamp(64px, 9vw, 120px) clamp(28px, 6vw, 92px) 64px clamp(48px, 7vw, 110px); min-height: 100vh; display: grid; align-content: space-between; gap: clamp(36px, 6vw, 72px); background: none; }
+.kicker { margin: 0 0 clamp(8px, 2vw, 20px); font: 700 11px/1 var(--mono); letter-spacing: .34em; text-transform: uppercase; color: var(--signal); }
+.kicker span { color: var(--t2); }
+
+/* Wordmark: key and spot ink printed slightly out of register, drifting. */
+.wordmark { position: relative; margin: 0 0 0 -.06em; font: italic 400 clamp(120px, 31vw, 430px)/.74 var(--serif); letter-spacing: -.075em; white-space: nowrap; }
+.ink { display: block; }
+.ink-key { color: var(--t1); }
+.ink-spot { position: absolute; inset: 0; color: var(--signal-2); mix-blend-mode: screen; opacity: .9; animation: drift 9s ease-in-out infinite alternate; }
+@keyframes drift { 0% { transform: translate(.035em, -.02em) skewX(-2deg); } 50% { transform: translate(-.02em, .03em); } 100% { transform: translate(.05em, .01em) skewX(1.5deg); } }
+.wordmark::after { content: ''; position: absolute; left: .02em; right: -100vw; bottom: .06em; height: clamp(4px, .9vw, 12px); background: var(--signal); mix-blend-mode: difference; }
+
+/* Application slabs: giant type that inverts into ink on hover and focus. */
+.slabs { display: grid; border-top: 2px solid var(--t1); }
+.slabs .slab { position: relative; display: grid; grid-template-columns: clamp(42px, 5vw, 70px) 1fr auto; align-items: center; column-gap: clamp(14px, 2.4vw, 34px); min-height: clamp(96px, 14vw, 176px); padding: 0 clamp(8px, 1.5vw, 20px); overflow: hidden; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; box-shadow: none; color: var(--t1); text-decoration: none; isolation: isolate; transition: color .25s ease; }
+.slabs .slab::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--signal); transform: scaleY(0); transform-origin: bottom; transition: transform .38s cubic-bezier(.7, 0, .2, 1); }
+.slabs .slab .slab-index { color: var(--signal); }
+.slab-index { align-self: start; padding-top: clamp(16px, 2vw, 26px); font: 600 12px/1 var(--mono); letter-spacing: .2em; color: var(--signal); writing-mode: vertical-rl; rotate: 180deg; }
+/* living.css colours every nav span; slab text follows the slab instead. */
+.slabs .slab span { color: inherit; }
+.slab-name { font: 800 clamp(30px, 7.6vw, 118px)/.86 var(--sans); letter-spacing: -.055em; text-transform: uppercase; transition: letter-spacing .4s ease, transform .4s ease; }
+.slabs .slab .slab-text { grid-column: 2; margin: 6px 0 clamp(14px, 2vw, 22px); font: 500 11px/1.4 var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--t2); }
+.slab-ticker { position: absolute; left: 0; right: 0; bottom: clamp(10px, 1.6vw, 18px); display: none; overflow: hidden; font: 600 11px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; white-space: nowrap; }
+.slab-ticker span { display: inline-block; padding-left: 100%; animation: ticker 14s linear infinite; }
+@keyframes ticker { to { transform: translateX(-100%); } }
+.slab-go { grid-row: 1 / span 2; grid-column: 3; font: 300 clamp(40px, 7vw, 108px)/1 var(--serif); transform: translateX(-.3em) rotate(-45deg); opacity: .45; transition: transform .4s cubic-bezier(.7, 0, .2, 1), opacity .3s ease; }
+.slab-name, .slab-index { grid-row: 1; }
+.slabs .slab:hover, .slabs .slab:focus-visible { color: var(--signal-ink); outline: none; }
+.slabs .slab:hover::before, .slabs .slab:focus-visible::before { transform: scaleY(1); }
+.slab:hover .slab-name, .slab:focus-visible .slab-name { letter-spacing: -.02em; transform: skewX(-8deg) translateX(.06em); }
+.slabs .slab:hover .slab-index, .slabs .slab:focus-visible .slab-index, .slabs .slab:hover .slab-text, .slabs .slab:focus-visible .slab-text { color: var(--signal-ink); }
+.slab:hover .slab-text, .slab:focus-visible .slab-text { visibility: hidden; }
+.slab:hover .slab-ticker, .slab:focus-visible .slab-ticker { display: block; }
+.slab:hover .slab-go, .slab:focus-visible .slab-go { transform: translateX(0) rotate(0); opacity: 1; }
+.slab:focus-visible { box-shadow: inset 0 0 0 3px var(--signal-ink); }
+
+/* Colophon with a printer's colour bar. */
+.colophon { display: flex; }
+.colorbar { display: flex; width: max-content; height: 14px; border: 1px solid var(--rule); }
+.colorbar i { width: 22px; }
+.colorbar i:nth-child(1) { background: var(--signal); } .colorbar i:nth-child(2) { background: var(--signal-2); } .colorbar i:nth-child(3) { background: var(--t1); }
+.colorbar i:nth-child(4) { background: var(--t2); } .colorbar i:nth-child(5) { background: var(--s4); } .colorbar i:nth-child(6) { background: var(--bad); }
+
+@media (max-width: 640px) {
+  .sheet { padding: 72px 22px 48px 40px; }
+  .wordmark { font-size: 38vw; }
+  .slab-name { font-size: 9vw; }
+  .slabs .slab { grid-template-columns: 30px 1fr; }
+  .slab-go { display: none; }
+  .register { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grain, .ink-spot, .slab-ticker span { animation: none; }
+  .slabs .slab::before, .slab-name, .slab-go { transition: none; }
+}
+
+/* Application pages that are not built yet. */
+.back { justify-self: start; font: 600 11px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--t2); text-decoration: none; }
+.back:hover, .back:focus-visible { color: var(--signal); }
+.stub-title { margin: 0; font: 800 clamp(48px, 12vw, 170px)/.86 var(--sans); letter-spacing: -.055em; text-transform: uppercase; }
+.stub-state { margin: 18px 0 0; font: 600 12px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--signal-2); }

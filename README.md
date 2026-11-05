@@ -1,19 +1,19 @@
-# STEX Pantheon Alpha
+# STEX Pantheon
 
-STEX is a local-first suite of independently owned creative applications. Alpha
-A0 provides two active workflows under one local shell:
+STEX Pantheon is a local-first creative development monorepo. Pantheon is the
+loopback shell; Frige and Seaxneat are active applications; Eostre and Woden
+are registered, honestly deferred domains.
 
-- **Frige** (`apps/texgraph`) — protected manuscript editing, LuaLaTeX proofs,
-  preflight, and review-gated proposals. TexGraph paths remain supported as a
-  compatibility surface.
-- **Seaxneat** (`apps/seaxneat`) — isolated Next.js website workspaces with a
-  deterministic edit simulator, validated builds, Git revisions, and restore.
+| Subsystem | Path | Status |
+| --- | --- | --- |
+| Pantheon | `apps/pantheon` | Active shell and local proxy |
+| Frige | `apps/frige` | Active manuscripts, proofs, and preflight |
+| Seaxneat | `apps/seaxneat` | Active website workspaces and revisions |
+| Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
+| Hermes | `hermes`, `services/inference` | Declarative roster; fake/remote boundary |
+| User Graph | `vault`, `services/knowledge` | Optional portable vault; read-only adapter |
 
-The shell also registers **Eostre** and **Woden**, but neither is implemented
-in A0. Applications do not share operational storage. The optional Obsidian
-vault is user knowledge, not a database or credential store.
-
-## Run locally
+## Local development
 
 ```powershell
 corepack pnpm install --frozen-lockfile
@@ -21,41 +21,20 @@ corepack pnpm test
 corepack pnpm dev:alpha
 ```
 
-Open `http://127.0.0.1:4300/`. The shell proxies Frige at `/frige/` and
-Seaxneat at `/seaxneat/`; it starts loopback-only supporting processes. Press
-`Ctrl+C` in the terminal to stop them.
+Open `http://127.0.0.1:4300/`. Pantheon proxies Frige at `/frige/` and
+Seaxneat at `/seaxneat/`; `/texgraph/` remains an explicit Frige compatibility
+redirect. The fake Hermes transport is deterministic and makes no provider
+request.
 
-Frige’s standalone command remains `corepack pnpm dev:texgraph`. Seaxneat
-state defaults to ignored `apps/seaxneat/.local-data/` and may be relocated with
-`STEX_SEAXNEAT_DATA_DIR`.
+Use `corepack pnpm dev:pantheon`, `dev:frige`, or `dev:seaxneat` for an
+individual active application. The temporary `dev:lab` and `dev:texgraph`
+aliases remain for existing automation. Canonical settings use `STEX_PANTHEON_*`
+and `STEX_FRIGE_*`; a legacy setting is a fallback only.
 
-## Manual A0 acceptance
+Frige manuscripts are protected source. Never use a real manuscript as a test
+fixture. Seaxneat state is ignored local data. The User Graph is optional
+knowledge, never application state, Hermes memory, or credentials.
 
-1. In Frige, choose an existing local book or create a new local book project
-   from `/frige/`, then edit a source node, compile a proof, open the PDF, and
-   inspect current/preflight status. Never use a protected real manuscript as
-   a test fixture.
-2. In Seaxneat, create a project, start its local preview, request a bounded
-   heading edit, review/apply it, confirm preview/diff changes, then restore a
-   validated revision.
-3. Open Eostre and Woden only to confirm their honest deferred state.
-
-## Hermes and limits
-
-`services/inference` exposes versioned `stex.hermes.turn.v1` fake and remote
-transports. A0 defaults to a deterministic fake; remote Hermes requires
-server-side `STEX_HERMES_URL` and `STEX_HERMES_TOKEN`. No real Hermes request,
-provider call, deployment, or paid workload is part of A0 verification.
-
-See [AGENTS.md](AGENTS.md) for the repository map and agent rules,
-[the protocol contracts](protocol/README.md),
-the [baseline evidence](docs/verification/alpha-baseline.md), and the
-[acceptance report](docs/verification/alpha-report.md).
-
-## Documentation
-
-- [Architecture whitepaper](docs/WHITEPAPER.md)
-- [User manual](docs/USER-MANUAL.md)
-- [Developer guide](docs/DEVELOPER-GUIDE.md)
-- [Design system](docs/DESIGN-SYSTEM.md)
-- [Implementation status](docs/STATUS.md)
+See [MONOREPO.md](MONOREPO.md), [AGENTS.md](AGENTS.md),
+[the developer guide](docs/DEVELOPER-GUIDE.md), and
+[implementation status](docs/STATUS.md).

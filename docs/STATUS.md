@@ -1,12 +1,15 @@
-# STEX A0 status
+# STEX Pantheon status
 
 | Area | Status | Evidence / limit |
 | --- | --- | --- |
-| Frige selection, creation, editing, proof, preflight | Implemented and tested | 42 Frige tests; real LuaLaTeX cases when available |
-| Seaxneat create/build/preview/edit/diff/restore | Implemented and tested | 8 state/proxy tests; browser acceptance recorded |
-| Lab routes and registry | Implemented and tested | 5 Lab tests |
-| Hermes fake and remote client | Implemented and tested | 18 inference tests; remote host unverified |
-| Eostre and Woden | Deferred | Registered views only |
-| Vault integration, deployment, paid provider calls | Unverified / out of scope | Not required for A0 |
+| Pantheon shell and canonical routes | Implemented and tested | `test:pantheon`; canonical source path `apps/pantheon` |
+| Frige migration, proofs, and preflight | Implemented and tested | `test:frige`; protected manuscript bytes preserved |
+| Seaxneat workflow | Implemented and tested | `test:seaxneat`, production build |
+| Eostre and Woden | Deferred | Canonical directory and honest shell state only |
+| Hermes roster and profiles | Implemented and tested | `test:hermes`; declarative configuration, not a runtime |
+| User Graph and local adapter | Implemented and tested | `test:knowledge`; disabled unless explicitly selected |
+| Hermes fake/remote inference boundary | Implemented and tested | `test:inference`; remote host remains unverified |
+| Multiagent execution, deployment, paid provider calls | Unimplemented / unverified | Requires a separate authorized milestone |
 
-The smallest next milestone is controlled remote-Hermes verification with explicit credentials, budget, and authorization.
+Consolidation evidence: [baseline](verification/naming-consolidation-baseline.md)
+and [verification report](verification/pantheon-consolidation-report.md).

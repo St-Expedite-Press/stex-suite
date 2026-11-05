@@ -7,7 +7,7 @@ import path from 'node:path';
 
 // Roles the gateway knows. Only roles listed in USED_BY are called today; the
 // others are kept so a stack is ready when that agent is built.
-export const USED_BY = { director: ['TexGraph conversations', 'TexGraph page turns', 'Book interview'] };
+export const USED_BY = { director: ['Frige conversations', 'Frige page turns', 'Book interview'] };
 const BUILT_IN = [
   { id: 'director', name: 'Director (Hermes)', description: 'Leads conversations and proposes changes.' },
   { id: 'worker-general', name: 'General worker', description: 'Bounded research, extraction, verification and classification.' },

@@ -11,14 +11,20 @@
   "scripts": {
     "build:seaxneat": "corepack pnpm --dir apps/seaxneat build",
     "dev:alpha": "node scripts/dev-alpha.mjs",
-    "dev:lab": "corepack pnpm --dir apps/lab dev",
+    "dev:pantheon": "corepack pnpm --dir apps/pantheon dev",
+    "dev:frige": "corepack pnpm --dir apps/frige dev",
     "dev:seaxneat": "corepack pnpm --dir apps/seaxneat dev",
-    "dev:texgraph": "corepack pnpm --dir apps/texgraph dev",
     "dev:inference": "corepack pnpm --dir services/inference dev",
-    "test": "corepack pnpm run test:lab && corepack pnpm run test:texgraph && corepack pnpm run test:inference && corepack pnpm run test:seaxneat",
+    "test": "corepack pnpm run test:pantheon && corepack pnpm run test:frige && corepack pnpm run test:inference && corepack pnpm run test:seaxneat && corepack pnpm run test:hermes && corepack pnpm run test:knowledge",
     "test:inference": "corepack pnpm --dir services/inference test",
-    "test:lab": "corepack pnpm --dir apps/lab test",
+    "test:hermes": "node --test hermes/test/roster.test.mjs",
+    "test:knowledge": "corepack pnpm --dir services/knowledge test",
+    "test:pantheon": "corepack pnpm --dir apps/pantheon test",
+    "test:frige": "corepack pnpm --dir apps/frige test",
     "test:seaxneat": "corepack pnpm --dir apps/seaxneat test",
-    "test:texgraph": "corepack pnpm --dir apps/texgraph test"
+    "dev:lab": "corepack pnpm run dev:pantheon",
+    "dev:texgraph": "corepack pnpm run dev:frige",
+    "test:lab": "corepack pnpm run test:pantheon",
+    "test:texgraph": "corepack pnpm run test:frige"
   }
 }

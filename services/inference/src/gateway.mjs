@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { texGraphDirectorKit, texGraphProcedure } from './texgraph-director.mjs';
+import { frigeDirectorKit, frigeProcedure } from './frige-director.mjs';
 import { createModelSettings } from './model-settings.mjs';
 
 // The inference gateway is the Hermes agent unit: it runs the director procedure
@@ -135,7 +135,7 @@ function directorMessages(kind, body, turn) {
   };
   const answer = turn.answer ? `\n\nThe author answered your prompt ${JSON.stringify(turn.answer.promptId)} with: ${JSON.stringify(turn.answer.values)}` : '';
   return [
-    { role: 'system', content: `${texGraphProcedure(kind)}\n\nDirector kit:\n${JSON.stringify(texGraphDirectorKit(kind))}` },
+    { role: 'system', content: `${frigeProcedure(kind)}\n\nDirector kit:\n${JSON.stringify(frigeDirectorKit(kind))}` },
     ...turn.turns,
     { role: 'user', content: `Envelope:\n${JSON.stringify(envelope)}\n\nAuthor request:\n${turn.message}${answer}` },
   ];

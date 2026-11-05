@@ -15,6 +15,10 @@ coverage/
 .coverage
 *.log
 *.tsbuildinfo
+apps/frige/.local-book/
+apps/pantheon/.local-projects/
+apps/frige/books/*/.texgraph/
+apps/frige/books/*/.obsidian/
 apps/texgraph/.local-book/
 apps/lab/.local-projects/
 apps/texgraph/books/*/.texgraph/
@@ -23,3 +27,5 @@ apps/seaxneat/.local-data/
 apps/seaxneat/.preview-state/
 .playwright-mcp/
 services/inference/.state/
+vault/.obsidian/
+vault/attachments/
