@@ -14,10 +14,31 @@ credentials stay under the upstream user's local runtime location. On native
 Windows, use the upstream-supported installer from the pinned source's
 README; it installs under `%LOCALAPPDATA%\hermes`.
 
-H1 does not authorize enabling Hermes's built-in terminal, filesystem,
-network, delegation, scheduling, messaging, memory, or plugin capabilities.
-Do not start its API for STEX until a least-privilege OS/container boundary is
-verified, `API_SERVER_ENABLED=true` and a unique `API_SERVER_KEY` are set in
-the upstream environment, and an OpenRouter credential and bounded test
-budget are explicitly authorized. STEX calls its loopback API only through
-`services/inference`.
+H1's local runtime is an **Igor-only** API boundary. The checked-in
+[`../hermes/runtime-profiles.json`](../hermes/runtime-profiles.json) declares
+the one active profile and seven inactive specialists. Reconcile it without
+changing runtime state:
+
+```powershell
+corepack pnpm run check:hermes-runtime
+```
+
+On this workstation the profile-scoped configuration is under
+`%LOCALAPPDATA%\hermes\profiles\igor`. All runtime profiles are pinned to
+OpenRouter, but only its ignored `.env` holds `OPENROUTER_API_KEY`,
+`API_SERVER_KEY`, and loopback API settings; STEX's
+ignored `.env` holds the matching `STEX_HERMES_API_KEY`. No credential belongs
+in this repository or its `.env.example`.
+
+Igor runs with all upstream toolsets disabled. Its dormant Docker terminal
+configuration uses no forwarded environment variables, no host volume mounts,
+an air-gapped container network, and ephemeral state; it must remain so unless
+a separately authorized tool-execution milestone supplies new evidence. The
+current upstream `gateway.standalone` compatibility setting is intentional:
+`hermes -p igor gateway run` serves only Igor, while all specialists are
+parked. STEX calls this loopback API only through `services/inference`.
+
+Starting the local API and reading `/v1/models` does not invoke a model. A
+provider-backed completion, direct OpenRouter verification, or enabling the
+STEX remote transport requires explicit authorization and a bounded paid test
+budget.

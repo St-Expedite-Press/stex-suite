@@ -15,10 +15,10 @@
 | Frige migration, proofs, and preflight | Implemented and tested | `test:frige`; protected manuscript bytes preserved |
 | Seaxneat workflow | Implemented and tested | `test:seaxneat`, production build |
 | Eostre and Woden | Deferred | Canonical directory and honest shell state only |
-| Hermes source, roster, and profiles | Runtime source packaged; configuration tested | Pinned `runtime/hermes-agent` submodule at `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac`; `test:hermes` validates declarative STEX configuration; no live upstream runtime acceptance |
+| Hermes source, roster, and profiles | Local runtime provisioned; configuration tested | Pinned `runtime/hermes-agent` submodule at `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac`; `test:hermes` validates declarative STEX configuration and the read-only `check:hermes-runtime` verifies Igor plus seven parked specialist profiles and OpenRouter-only provider selections locally |
 | User Graph and local adapter | Implemented and tested | `test:knowledge`; disabled unless explicitly selected |
 | Hermes fake/upstream inference boundary | Implemented and tested with stubs | `test:inference`; translates to Chat Completions and Responses, carries correlation/session isolation, loopback-only API credentials, cancel/no-bill behavior, and a local concurrency cap. The isolation flags are acknowledgements, not proof; no remote host or paid call was exercised |
-| Live Hermes/OpenRouter activation | Blocked pending authorization | Needs a hardened runtime boundary, an authorized OpenRouter credential and test budget, direct runtime evidence, then Pantheon and Frige end-to-end acceptance |
+| Live Hermes/OpenRouter activation | Partially prepared; paid verification blocked pending budget | Igor-only loopback gateway is running with all runtime toolsets disabled; local invalid-key and authenticated metadata checks passed. A provider-backed turn, cost/usage evidence, and Pantheon/Frige remote acceptance still require explicit paid-test budget and authorization |
 | Multiagent execution, deployment, paid provider calls | Unimplemented / unverified | H1 deliberately excludes delegation and tool execution; paid verification needs separate authorization |
 
 Consolidation evidence: [baseline](verification/naming-consolidation-baseline.md)

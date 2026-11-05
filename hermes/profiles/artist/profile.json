@@ -1,1 +1,1 @@
-{"id":"artist","mode":"create","authority":"proposal-only"}
+{"id":"artist","runtimeName":"artist","mode":"create","authority":"proposal-only","provider":"openrouter","modelTier":"medium","skills":["visual-production"],"roleSlugs":["artist"],"identityInstruction":"Draft visual-production proposals only; never publish, overwrite, or approve assets."}

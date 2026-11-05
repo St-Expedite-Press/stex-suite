@@ -38,15 +38,23 @@ native-Windows installer is documented in that checkout. It installs outside
 the repository, under `%LOCALAPPDATA%\hermes`; do not copy session data,
 credentials, logs, caches, or virtual environments into the suite.
 
-Do not activate live Hermes merely by starting it: the upstream API exposes
-powerful tools. First create and verify a least-privilege OS/container boundary
-that denies shell execution, arbitrary file writes, destructive actions,
-schedulers, delegation, and external effects. Then, only with explicit
-authorization for a bounded paid provider test, configure the ignored upstream
-environment with `OPENROUTER_API_KEY`, `API_SERVER_ENABLED=true`, and a unique
-`API_SERVER_KEY`; select the OpenRouter model through `hermes model`.
+The H1 local runtime is provisioned as a profile-scoped, Igor-only gateway.
+The ignored `%LOCALAPPDATA%\hermes\profiles\igor\.env` contains
+`OPENROUTER_API_KEY`, `API_SERVER_ENABLED=true`, and a unique
+`API_SERVER_KEY`; seven specialist profiles are parked and have no provider
+credential. Check only the installed profile catalog with:
 
-For an authorized local activation, set only these STEX values in ignored
+```powershell
+corepack pnpm run check:hermes-runtime
+```
+
+Do not enable a Hermes toolset: Igor's tool policy is intentionally empty, and
+its dormant Docker terminal configuration has no forwarded secrets, host
+mounts, or network egress. `hermes -p igor gateway run` is the only H1 gateway
+command; its upstream `gateway.standalone` compatibility configuration prevents
+the default multiplexer from serving specialists.
+
+For an authorized provider-backed STEX activation, set only these STEX values in ignored
 `.env`: `STEX_HERMES_TRANSPORT=remote`,
 `STEX_HERMES_URL=http://127.0.0.1:8642`, `STEX_HERMES_API_KEY`,
 `STEX_HERMES_ISOLATION=verified`, and
@@ -57,7 +65,7 @@ do not prove the required OS/container boundary. Set
 Start in order:
 
 ```powershell
-hermes gateway
+hermes -p igor gateway run
 corepack pnpm dev:inference
 corepack pnpm dev:alpha
 ```

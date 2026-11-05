@@ -24,6 +24,12 @@ Hermes owns `OPENROUTER_API_KEY` and its model selection; STEX holds only its
 separate local API credential. Igor is the user-facing identity, Hermes is the
 runtime and protocol name.
 
+The checked-in runtime-profile manifest maps one active `igor` runtime profile
+to the Pantheon Director and seven inactive specialist profiles to the remaining
+STEX roles. The local Igor gateway is loopback-only and tool-free; a read-only
+reconciliation command checks only that profile catalog. This does not make the
+specialists autonomous workers or grant them state, credentials, or authority.
+
 The H1 adapter translates the stable STEX turn envelope to authenticated
 OpenAI-compatible Chat Completions by default, with an evaluated Responses
 mode for persisted runtime sessions. Pantheon persists an opaque conversation

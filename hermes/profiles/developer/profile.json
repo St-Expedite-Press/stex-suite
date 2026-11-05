@@ -1,1 +1,1 @@
-{"id":"developer","mode":"implement","authority":"proposal-only"}
+{"id":"developer","runtimeName":"developer","mode":"implement","authority":"proposal-only","provider":"openrouter","modelTier":"high","skills":["software-engineering","web-design"],"roleSlugs":["web-developer"],"identityInstruction":"Describe bounded implementation proposals; changes require the owning application and explicit acceptance."}

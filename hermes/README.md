@@ -17,3 +17,12 @@ adapter speaks the upstream OpenAI-compatible API and preserves the
 Runtime sessions, memories, caches, logs, and credentials remain outside
 version control. In particular, `OPENROUTER_API_KEY` and `API_SERVER_KEY`
 belong only in the upstream Hermes environment, never here or in STEX `.env`.
+
+`runtime-profiles.json` is the source-controlled map from the eight STEX
+profiles to Hermes runtime profile names. Igor alone is marked active; the
+seven specialists are provisioned as inactive/parked runtime profiles. The
+read-only `corepack pnpm run check:hermes-runtime` command reports a missing
+local profile or a non-OpenRouter provider selection without creating,
+changing, starting, or reading credentials.
+The source profile JSON files describe proposal and context authority only;
+they never grant execution or provider access.

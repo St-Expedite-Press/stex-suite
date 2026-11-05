@@ -58,7 +58,7 @@ Frige manuscripts are protected source. Never use a real manuscript as a test
 fixture. Seaxneat state is ignored local data. The User Graph is optional
 knowledge, never application state, Hermes memory, or credentials.
 
-## Hermes / Igor H1 preparation
+## Hermes / Igor H1 runtime
 
 The suite carries the upstream Hermes Agent source as the pinned
 `runtime/hermes-agent` submodule. Initialize it after cloning with
@@ -66,12 +66,18 @@ The suite carries the upstream Hermes Agent source as the pinned
 keeps `stex.hermes.turn.v1` stable and translates it to Hermes's authenticated
 OpenAI-compatible API; the safe default remains the deterministic fake.
 
-Live activation is deliberately fail-closed. An operator must first establish
-a least-privilege OS/container boundary for the upstream runtime, set its
-OpenRouter key and `API_SERVER_KEY` in the ignored upstream Hermes environment,
-and explicitly authorize a bounded paid test. STEX `.env` holds only the
-loopback URL and upstream API key, never `OPENROUTER_API_KEY`. See
-[the runtime package](runtime/README.md), [inference service](services/inference/README.md),
+The checked-in [runtime profile manifest](hermes/runtime-profiles.json) maps
+Igor and seven parked specialists to STEX's declarative roles. Run
+`corepack pnpm run check:hermes-runtime` to read and reconcile the local
+upstream profile catalog and model-provider selections; it changes nothing and
+never reads a credential.
+
+Local gateway preparation is deliberately fail-closed. The live local gateway
+is an Igor-only loopback API with its provider credential scoped to Igor and
+with no runtime tools enabled. STEX `.env` holds only the loopback URL and
+API credential, never `OPENROUTER_API_KEY`. A provider-backed completion still
+requires explicit authorization and a bounded paid test budget. See [the
+runtime package](runtime/README.md), [inference service](services/inference/README.md),
 and [developer guide](docs/DEVELOPER-GUIDE.md).
 
 Interface work follows [the design doctrine](docs/DESIGN-SYSTEM.md) and

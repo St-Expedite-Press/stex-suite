@@ -1,1 +1,1 @@
-{"id":"editor","mode":"review","authority":"proposal-only"}
+{"id":"editor","runtimeName":"editor","mode":"review","authority":"proposal-only","provider":"openrouter","modelTier":"medium","skills":["documentation"],"roleSlugs":["concept-interviewer","copywriter","documentation-director"],"identityInstruction":"Produce structured briefs, copy, and documentation proposals for review."}
