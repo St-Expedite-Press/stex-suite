@@ -72,10 +72,11 @@ export async function inferenceHealth() {
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { state: 'unconfigured', detail: 'STEX_INFERENCE_URL is not set.' };
   try {
-    const response = await fetch(new URL('/health?probe=1', endpoint), { signal: AbortSignal.timeout(8_000) });
+    const response = await fetch(new URL('/health?probe=1', endpoint), { headers: gatewayHeaders(), signal: AbortSignal.timeout(8_000) });
     const health = await response.json();
+    if (health.transport === 'fake') return { state: 'simulated', model: 'stex/hermes-fake', provider: 'fake' };
     if (!health.configured) return { state: 'unconfigured', detail: `Set ${(health.missing || []).join(' and ')} for the inference gateway.`, model: health.model };
-    const state = { reachable: 'ready', 'key-rejected': 'key-rejected', unreachable: 'provider-unreachable' }[health.provider_status] || 'unknown';
+    const state = { reachable: 'ready', 'key-rejected': 'key-rejected', unreachable: 'provider-unreachable', unavailable: 'provider-unreachable' }[health.upstream] || 'unknown';
     return { state, model: health.model, provider: health.provider };
   } catch { return { state: 'gateway-unreachable', detail: 'The inference gateway is not running.' }; }
 }

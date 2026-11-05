@@ -337,7 +337,7 @@ async function refreshHermes() {
   const pill = $('#gateway-state');
   try {
     const health = await request('/api/inference/health');
-    const text = { ready: `Hermes · ${health.model}`, unconfigured: 'Hermes not configured', 'key-rejected': 'OpenRouter key rejected', 'provider-unreachable': 'OpenRouter unreachable', 'gateway-unreachable': 'Gateway not running' }[health.state] || 'Hermes status unknown';
+    const text = { ready: `Hermes · ${health.model}`, simulated: 'Hermes · simulated', unconfigured: 'Hermes not configured', 'key-rejected': 'Hermes key rejected', 'provider-unreachable': 'Hermes unreachable', 'gateway-unreachable': 'Gateway not running' }[health.state] || 'Hermes status unknown';
     pill.textContent = text; pill.title = health.detail || ''; pill.className = `status-pill ${health.state === 'ready' ? 'available' : 'unavailable'}`;
   } catch { pill.textContent = 'Hermes status unknown'; pill.className = 'status-pill unavailable'; }
 }

@@ -28,7 +28,9 @@ function cleanHistory(body) {
   // Drop the oldest context until the conversation fits; the question itself always goes.
   const messages = [...earlier, { role: 'user', content: message }];
   while (messages.length > 1 && jsonBytes(messages) > IGOR_LIMITS.contextBytes) messages.shift();
-  return messages;
+  const conversationId = typeof body?.conversationId === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(body.conversationId)
+    ? body.conversationId : 'pantheon-default';
+  return { messages, conversationId };
 }
 
 // Only this page may spend the shared secret: a JSON body (other sites cannot
@@ -44,12 +46,12 @@ export function assertSameOrigin(headers) {
 }
 
 export async function igorTurn(body, { inferenceUrl, sharedSecret, fetchImpl = fetch } = {}) {
-  const messages = cleanHistory(body);
+  const { messages, conversationId } = cleanHistory(body);
   if (!inferenceUrl) throw new IgorError(503, 'UNCONFIGURED', 'Igor is not connected: STEX_INFERENCE_URL is not set for Pantheon.');
   const requestId = randomUUID();
   const request = {
     contract: 'stex.hermes.turn.v1', requestId, product: 'pantheon',
-    conversation: { messages }, operation: { kind: 'conversation' }, context: {},
+    conversation: { id: conversationId, messages }, operation: { kind: 'conversation' }, context: {},
     budget: { maxContextChars: 24_000, maxOutputChars: 4_000, timeoutMs: IGOR_LIMITS.timeoutMs },
   };
   let response;
@@ -75,5 +77,5 @@ export async function igorTurn(body, { inferenceUrl, sharedSecret, fetchImpl = f
   if (!text) throw new IgorError(502, 'MALFORMED_RESPONSE', 'Igor replied without a message.');
   // Only a reply that says it is fake is labelled simulated; anything else is
   // reported as a remote reply rather than mislabelled.
-  return { requestId, reply: text, transport: reply.usage?.transport === 'fake' ? 'fake' : 'remote' };
+  return { requestId, conversationId, reply: text, transport: reply.usage?.transport === 'fake' ? 'fake' : 'remote' };
 }

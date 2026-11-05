@@ -23,3 +23,47 @@ the fake transport by default. Interface work uses `@stex/design-system`
 [the doctrine](DESIGN-SYSTEM.md); binary media go through Git LFS and
 [the asset manifest](../assets/README.md). See [MONOREPO.md](../MONOREPO.md),
 application READMEs, and [verification reports](verification/).
+
+## Hermes / Igor runtime (H1)
+
+Initialize the suite-owned upstream source before working on Hermes:
+
+```powershell
+git submodule update --init --recursive
+```
+
+The pinned source is `runtime/hermes-agent` (H1 currently pins commit
+`e76fbd80be65ea5c1b89831f8d7aaedb713f5cac`). Its supported
+native-Windows installer is documented in that checkout. It installs outside
+the repository, under `%LOCALAPPDATA%\hermes`; do not copy session data,
+credentials, logs, caches, or virtual environments into the suite.
+
+Do not activate live Hermes merely by starting it: the upstream API exposes
+powerful tools. First create and verify a least-privilege OS/container boundary
+that denies shell execution, arbitrary file writes, destructive actions,
+schedulers, delegation, and external effects. Then, only with explicit
+authorization for a bounded paid provider test, configure the ignored upstream
+environment with `OPENROUTER_API_KEY`, `API_SERVER_ENABLED=true`, and a unique
+`API_SERVER_KEY`; select the OpenRouter model through `hermes model`.
+
+For an authorized local activation, set only these STEX values in ignored
+`.env`: `STEX_HERMES_TRANSPORT=remote`,
+`STEX_HERMES_URL=http://127.0.0.1:8642`, `STEX_HERMES_API_KEY`,
+`STEX_HERMES_ISOLATION=verified`, and
+`STEX_HERMES_TOOL_POLICY=conversational-only`. The inference service refuses
+remote turns until both explicit operator acknowledgements are present; they
+do not prove the required OS/container boundary. Set
+`STEX_HERMES_MAX_CONCURRENT_TURNS=1` unless an approved budget changes it.
+Start in order:
+
+```powershell
+hermes gateway
+corepack pnpm dev:inference
+corepack pnpm dev:alpha
+```
+
+Stop with `Ctrl+C` in reverse order. Diagnose configuration with
+`Invoke-RestMethod http://127.0.0.1:8100/v1/hermes/health`; the `?probe=1`
+variant also needs the STEX shared token and tests authenticated upstream reachability but is not evidence of a
+provider-backed answer. The fake transport remains the default and all
+repository tests use it or stubs, so none spends provider funds.

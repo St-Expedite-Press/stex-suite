@@ -9,6 +9,12 @@ const log = document.querySelector('.igor-log');
 const HISTORY_MESSAGES = 10;
 const MESSAGE_CHARS = 2000;
 const history = [];
+const conversationKey = 'stex.pantheon.igor.conversation.v1';
+let conversationId = 'pantheon-default';
+try {
+  conversationId = localStorage.getItem(conversationKey) || crypto.randomUUID();
+  localStorage.setItem(conversationKey, conversationId);
+} catch { /* Private browsing may deny storage; the server still has a safe default. */ }
 function remember(role, content) {
   history.push({ role, content: content.slice(0, MESSAGE_CHARS) });
   history.splice(0, Math.max(0, history.length - HISTORY_MESSAGES));
@@ -39,7 +45,7 @@ if (form) {
     input.value = '';
     send.disabled = true;
     try {
-      const response = await fetch('/api/igor/turn', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message, history }) });
+      const response = await fetch('/api/igor/turn', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message, history, conversationId }) });
       const result = await response.json();
       if (!response.ok) { entry('status', result.error || 'Igor could not answer.'); return; }
       entry('assistant', result.reply, result.transport === 'fake' ? 'Simulated reply · fake transport' : 'Reply from Igor');

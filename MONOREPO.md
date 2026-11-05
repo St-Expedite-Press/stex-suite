@@ -7,8 +7,10 @@ application owns its UI, canonical data, and workflow state. No product
 imports another product's private storage as an integration shortcut.
 
 `services/inference` is the only application-facing Hermes boundary.
-`hermes/` holds STEX-owned configuration only; an upstream runtime remains an
-external, separately authorized dependency. `vault/` is an optional
+`runtime/hermes-agent` pins the upstream runtime source; `hermes/` holds
+STEX-owned declarative configuration only. Activation remains separately
+authorized because the upstream runtime has powerful tools and owns provider
+credentials. `vault/` is an optional
 Obsidian-compatible User Graph. `services/knowledge` is a replaceable,
 read-only adapter; applications continue to work without it.
 
@@ -21,6 +23,7 @@ apps/seaxneat   website workspaces
 apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain
 hermes          roster, profiles, skills, and policies
+runtime         pinned upstream runtime source (Git submodule)
 vault           optional portable User Graph
 services        inference and knowledge boundaries
 protocol        versioned public contracts

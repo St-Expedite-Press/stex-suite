@@ -11,7 +11,7 @@ are registered, honestly deferred domains.
 | Seaxneat | `apps/seaxneat` | Active website workspaces and revisions |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
-| Hermes | `hermes`, `services/inference` | Declarative roster; fake/remote boundary |
+| Hermes | `runtime/hermes-agent`, `hermes`, `services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |
 | User Graph | `vault`, `services/knowledge` | Optional portable vault; read-only adapter |
 
 ## Prerequisites
@@ -57,6 +57,22 @@ and `STEX_FRIGE_*`; a legacy setting is a fallback only.
 Frige manuscripts are protected source. Never use a real manuscript as a test
 fixture. Seaxneat state is ignored local data. The User Graph is optional
 knowledge, never application state, Hermes memory, or credentials.
+
+## Hermes / Igor H1 preparation
+
+The suite carries the upstream Hermes Agent source as the pinned
+`runtime/hermes-agent` submodule. Initialize it after cloning with
+`git submodule update --init --recursive`. STEX's production-shaped adapter
+keeps `stex.hermes.turn.v1` stable and translates it to Hermes's authenticated
+OpenAI-compatible API; the safe default remains the deterministic fake.
+
+Live activation is deliberately fail-closed. An operator must first establish
+a least-privilege OS/container boundary for the upstream runtime, set its
+OpenRouter key and `API_SERVER_KEY` in the ignored upstream Hermes environment,
+and explicitly authorize a bounded paid test. STEX `.env` holds only the
+loopback URL and upstream API key, never `OPENROUTER_API_KEY`. See
+[the runtime package](runtime/README.md), [inference service](services/inference/README.md),
+and [developer guide](docs/DEVELOPER-GUIDE.md).
 
 Interface work follows [the design doctrine](docs/DESIGN-SYSTEM.md) and
 [the interface charter](packages/design-system/AGENTS.md); artwork and media

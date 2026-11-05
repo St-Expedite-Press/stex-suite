@@ -18,12 +18,14 @@ holds acceptance evidence; update those, not this file, when status moves.
 - **Active, implemented and tested locally:** Frige (`apps/frige`),
   Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`) with its
   public splash, the shared design system (`packages/design-system`), the
-  brand asset library (`assets`), and the `stex.hermes.turn.v1` fake/remote
-  client in `services/inference`.
+  brand asset library (`assets`), the pinned upstream Hermes source
+  (`runtime/hermes-agent`), and the `stex.hermes.turn.v1` fake/upstream API
+  adapter in `services/inference`.
 - **Registered but deferred:** Eostre (`apps/eostre`) and Woden
   (`apps/woden`) — shell entries with an honest deferred state only.
-- **Not done or unverified:** any real remote Hermes exchange, provider calls,
-  vault integration, deployment, and cross-application workflows.
+- **Not done or unverified:** any real provider-backed Hermes exchange,
+  runtime isolation acceptance, vault integration, deployment, and
+  cross-application workflows.
 
 The historical Agent Studio migration that produced A0 is closed. Agent Studio
 (`St-Expedite-Press/agent-studio`) remains a read-only behavioral reference;
@@ -49,6 +51,7 @@ and authorization.
 | `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
 | `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
 | `services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
+| `runtime/hermes-agent` | Pinned upstream Hermes source submodule | loopback API when explicitly activated | 8642 | upstream runtime checks |
 | `hermes` | Declarative STEX role, profile, skill, and policy configuration | — | — | `test:hermes` |
 | `services/knowledge` | Optional read-only User Graph adapter | — | — | `test:knowledge` |
 | `vault` | Optional, portable Obsidian User Graph | — | — | adapter tests |
@@ -119,8 +122,9 @@ workflow requires it.
   docs; **Hermes** remains the internal layer (`hermes/`, `services/inference`,
   `stex.hermes.turn.v1`). Do not rename internal identifiers or contracts.
 - STEX-owned Hermes profiles, roster, skills, and policies live in `hermes/`.
-  Do not vendor or assume an upstream Hermes runtime; development and tests
-  use the deterministic fake transport.
+  The upstream source is pinned as `runtime/hermes-agent`; never copy it into
+  application code or its configuration subtree. Development and tests use the
+  deterministic fake transport unless live verification is explicitly approved.
 - `services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
   Browsers talk to their product server (Frige, or Pantheon's
@@ -129,8 +133,14 @@ workflow requires it.
   `protocol/hermes/*.v1.json`; bound payload, context, time, output, retries,
   and cancellation; classify failures (validation, authentication,
   unavailable, timeout, cancellation, malformed response).
-- Hostnames, keys, and tokens (`STEX_HERMES_URL`, `STEX_HERMES_TOKEN`,
+- Hostnames, keys, and tokens (`STEX_HERMES_URL`, `STEX_HERMES_API_KEY`,
   `STEX_INFERENCE_SHARED_SECRET`) belong only in ignored local configuration.
+  `OPENROUTER_API_KEY` and the upstream `API_SERVER_KEY` belong only in the
+  ignored upstream Hermes environment.
+- Upstream Hermes may expose terminal, filesystem, web, scheduling, and
+  delegation tools. A live STEX connection is conversational-only until an
+  OS/container boundary is verified with executable negative tests; a prompt
+  or request-level `tools: []` is not that boundary.
 - Outages and fake results are labelled as such and never mutate canonical
   state implicitly. TexGraph v3 endpoints are compatibility adapters over
   `stex.hermes.turn.v1`; retired provider-roster endpoints stay `410 Gone`.

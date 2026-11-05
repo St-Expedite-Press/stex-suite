@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { createHermesClient } from './src/hermes-client.mjs';
+import { legacyHermesRequest } from './src/texgraph-adapter.mjs';
 
 const positive = (value, fallback) => (Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback);
 const config = {
@@ -8,7 +9,14 @@ const config = {
   sharedSecret: process.env.STEX_INFERENCE_SHARED_SECRET || '',
   hermesTransport: process.env.STEX_HERMES_TRANSPORT === 'remote' ? 'remote' : 'fake',
   hermesUrl: (process.env.STEX_HERMES_URL || '').trim(),
-  hermesToken: process.env.STEX_HERMES_TOKEN || '',
+  // API_SERVER_KEY belongs to the locally installed upstream Hermes gateway.
+  // The old token name remains a migration fallback only.
+  hermesApiKey: process.env.STEX_HERMES_API_KEY || process.env.STEX_HERMES_TOKEN || '',
+  hermesApiMode: process.env.STEX_HERMES_API_MODE === 'responses' ? 'responses' : 'chat-completions',
+  hermesModel: (process.env.STEX_HERMES_MODEL || 'hermes-agent').trim(),
+  hermesIsolation: process.env.STEX_HERMES_ISOLATION || '',
+  hermesToolPolicy: process.env.STEX_HERMES_TOOL_POLICY || '',
+  hermesMaxConcurrentTurns: positive(process.env.STEX_HERMES_MAX_CONCURRENT_TURNS, 1),
   hermesMaxContextChars: positive(process.env.STEX_HERMES_MAX_CONTEXT_CHARS, 96_000),
   hermesMaxOutputChars: positive(process.env.STEX_HERMES_MAX_OUTPUT_CHARS, 20_000),
   hermesMaxTimeoutMs: positive(process.env.STEX_HERMES_MAX_TIMEOUT_SECONDS, 60) * 1000,
@@ -28,17 +36,6 @@ function json(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(value));
 }
-function legacyHermesRequest(kind, value) {
-  const turns = Array.isArray(value.turns) ? value.turns : [];
-  const message = String(value.message || '').trim();
-  return {
-    contract: 'stex.hermes.turn.v1', requestId: `texgraph-${kind}-${Date.now()}`, product: 'frige',
-    conversation: { id: String(value.book?.id || value.scope?.id || value.page?.id || 'texgraph').slice(0, 80), messages: [...turns.map((turn) => ({ role: turn?.role === 'assistant' ? 'assistant' : 'user', content: String(turn?.message || turn?.commentary || '').slice(0, 6_000) })).filter((turn) => turn.content), ...(message ? [{ role: 'user', content: message.slice(0, 6_000) }] : [])].slice(-20) },
-    operation: { kind: 'conversation', payload: { legacyContract: String(value.contract || ''), kind } },
-    context: { legacy: { scope: value.scope || null, page: value.page ? { id: value.page.id, title: value.page.title, sourceHash: value.page.sourceHash || value.page.hash || null } : null, sourceCount: Array.isArray(value.scopeSources) ? value.scopeSources.length : 0 } },
-    budget: { maxContextChars: 96_000, maxOutputChars: 20_000, timeoutMs: 30_000 },
-  };
-}
 async function legacyTurn(kind, token, value, signal) {
   const reply = await hermes.turn({ token, body: legacyHermesRequest(kind, value), signal });
   const commentary = String(reply.events.find((event) => event.type === 'message')?.payload?.text || 'Hermes completed without commentary.');
@@ -49,8 +46,8 @@ async function legacyTurn(kind, token, value, signal) {
 http.createServer(async (request, response) => {
   const url = new URL(request.url, 'http://gateway');
   try {
-    if (request.method === 'GET' && url.pathname === '/health') return json(response, 200, { ...hermes.health(), provider: 'hermes', model: null });
-    if (request.method === 'GET' && url.pathname === '/v1/hermes/health') return json(response, 200, hermes.health());
+    if (request.method === 'GET' && url.pathname === '/health') return json(response, 200, { ...(url.searchParams.get('probe') === '1' ? await hermes.probe({ token: request.headers['x-stex-inference-token'] }) : hermes.health()), provider: 'hermes' });
+    if (request.method === 'GET' && url.pathname === '/v1/hermes/health') return json(response, 200, url.searchParams.get('probe') === '1' ? await hermes.probe({ token: request.headers['x-stex-inference-token'] }) : hermes.health());
     const token = request.headers['x-stex-inference-token'];
     if (url.pathname === '/v1/hermes/turn' && request.method === 'POST') return json(response, 200, await hermes.turn({ token, body: await body(request), signal: request.signal }));
     if (url.pathname === '/v1/settings/models' || url.pathname === '/v1/models/catalog') return json(response, 410, { error: 'The legacy provider roster has been removed. Configure remote Hermes outside STEX.', code: 'GONE' });
