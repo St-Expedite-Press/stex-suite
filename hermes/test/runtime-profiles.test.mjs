@@ -32,10 +32,19 @@ test('runtime reconciliation reports missing profiles without changing them', as
   const manifest = await loadRuntimeProfiles();
   const providers = Object.fromEntries([['default', 'openrouter'], ...manifest.profiles.map((profile) => [profile.runtimeName, 'openrouter'])]);
   providers.architect = 'anthropic';
-  const report = reconcileRuntimeProfiles(manifest, ['igor', 'architect'], providers, 'Hermes Agent test');
+  const report = reconcileRuntimeProfiles(manifest, ['igor', 'architect'], providers, { cli: [], api_server: ['terminal'] }, 'Hermes Agent test');
   assert.equal(report.ok, false);
   assert.deepEqual(report.missing, ['developer', 'designer', 'artist', 'editor', 'knowledge', 'auditor']);
   assert.deepEqual(report.providerMismatches, [{ name: 'architect', expected: 'openrouter', observed: 'anthropic' }]);
+  assert.deepEqual(report.toolsetMismatches, [{ platform: 'api_server', expected: [], observed: ['terminal'] }]);
+});
+
+test('runtime reconciliation fails closed when an Igor toolset platform is unobserved', async () => {
+  const manifest = await loadRuntimeProfiles();
+  const providers = Object.fromEntries([['default', 'openrouter'], ...manifest.profiles.map((profile) => [profile.runtimeName, 'openrouter'])]);
+  const report = reconcileRuntimeProfiles(manifest, manifest.profiles.map((profile) => profile.runtimeName), providers, { cli: [] }, 'Hermes Agent test');
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.toolsetMismatches, [{ platform: 'api_server', expected: [], observed: 'not-observed' }]);
 });
 
 test('the manifest rejects a second active profile', async () => {

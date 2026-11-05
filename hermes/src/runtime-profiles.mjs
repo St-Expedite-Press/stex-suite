@@ -4,7 +4,7 @@ const runtimeNames = ['igor', 'architect', 'developer', 'designer', 'artist', 'e
 
 export function validateRuntimeProfiles(runtimeProfiles, roster) {
   if (runtimeProfiles?.schemaVersion !== 'stex.hermes.runtime-profiles.v1') throw new Error('Unsupported Hermes runtime-profile schema.');
-  if (runtimeProfiles.requiredProvider !== 'openrouter') throw new Error('Hermes runtime profiles must use OpenRouter exclusively.');
+  if (runtimeProfiles.requiredProvider !== 'openrouter' || !Array.isArray(runtimeProfiles.igorAllowedToolsets) || runtimeProfiles.igorAllowedToolsets.length !== 0) throw new Error('Hermes runtime security policy is invalid.');
   if (!Array.isArray(runtimeProfiles.profiles) || runtimeProfiles.profiles.length !== runtimeNames.length) throw new Error('The Hermes runtime profile catalog is incomplete.');
 
   const stexProfiles = new Set(roster.profiles);
@@ -29,13 +29,15 @@ export function validateRuntimeProfiles(runtimeProfiles, roster) {
   return runtimeProfiles;
 }
 
-export function reconcileRuntimeProfiles(runtimeProfiles, observedRuntimeNames, observedProviders = {}, runtimeVersion = 'unknown') {
+export function reconcileRuntimeProfiles(runtimeProfiles, observedRuntimeNames, observedProviders = {}, observedToolsets = {}, runtimeVersion = 'unknown') {
   const observed = new Set(observedRuntimeNames);
   const expected = runtimeProfiles.profiles.map((profile) => profile.runtimeName);
   const missing = expected.filter((name) => !observed.has(name));
   const expectedProviders = Object.fromEntries([['default', runtimeProfiles.requiredProvider], ...runtimeProfiles.profiles.map((profile) => [profile.runtimeName, profile.provider])]);
   const providerMismatches = Object.entries(expectedProviders).filter(([name, provider]) => observedProviders[name] !== provider).map(([name, provider]) => ({ name, expected: provider, observed: observedProviders[name] ?? 'unknown' }));
-  return { runtimeVersion, expected, observed: [...observed].sort(), observedProviders, missing, providerMismatches, ok: missing.length === 0 && providerMismatches.length === 0 };
+  const requiredToolsetPlatforms = ['cli', 'api_server'];
+  const toolsetMismatches = requiredToolsetPlatforms.filter((platform) => !Object.hasOwn(observedToolsets, platform) || !Array.isArray(observedToolsets[platform]) || observedToolsets[platform].length !== 0).map((platform) => ({ platform, expected: runtimeProfiles.igorAllowedToolsets, observed: Object.hasOwn(observedToolsets, platform) ? observedToolsets[platform] : 'not-observed' }));
+  return { runtimeVersion, expected, observed: [...observed].sort(), observedProviders, observedToolsets, missing, providerMismatches, toolsetMismatches, ok: missing.length === 0 && providerMismatches.length === 0 && toolsetMismatches.length === 0 };
 }
 
 export async function loadRuntimeProfiles(root = new URL('..', import.meta.url)) {

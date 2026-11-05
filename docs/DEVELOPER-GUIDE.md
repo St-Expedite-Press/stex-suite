@@ -48,9 +48,10 @@ credential. Check only the installed profile catalog with:
 corepack pnpm run check:hermes-runtime
 ```
 
-Do not enable a Hermes toolset: Igor's tool policy is intentionally empty, and
-its dormant Docker terminal configuration has no forwarded secrets, host
-mounts, or network egress. `hermes -p igor gateway run` is the only H1 gateway
+Do not enable a Hermes toolset: Igor's CLI **and API-server** tool policies are
+intentionally empty, and its dormant Docker terminal configuration has no
+forwarded secrets, host mounts, or network egress. The reconciliation command
+checks both surfaces. `hermes -p igor gateway run` is the only H1 gateway
 command; its upstream `gateway.standalone` compatibility configuration prevents
 the default multiplexer from serving specialists.
 

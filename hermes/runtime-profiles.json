@@ -2,6 +2,7 @@
   "schemaVersion": "stex.hermes.runtime-profiles.v1",
   "upstreamSourceRevision": "e76fbd80be65ea5c1b89831f8d7aaedb713f5cac",
   "requiredProvider": "openrouter",
+  "igorAllowedToolsets": [],
   "profiles": [
     {"runtimeName":"igor","stexProfile":"pantheon-director","active":true,"provider":"openrouter","modelTier":"high","skills":["delegation","documentation","publishing","typesetting"],"roleSlugs":["pantheon-director","session-orchestrator","publishing-director"]},
     {"runtimeName":"architect","stexProfile":"architect","active":false,"provider":"openrouter","modelTier":"high","skills":["software-engineering","typesetting","narrative"],"roleSlugs":["structure-architect","typesetting-specialist","narrative-architect"]},

@@ -30,7 +30,8 @@ OpenRouter, but only its ignored `.env` holds `OPENROUTER_API_KEY`,
 ignored `.env` holds the matching `STEX_HERMES_API_KEY`. No credential belongs
 in this repository or its `.env.example`.
 
-Igor runs with all upstream toolsets disabled. Its dormant Docker terminal
+Igor runs with all upstream toolsets disabled on both the CLI and API-server
+platforms. Its dormant Docker terminal
 configuration uses no forwarded environment variables, no host volume mounts,
 an air-gapped container network, and ephemeral state; it must remain so unless
 a separately authorized tool-execution milestone supplies new evidence. The

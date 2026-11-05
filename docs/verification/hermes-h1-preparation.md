@@ -1,8 +1,8 @@
 # H1 Hermes / Igor preparation report
 
 **Status:** PARTIAL — the repository unit, local Igor-only runtime boundary,
-and STEX adapter are complete and locally verified. No provider-backed Hermes
-or OpenRouter completion was authorized or made.
+and STEX adapter are complete and locally verified. Two bounded, authorized
+provider attempts timed out before a completion or usage record was returned.
 
 ## Recorded runtime source
 
@@ -20,9 +20,10 @@ source submodule.
 runtime profiles. `igor` is the sole active profile, maps to
 `pantheon-director`, and runs as a standalone compatibility gateway; the other
 seven profiles are parked. The ignored OpenRouter credential is scoped to
-Igor's `.env`, and all Igor toolsets are disabled. Its configured Docker
-terminal has no environment forwarding, host mounts, or container network,
-but it was not invoked because no toolset is enabled.
+Igor's `.env`, and all Igor toolsets are disabled on both the CLI and
+`api_server` platforms. Its configured Docker terminal has no environment
+forwarding, host mounts, or container network, but it was not invoked because
+no toolset is enabled.
 
 ## Implemented boundary
 
@@ -43,10 +44,17 @@ but it was not invoked because no toolset is enabled.
 - Pantheon now sends a local persistent conversation id; Frige retains its
   existing book/section/piece records and passes only the selected scope to
   the adapter. No proposal is automatically applied to canonical source.
-- The upstream API gateway is running manually for Igor only on
+- The upstream API gateway was started manually for Igor only on
   `127.0.0.1:8642`. An invalid bearer key received HTTP 401; the matching STEX
   API credential retrieved local `/v1/models` metadata. Neither test sends a
-  completion request or proves provider availability.
+  completion request or proves provider availability. It was stopped after the
+  bounded direct verification attempts.
+- An initial provider attempt exposed an upstream configuration distinction:
+  empty CLI toolsets did not disable the `api_server` platform's toolsets. The
+  request was interrupted before it completed. H1 now disables and reconciles
+  both platforms, and a second 16-token, 15-second request ran with no enabled
+  toolsets. It also timed out before returning a completion or usage record and
+  was forcibly cancelled. The final gateway was stopped after cancellation.
 
 ## Evidence run
 
@@ -57,21 +65,24 @@ but it was not invoked because no toolset is enabled.
 | `corepack pnpm --dir services/inference test` | Passed: 20 tests, including Chat Completions, Responses, loopback-only credentials, tool-denial request shape, scope/session isolation, no-bill cancellation, concurrency cap, error mapping, and fake transport |
 | `corepack pnpm --dir apps/pantheon test` | Passed: 12 tests |
 | `corepack pnpm --dir apps/frige test` | Passed: 44 tests |
-| `corepack pnpm run test:hermes` | Passed: 6 tests, including one-active-profile, profile-specification alignment, and reconciliation failure cases |
-| `corepack pnpm run check:hermes-runtime` | Passed: all eight expected local profiles observed and default plus all profiles pinned to OpenRouter; read-only |
-| `hermes -p igor gateway status` | Passed: running standalone gateway, Igor only; default and seven specialists unserved |
+| `corepack pnpm run test:hermes` | Passed: 7 tests, including one-active-profile, profile-specification alignment, and fail-closed CLI/API-server reconciliation cases |
+| `corepack pnpm run check:hermes-runtime` | Passed: all eight expected local profiles observed; default plus all profiles pinned to OpenRouter; CLI and API-server toolsets empty; read-only |
+| `hermes -p igor gateway status` | Passed before direct verification: running standalone gateway, Igor only; default and seven specialists unserved |
 | Local `GET /v1/models` checks | Invalid API credential rejected (401); matching credential returned local metadata; no completion submitted |
+| Authorized direct `POST /v1/chat/completions` | Two bounded attempts: the first was cancelled after discovering API-server toolset drift; the second used 16 max tokens and timed out at 15 seconds. Neither returned content or usage; gateway stopped and process cancelled. |
 
 All adapter tests use stubs. No provider-backed completion, pricing, token
 usage, full Pantheon live conversation, or Frige live scoped conversation was
-exercised. The configured OpenRouter model is `openai/gpt-4.1-mini`, but its
-availability and cost are intentionally unverified because no provider request
-was sent.
+completed. The configured OpenRouter model is `openai/gpt-4.1-mini`; each
+authorized direct attempt instantiated its OpenRouter client, but neither
+returned a provider usage record. Actual cost is therefore unknown and must
+not be reported as zero.
 
 ## Required live-activation gate
 
-Before calling this H1 COMPLETE, an operator must authorize a maximum paid-test
-budget and provider calls, then run direct authenticated positive, multi-turn,
-invalid-model, timeout, and tool-negative tests; record actual model, usage,
-and cost; and run Pantheon and Frige end-to-end using disposable data. Each
-paid turn requires that explicit authorization.
+Before calling this H1 COMPLETE, diagnose the upstream request timeout without
+loosening the empty API-server tool policy, then run and record a successful
+direct authenticated positive turn, multi-turn, invalid-model, timeout, and
+tool-negative tests; record actual model, usage, and cost; and run Pantheon and
+Frige end-to-end using disposable data. Any additional paid turn requires an
+explicit authorization and budget.

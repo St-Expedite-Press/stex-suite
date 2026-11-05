@@ -22,7 +22,8 @@ belong only in the upstream Hermes environment, never here or in STEX `.env`.
 profiles to Hermes runtime profile names. Igor alone is marked active; the
 seven specialists are provisioned as inactive/parked runtime profiles. The
 read-only `corepack pnpm run check:hermes-runtime` command reports a missing
-local profile or a non-OpenRouter provider selection without creating,
-changing, starting, or reading credentials.
+local profile, a non-OpenRouter provider selection, or an enabled Igor toolset
+on either the CLI or API-server platform without creating, changing, starting,
+or reading credentials.
 The source profile JSON files describe proposal and context authority only;
 they never grant execution or provider access.
