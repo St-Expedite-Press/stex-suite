@@ -1,4 +1,10 @@
-# TexGraph Studio
+# Frige (TexGraph compatibility application)
+
+Frige is the Pantheon identity for this existing TexGraph application. The
+source directory, manuscript paths, and standalone TexGraph operation remain
+compatible. Through the STEX Alpha shell it is available at `/frige/`; never
+use a real manuscript as a test fixture or alter `books/*/manuscript/` for
+layout convenience.
 
 TexGraph is the local, single-user STEX application for building a book one
 page at a time. Its working surface pairs a page-specific writing conversation
@@ -23,6 +29,12 @@ Then open <http://127.0.0.1:4310>. LuaLaTeX must be installed and available on
 The first launch creates an ignored local book at `apps/texgraph/.local-book`.
 Set `TEXGRAPH_PROJECT_DIR` to use another local project directory, or
 `TEXGRAPH_PORT` to choose another loopback port.
+
+Under the STEX shell, `/frige/` is the project selector. It lists only local
+book directories that contain `manuscript/Programme.md`; **Create book
+project** makes a new, isolated scaffold under `apps/texgraph/books/` and then
+opens it explicitly as `?book=<id>`. Selecting or creating a project never
+rewrites an existing manuscript.
 
 ## Current contract
 
@@ -98,10 +110,10 @@ book in table-of-contents order through the selected scope.
 
 ## Conversation boundary
 
-The conversation is a front end to Hermes, the editorial director, which runs
-in the inference gateway (`services/inference`) on OpenRouter. The browser
-talks only to TexGraph; TexGraph talks only to the gateway; neither ever sees
-the OpenRouter key.
+The conversation is a front end to Hermes through the server-side inference
+gateway (`services/inference`). The browser talks only to Frige; Frige talks
+only to that gateway; browser code receives neither Hermes nor provider
+credentials. A0 defaults to a deterministic no-change transport.
 
 In a manuscript book, the conversation belongs to the selected scope: the
 whole book, a section, or a page each keep their own thread in
@@ -124,18 +136,11 @@ Hermes replies in typed parts:
   the node only if it is unchanged since the suggestion (otherwise it is
   marked stale), refreshes the graph and editor, and typesets the scope again.
 
-The Hermes pill shows the gateway's own health: the configured model, or why
-Hermes cannot answer (not configured, key rejected, OpenRouter unreachable,
-gateway not running). A failed turn is saved with the gateway's reason and
-changes nothing. Each reply names the model that answered, and any model in
-the director's stack that was unavailable.
-
-**Settings → Configure models** edits the gateway's agent roster: each role's
-model stack (primary, then fallbacks, reorderable), searched from OpenRouter's
-catalog with context length and prices, plus temperature and output cap, and
-custom roles. TexGraph relays these calls to the gateway with the shared
-secret (`/api/settings/models`, `/api/settings/model-catalog`); the browser
-never holds it.
+The Hermes pill reports whether the local fake transport or optional remote
+Hermes boundary is available. A failed turn is saved with a safe reason and
+changes nothing. The legacy v3 endpoint is a compatibility adapter over
+`stex.hermes.turn.v1`; A0 does not expose a provider roster or make paid
+inference calls.
 
 The single-page local book (`book.json`) still uses `page-turn` v1.
 

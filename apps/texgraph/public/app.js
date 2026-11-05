@@ -2,13 +2,14 @@ import { startScreenlabPalette } from './palette.js';
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
 import { createModelSettings } from './model-settings.js';
+import { appUrl } from './base-path.js';
 
 startScreenlabPalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
 const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
-const apiUrl = (pathname) => `${pathname}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
+const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
   const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
@@ -447,7 +448,7 @@ async function refresh() {
 }
 
 async function bootstrap() {
-  if (!book) { location.replace('http://127.0.0.1:4300/texgraph/'); return; }
+  if (!book) { location.replace(globalThis.STEX_SHELL_URL || '/'); return; }
   const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
   Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
   const design = await request('/api/project/design');

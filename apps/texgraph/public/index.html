@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TexGraph Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/living.css"><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head>
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Frige Studio</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./living.css"><link rel="icon" href="./favicon.svg" type="image/svg+xml"></head>
   <body>
     <main class="studio-shell">
       <aside class="navigator" aria-label="Manuscript graph">
-        <div class="brand"><span class="brand-mark">T</span><span>TexGraph</span><details id="settings-menu" class="settings-menu"><summary>Settings</summary><div class="settings-items" role="menu"><button id="configure-models" type="button" role="menuitem">Configure models</button></div></details></div>
+        <div class="brand"><span class="brand-mark">F</span><span>Frige</span><details id="settings-menu" class="settings-menu"><summary>Settings</summary><div class="settings-items" role="menu"><button id="configure-models" type="button" role="menuitem">Configure models</button></div></details></div>
         <section class="book-card"><h1 id="book-title">Loading…</h1></section>
         <div class="navigator-toolbar"><button id="refresh" class="quiet-button" type="button">Refresh vault</button><span id="diagnostics"></span></div>
         <nav id="book-tree" class="book-tree" aria-label="Book contents"></nav>
@@ -32,6 +32,7 @@
       </section>
       <footer id="production-status" class="production-status" aria-label="Production status" aria-live="polite"></footer>
     </main>
-    <script type="module" src="/app.js"></script>
+    <script src="./runtime-config.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

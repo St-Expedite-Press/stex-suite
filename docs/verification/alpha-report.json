@@ -1,0 +1,17 @@
+{
+  "alpha": "STEX Pantheon A0",
+  "baseRevision": "cd20562f34d9dc0607f4e3c235812fe12bb797c6",
+  "finalRevision": "the commit carrying this report; resolve with git rev-parse HEAD",
+  "agentStudioReference": "St-Expedite-Press/agent-studio@94ba5cc799cf40f9223fd3b1cc2bef32adc0ed2e",
+  "tests": {
+    "lab": "5 passed",
+    "frige": "42 passed (LuaLaTeX and project creation included)",
+    "inference": "18 passed",
+    "seaxneat": "8 passed",
+    "syntax": "passed",
+    "diffCheck": "passed"
+  },
+  "remoteHermes": "unverified",
+  "providerCalls": false,
+  "status": "deterministic-alpha-ready-for-local-evaluation"
+}

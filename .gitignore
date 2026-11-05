@@ -19,5 +19,7 @@ apps/texgraph/.local-book/
 apps/lab/.local-projects/
 apps/texgraph/books/*/.texgraph/
 apps/texgraph/books/*/.obsidian/
+apps/seaxneat/.local-data/
+apps/seaxneat/.preview-state/
 .playwright-mcp/
 services/inference/.state/

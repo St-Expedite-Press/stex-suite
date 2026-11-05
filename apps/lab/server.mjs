@@ -4,11 +4,20 @@ import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deferredPage, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
 const booksDirectory = path.resolve(process.env.STEX_BOOKS_DIR || path.join(directory, '..', 'texgraph', 'books'));
 const port = Number(process.env.STEX_LAB_PORT || 4300);
+const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v1.json');
+let applications = shellApplications;
+try { applications = validateRegistry(JSON.parse(await readFile(registryFile, 'utf8'))); }
+catch (error) { console.warn(`STEX Lab is using its built-in registry fallback: ${error.message}`); }
+const proxyTargets = {
+  frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310'),
+  seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
+};
 const mime = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
@@ -163,6 +172,25 @@ async function staticFile(response, file) { try { await access(file); response.w
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
+    if (url.pathname === '/texgraph' || url.pathname.startsWith('/texgraph/')) {
+      response.writeHead(308, { location: `/frige/${url.search}` }); response.end(); return;
+    }
+    if (url.pathname === '/screenlab' || url.pathname.startsWith('/screenlab/')) {
+      response.writeHead(308, { location: `/eostre/${url.search}` }); response.end(); return;
+    }
+    if (url.pathname === '/novelgraph' || url.pathname.startsWith('/novelgraph/')) {
+      response.writeHead(308, { location: `/woden/${url.search}` }); response.end(); return;
+    }
+    const application = mountedApplication(url.pathname, applications);
+    if (application?.state === 'deferred') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); response.end(deferredPage(application)); return;
+    }
+    if (application) {
+      try { await proxyApplication(request, response, proxyTargets[application.id], url, application.route); }
+      catch (error) { if (!response.headersSent) send(response, error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? 400 : 502, { error: error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? error.message : `${application.name} is not available locally.` }); }
+      return;
+    }
+    if (url.pathname === '/api/applications' && request.method === 'GET') return send(response, 200, { schemaVersion: 'stex.applications.registry.v1', applications });
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);

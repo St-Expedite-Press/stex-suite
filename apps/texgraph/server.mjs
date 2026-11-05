@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
@@ -15,7 +15,7 @@ import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR']);
+const appEnvironment = new Set(['STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -29,6 +29,14 @@ const booksDirectory = path.resolve(process.env.TEXGRAPH_BOOKS_DIR || path.join(
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(process.env.TEXGRAPH_PORT || 4310);
+function basePath(value) {
+  const normalized = String(value || '').trim().replace(/\/+$/, '');
+  if (!normalized) return '';
+  if (!/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/i.test(normalized)) throw new Error('TEXGRAPH_BASE_PATH must be an absolute path without traversal.');
+  return normalized;
+}
+const mountedAt = basePath(process.env.TEXGRAPH_BASE_PATH);
+const shellUrl = String(process.env.TEXGRAPH_SHELL_URL || (mountedAt ? '/' : '')).trim() || '/';
 
 const mimeTypes = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf' };
 // The proof viewer's PDF.js browser build; only these two files are exposed.
@@ -90,6 +98,44 @@ async function storeFor(url) {
   const store = projectStores.get(projectId);
   await store.initialize();
   return store;
+}
+
+// The Frige root is a chooser, not an implicit mutation of any manuscript.
+// A selected project remains explicit in the `book` query parameter.
+async function availableBooks() {
+  const entries = await readdir(booksDirectory, { withFileTypes: true }).catch(() => []);
+  const records = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(entry.name)) return null;
+    const root = path.join(booksDirectory, entry.name);
+    try { await access(path.join(root, 'manuscript', 'Programme.md')); } catch { return null; }
+    const readme = await readFile(path.join(root, 'README.md'), 'utf8').catch(() => '');
+    const title = /^#\s+(.+)$/m.exec(readme)?.[1]?.trim() || entry.name.replaceAll('-', ' ');
+    return { id: entry.name, title, reference: `stex://frige/project/${entry.name}` };
+  }));
+  return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
+}
+
+async function createBookProject(payload) {
+  const title = String(payload?.title || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+  const author = String(payload?.author || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+  if (!title) throw new Error('A book title is required.');
+  const stem = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book';
+  const id = `${stem}-${createHash('sha256').update(`${title}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 6)}`;
+  const root = path.resolve(booksDirectory, id);
+  if (!root.startsWith(`${booksDirectory}${path.sep}`)) throw new Error('Invalid book path.');
+  await Promise.all([
+    mkdir(path.join(root, 'manuscript', '00_Front_Matter'), { recursive: true }),
+    mkdir(path.join(root, 'notes'), { recursive: true }),
+    mkdir(path.join(root, '.texgraph'), { recursive: true }),
+  ]);
+  const programme = ['---', `title: "${title.replaceAll('"', '\\"')}"`, '---', '', '# Programme', '', '- [[00_Front_Matter/Title Page|Title Page]]', '', '> [!todo] Add pieces to the reading order deliberately.', ''].join('\n');
+  const titlePage = ['# ' + title, '', author, ''].filter(Boolean).join('\n');
+  await Promise.all([
+    writeFile(path.join(root, 'README.md'), `# ${title}\n\nA local Frige book project.\n`, { flag: 'wx' }),
+    writeFile(path.join(root, 'manuscript', 'Programme.md'), programme, { flag: 'wx' }),
+    writeFile(path.join(root, 'manuscript', '00_Front_Matter', 'Title Page.md'), titlePage, { flag: 'wx' }),
+  ]);
+  return { id, title, reference: `stex://frige/project/${id}` };
 }
 
 function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:\/|$)/)?.[1] || null; }
@@ -260,18 +306,31 @@ await defaultStore.initialize();
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
   try {
+    if (mountedAt && url.pathname === mountedAt) {
+      response.writeHead(308, { location: `${mountedAt}/${url.search}` }); response.end(); return;
+    }
+    if (mountedAt) {
+      if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
+      url.pathname = url.pathname.slice(mountedAt.length) || '/';
+    }
     // Suite settings belong to the gateway, not to a book.
     const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
     if (relay) { const result = await gatewaySettings(relay[0], relay[1], relay[0] === 'PUT' ? await body(request) : undefined); return json(response, result.status, result.body); }
+    if (request.method === 'GET' && url.pathname === '/api/books') return json(response, 200, await availableBooks());
+    if (request.method === 'POST' && url.pathname === '/api/books') return json(response, 201, await createBookProject(await body(request)));
     if (url.pathname.startsWith('/api/')) {
       const activeStore = await storeFor(url);
       const handled = await api(request, response, url, activeStore);
       if (handled === false) json(response, 404, { error: 'Unknown API route.' });
       return;
     }
+    if (url.pathname === '/runtime-config.js') {
+      response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(`globalThis.STEX_SHELL_URL=${JSON.stringify(shellUrl)};`); return;
+    }
     const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
     if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
-    const requested = url.pathname === '/' ? '/index.html' : url.pathname;
+    const requested = url.pathname === '/' && !url.searchParams.get('book') && !url.searchParams.get('project') ? '/lobby.html' : url.pathname === '/' ? '/index.html' : url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await serveFile(response, file);
@@ -279,6 +338,6 @@ http.createServer(async (request, response) => {
     json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400, { error: error.message || 'Unexpected server error.' });
   }
 }).listen(port, '127.0.0.1', () => {
-  console.log(`TexGraph Studio is ready at http://127.0.0.1:${port}`);
+  console.log(`Frige Studio is ready at http://127.0.0.1:${port}${mountedAt || '/'}`);
   console.log(`Book project: ${projectDirectory}`);
 });

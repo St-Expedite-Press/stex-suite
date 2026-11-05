@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stex.applications.registry.v1.schema",
+  "type": "object",
+  "required": ["schemaVersion", "applications"],
+  "properties": {
+    "schemaVersion": { "const": "stex.applications.registry.v1" },
+    "applications": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "route", "state", "referenceKinds"],
+        "properties": {
+          "id": { "enum": ["frige", "seaxneat", "eostre", "woden"] },
+          "name": { "type": "string", "minLength": 1 },
+          "route": { "pattern": "^/[a-z]+/$" },
+          "state": { "enum": ["active", "deferred"] },
+          "referenceKinds": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

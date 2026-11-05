@@ -9,9 +9,16 @@
     "pnpm": ">=9.15.9"
   },
   "scripts": {
+    "build:seaxneat": "corepack pnpm --dir apps/seaxneat build",
+    "dev:alpha": "node scripts/dev-alpha.mjs",
     "dev:lab": "corepack pnpm --dir apps/lab dev",
+    "dev:seaxneat": "corepack pnpm --dir apps/seaxneat dev",
     "dev:texgraph": "corepack pnpm --dir apps/texgraph dev",
     "dev:inference": "corepack pnpm --dir services/inference dev",
+    "test": "corepack pnpm run test:lab && corepack pnpm run test:texgraph && corepack pnpm run test:inference && corepack pnpm run test:seaxneat",
+    "test:inference": "corepack pnpm --dir services/inference test",
+    "test:lab": "corepack pnpm --dir apps/lab test",
+    "test:seaxneat": "corepack pnpm --dir apps/seaxneat test",
     "test:texgraph": "corepack pnpm --dir apps/texgraph test"
   }
 }

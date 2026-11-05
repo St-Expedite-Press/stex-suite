@@ -1,6 +1,8 @@
 // Native proof viewer: spreads or single pages from the compiled PDF, laid out by
 // the compiler page map. Returns null when PDF.js cannot load so the caller can
 // fall back to the browser's own PDF viewer.
+import { appUrl } from './base-path.js';
+
 const POINTS_TO_CSS = 96 / 72;
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 const clampZoom = (value) => Math.min(4, Math.max(0.25, value));
@@ -8,8 +10,8 @@ const clampZoom = (value) => Math.min(4, Math.max(0.25, value));
 export async function createProofViewer(root, { describePage, onSelectPage }) {
   let pdfjs;
   try {
-    pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+    pdfjs = await import(appUrl('/vendor/pdfjs/pdf.min.mjs'));
+    pdfjs.GlobalWorkerOptions.workerSrc = appUrl('/vendor/pdfjs/pdf.worker.min.mjs');
   } catch { return null; }
 
   const button = (text, title) => Object.assign(document.createElement('button'), { type: 'button', className: 'quiet-button', textContent: text, title });

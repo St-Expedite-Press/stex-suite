@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { localProxyTarget, mountedApplication, validateRegistry } from '../src/shell.mjs';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-async function startLab(root, port, context) {
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_LAB_PORT: String(port), STEX_BOOKS_DIR: root } });
+async function startLab(root, port, context, environment = {}) {
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_LAB_PORT: String(port), STEX_BOOKS_DIR: root, ...environment } });
   context.after(async () => { child.kill(); await rm(root, { recursive: true, force: true }); });
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Lab server did not start.')), 5_000);
@@ -17,6 +19,43 @@ async function startLab(root, port, context) {
     child.on('error', reject);
   });
 }
+
+test('defines stable shell routes and rejects non-loopback proxy targets', () => {
+  assert.equal(mountedApplication('/frige/api/health')?.id, 'frige');
+  assert.equal(mountedApplication('/woden/')?.state, 'deferred');
+  assert.equal(localProxyTarget('http://127.0.0.1:4310', 'http://localhost:1').port, '4310');
+  assert.throws(() => localProxyTarget('https://example.test', 'http://localhost:1'), /loopback HTTP/);
+  assert.throws(() => localProxyTarget('http://127.0.0.1:4310/base', 'http://localhost:1'), /loopback HTTP/);
+});
+
+test('loads the four application identities from the versioned registry', async () => {
+  const registry = JSON.parse(await readFile(path.resolve(appDirectory, '..', '..', 'protocol', 'applications', 'registry.v1.json'), 'utf8'));
+  const applications = validateRegistry(registry);
+  assert.deepEqual(applications.map(({ id, route, state }) => ({ id, route, state })), [
+    { id: 'frige', route: '/frige/', state: 'active' },
+    { id: 'seaxneat', route: '/seaxneat/', state: 'active' },
+    { id: 'eostre', route: '/eostre/', state: 'deferred' },
+    { id: 'woden', route: '/woden/', state: 'deferred' },
+  ]);
+});
+
+test('routes compatibility aliases, deferred applications, and mounted loopback applications', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
+  const upstream = http.createServer((request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ path: request.url, prefix: request.headers['x-forwarded-prefix'] }));
+  });
+  await new Promise((resolve) => upstream.listen(4399, '127.0.0.1', resolve));
+  context.after(() => upstream.close());
+  await startLab(root, 4400, context, { STEX_FRIGE_URL: 'http://127.0.0.1:4399' });
+  const alias = await fetch('http://127.0.0.1:4400/texgraph/?book=fixture', { redirect: 'manual' });
+  assert.equal(alias.status, 308); assert.equal(alias.headers.get('location'), '/frige/?book=fixture');
+  const deferred = await fetch('http://127.0.0.1:4400/eostre/');
+  assert.equal(deferred.status, 200); assert.match(await deferred.text(), /registered in the STEX alpha/);
+  const proxied = await fetch('http://127.0.0.1:4400/frige/api/health?book=fixture');
+  assert.deepEqual(await proxied.json(), { path: '/frige/api/health?book=fixture', prefix: '/frige' });
+  const unsafe = await fetch('http://127.0.0.1:4400/frige/%2e%2e/secret');
+  assert.equal(unsafe.status, 404);
+});
 
 test('discovers a manuscript graph without changing it', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));

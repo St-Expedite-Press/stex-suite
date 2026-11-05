@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frige projects · STEX</title>
+  <link rel="stylesheet" href="./lobby.css">
+</head>
+<body>
+  <main>
+    <header><p>STEX / Frige</p><h1>Book projects</h1><span>Choose a local manuscript workspace. Frige will not open or alter a book until you select it.</span></header>
+    <section aria-labelledby="projects-title"><div class="section-heading"><p>Local workspaces</p><h2 id="projects-title">Select a project</h2></div><form id="create-project" class="create-project"><label>Book title<input name="title" maxlength="140" required placeholder="Working title"></label><label>Author <span>(optional)</span><input name="author" maxlength="160" placeholder="Name for the title page"></label><button type="submit">Create book project</button><p id="create-state" aria-live="polite"></p></form><div id="projects" class="projects" aria-live="polite"><p class="empty">Loading local projects…</p></div></section>
+  </main>
+  <script type="module" src="./lobby.js"></script>
+</body>
+</html>
