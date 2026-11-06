@@ -97,10 +97,12 @@ yet, so they are left out on purpose.
 
 ```text
 div.igor-app[data-sidebar="open|closed"]
-  header.igor-header
-    .igor-header__start > a.igor-brand (mark + name), a.igor-back "‹ Pantheon"
-    .igor-header__title > span.igor-title "Igor"
-    .igor-header__end > button.igor-icon-button.igor-sidebar-toggle (drawer only), button "About Igor"
+  header.igor-header[data-motion="playing|still"]
+    .igor-masthead[aria-hidden] > picture > img.igor-masthead__still, video.igor-masthead__motion   P11 art (P02 still)
+    .igor-header__start > a.igor-brand (span.igor-brand__mark hexagram + .stex-wordmark.igor-wordmark "STEX / Igor"),
+                          a.igor-back "‹ Pantheon" (only on a loopback host)
+    .igor-header__end > button.igor-icon-button.igor-sidebar-toggle (drawer only),
+                        button.igor-motion-toggle "Pause motion"/"Play motion", button "About Igor"
   div.igor-body
     div.igor-scrim                         drawer backdrop, only while open
     aside#igor-sidebar.igor-sidebar
@@ -125,3 +127,16 @@ div.igor-app[data-sidebar="open|closed"]
 
 The drawer breakpoint is `(max-width: 767.98px)`, matched in `App.tsx` and the
 stylesheet.
+
+The masthead follows Pantheon's rule that light text never sits on visible art.
+
+- **At 1100px and wider,** the art fills one header row and fades out under
+  the brand and the controls.
+- **Narrower,** the brand gets a solid bar and the art becomes a strip beneath
+  it.
+- **Motion** follows the same rules as Pantheon's `motion.js`
+  (`src/chat/motion.ts`). It is still under reduced motion or data saver and
+  pauses when hidden. The Pause/Play control is remembered as
+  `stex.pantheon.motion`.
+- **Media:** the files are Igor's own copies under `public/media/masthead`,
+  recorded as P02/P11 derivatives in `assets/manifest.json`.

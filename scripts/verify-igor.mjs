@@ -167,7 +167,27 @@ async function main() {
     check(order.some((label) => /new conversation/i.test(label)) && order.some((label) => /rename/i.test(label)), `Keyboard order missed key controls: ${order.join(' → ')}.`);
     await tab.close();
 
-    // 8. Layout at each width, with captures for comparison against R03.
+    // 8. Masthead motion: plays when welcome, never under reduced motion, and always has a pause control.
+    for (const reduce of [false, true]) {
+      const view = await page(devtools);
+      await view.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await view.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] });
+      await view.go(`${base}${arrived}`);
+      await view.evaluate('new Promise((resolve) => setTimeout(resolve, 2500))');
+      const state = await view.evaluate(`(() => { const video = document.querySelector('.igor-masthead__motion'); return { paused: video.paused, time: video.currentTime, motion: document.querySelector('.igor-header').dataset.motion, toggle: document.querySelector('.igor-motion-toggle')?.getAttribute('aria-label') }; })()`);
+      (report.flows.motion ??= {})[reduce ? 'reduced' : 'default'] = state;
+      if (reduce) check(state.paused && state.motion === 'still' && state.toggle === 'Play motion', `Reduced motion still played the masthead: ${JSON.stringify(state)}.`);
+      else check(!state.paused && state.time > 0 && state.motion === 'playing' && state.toggle === 'Pause motion', `The masthead did not play: ${JSON.stringify(state)}.`);
+      if (!reduce) {
+        await view.evaluate(`document.querySelector('.igor-motion-toggle').click()`);
+        const paused = await view.evaluate(`new Promise((resolve) => setTimeout(() => resolve({ paused: document.querySelector('.igor-masthead__motion').paused, toggle: document.querySelector('.igor-motion-toggle').getAttribute('aria-label') }), 300))`);
+        check(paused.paused && paused.toggle === 'Play motion', `Pause motion did not pause: ${JSON.stringify(paused)}.`);
+        await view.evaluate(`document.querySelector('.igor-motion-toggle').click()`); // leave motion on for the captures below
+      }
+      await view.close();
+    }
+
+    // 9. Layout at each width, with captures for comparison against R03.
     for (const [width, height] of viewports) {
       const view = await page(devtools);
       await view.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
@@ -178,7 +198,11 @@ async function main() {
       const label = `${width}x${height}`;
       check(geometry.scrollWidth <= width, `${label}: horizontal overflow (${geometry.scrollWidth}px).`);
       check(geometry.composer && geometry.composer.bottom <= height + 0.5 && geometry.composer.top > 0, `${label}: the composer is not fully visible.`);
-      check(geometry.header && geometry.header.height >= 48 && geometry.header.height <= 80, `${label}: header height ${geometry.header?.height}.`);
+      // The masthead: one 100–140px row on wide screens; a bar plus an art strip below that.
+      const [low, high] = width >= 1100 ? [100, 140] : [96, 176];
+      check(geometry.header && geometry.header.height >= low && geometry.header.height <= high, `${label}: header height ${geometry.header?.height} (expected ${low}–${high}).`);
+      const art = await view.evaluate(`(() => { const art = document.querySelector('.igor-masthead'); const still = document.querySelector('.igor-masthead__still'); const toggle = document.querySelector('.igor-motion-toggle'); const rect = art?.getBoundingClientRect(); return { height: rect?.height || 0, still: !!still && still.complete && still.naturalWidth > 0, toggle: toggle?.getAttribute('aria-label') || null }; })()`);
+      check(art.height >= 40 && art.still && /^(Pause|Play) motion$/.test(art.toggle || ''), `${label}: masthead ${JSON.stringify(art)}.`);
       if (width >= 1200) check(geometry.sidebar?.visible && geometry.sidebar.width >= 280 && geometry.sidebar.width <= 304, `${label}: sidebar width ${geometry.sidebar?.width}.`);
       if (width < 768) {
         check(!geometry.sidebar?.visible || geometry.sidebar.right <= 0, `${label}: the sidebar should start closed on phones.`);

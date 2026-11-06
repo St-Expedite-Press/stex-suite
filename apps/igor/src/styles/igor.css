@@ -9,7 +9,9 @@
 .igor-app {
   --igor-column: 820px;
   --igor-gutter: 24px;
-  --igor-header: 72px;
+  --igor-bar: 72px;
+  --igor-strip: clamp(40px, 9vw, 88px);
+  --igor-header: calc(var(--igor-bar) + var(--igor-strip));
   --igor-sidebar: 292px;
   --igor-rule: var(--stex-hairline) solid var(--stex-border-decor);
   --igor-tint: color-mix(in srgb, var(--stex-accent) 22%, var(--stex-surface));
@@ -59,25 +61,40 @@
   font: 600 12px/1.2 var(--stex-font-sans); letter-spacing: .16em; text-transform: uppercase;
 }
 
-/* ---- Header ------------------------------------------------------------- */
+/* ---- Header: the P11 masthead ------------------------------------------
+   As in Pantheon's shell.css, light text never sits on visible art (it fails
+   contrast except at the outer edges, assets/manifest.json P02/P11): wide
+   screens fade the art out under the brand and the controls; narrower screens
+   give them a solid bar with the art as a strip beneath it. The still shows
+   until the loop actually plays, and whenever motion is off. */
 
 .igor-header {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--stex-space-4);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: var(--igor-bar) var(--igor-strip);
+  align-items: center; column-gap: var(--stex-space-4);
   min-width: 0; padding: 0 var(--igor-gutter);
   background: var(--stex-bg); border-bottom: var(--igor-rule);
 }
-.igor-header__start { display: flex; align-items: center; gap: var(--stex-space-5); min-width: 0; }
-.igor-header__end { display: flex; align-items: center; justify-content: flex-end; gap: var(--stex-space-1); }
+.igor-masthead {
+  grid-column: 1 / -1; grid-row: 2; align-self: stretch; position: relative; overflow: hidden;
+  margin-inline: calc(var(--igor-gutter) * -1); background: var(--stex-bg);
+}
+.igor-masthead :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 46%; }
+.igor-masthead__motion { opacity: 0; transition: opacity 600ms var(--stex-ease); }
+.igor-header[data-motion="playing"] .igor-masthead__motion { opacity: 1; }
+@media (min-width: 900px) { .igor-masthead :is(img, video) { object-position: 50% 50%; } }
+
+.igor-header__start { grid-row: 1; display: flex; align-items: center; gap: var(--stex-space-5); min-width: 0; }
+.igor-header__end { grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: var(--stex-space-1); }
 
 .igor-brand { display: inline-flex; align-items: center; gap: var(--stex-space-3); flex: none; color: var(--stex-text); text-decoration: none; border-radius: var(--stex-radius-control); }
 .igor-brand__mark {
   display: block; flex: none; width: 40px; height: 40px; background: var(--stex-frame);
-  -webkit-mask: url("/design-system/brand/pantheon-laurel.svg") center / contain no-repeat;
-          mask: url("/design-system/brand/pantheon-laurel.svg") center / contain no-repeat;
+  -webkit-mask: url("/design-system/brand/igor-emblem.svg") center / contain no-repeat;
+          mask: url("/design-system/brand/igor-emblem.svg") center / contain no-repeat;
 }
-.igor-brand__text { display: grid; line-height: 1; }
-.igor-brand__name { font: 500 28px/.9 var(--stex-font-display); letter-spacing: .14em; text-transform: uppercase; }
-.igor-brand__sub { margin-top: 5px; color: var(--stex-text-secondary); font: 500 10px/1 var(--stex-font-sans); letter-spacing: .34em; text-transform: uppercase; }
+.igor-wordmark { --stex-wordmark-size: 28px; justify-items: start; }
+.igor-wordmark .stex-wordmark__org { font-size: 12px; letter-spacing: .5em; margin-block-end: .45em; color: var(--stex-text-secondary); }
+.igor-wordmark .stex-wordmark__name { color: var(--stex-accent); }
 
 .igor-back {
   display: inline-flex; align-items: center; gap: var(--stex-space-2); min-height: 40px;
@@ -87,11 +104,17 @@
 .igor-back span { font-size: 20px; line-height: 1; transform: translateY(-1px); }
 .igor-back:hover { color: var(--stex-text); }
 
-.igor-header__title { display: flex; align-items: center; gap: var(--stex-space-3); color: var(--stex-accent); }
-.igor-header__title::before, .igor-header__title::after { content: ""; width: 56px; height: var(--stex-hairline); background: currentColor; }
-.igor-title {
-  padding: 2px var(--stex-space-3) 6px; border-bottom: var(--stex-hairline) solid currentColor;
-  font: 500 34px/1 var(--stex-font-display); letter-spacing: .16em; text-transform: uppercase;
+/* Wide screens: one masthead row; the art shows only between the clusters. */
+@media (min-width: 1100px) {
+  .igor-app { --igor-header: clamp(104px, 13vh, 136px); }
+  .igor-header { position: relative; grid-template-rows: minmax(0, 1fr); --clear-start: calc(var(--igor-gutter) + 340px); --clear-end: 150px; }
+  .igor-header:not(:has(.igor-back)) { --clear-start: calc(var(--igor-gutter) + 210px); }
+  .igor-masthead {
+    position: absolute; inset: 0; grid-row: auto; margin: 0;
+    -webkit-mask-image: linear-gradient(to right, transparent var(--clear-start), #000 calc(var(--clear-start) + 14vw), #000 calc(100% - var(--clear-end) - 5vw), transparent calc(100% - var(--clear-end)));
+            mask-image: linear-gradient(to right, transparent var(--clear-start), #000 calc(var(--clear-start) + 14vw), #000 calc(100% - var(--clear-end) - 5vw), transparent calc(100% - var(--clear-end)));
+  }
+  .igor-header__start, .igor-header__end { position: relative; }
 }
 
 .igor-sidebar-toggle { display: none; }
@@ -386,17 +409,15 @@
 }
 
 @media (max-width: 1023.98px) {
-  .igor-brand__text { display: none; }
   .igor-header__start { gap: var(--stex-space-4); }
   .igor-back { padding-left: var(--stex-space-4); }
 }
 
 /* Drawer mode (matches DRAWER_QUERY in App.tsx). */
 @media (max-width: 767.98px) {
-  .igor-app { --igor-header: 60px; --igor-gutter: 16px; }
+  .igor-app { --igor-bar: 60px; --igor-gutter: 16px; }
   .igor-header { gap: var(--stex-space-2); }
-  .igor-header__title::before, .igor-header__title::after { display: none; }
-  .igor-title { font-size: 28px; padding-inline: var(--stex-space-1); border-bottom: 0; }
+  .igor-wordmark { --stex-wordmark-size: 24px; }
   .igor-brand__mark { width: 34px; height: 34px; }
   .igor-back { padding-left: var(--stex-space-3); }
   .igor-sidebar-toggle { display: inline-grid; }
@@ -424,10 +445,9 @@
   .igor-toast { top: calc(var(--igor-header) + var(--stex-space-3)); }
 }
 
-/* Phones: the labelled back link carries the way home; the mark would crowd the title. */
+/* Phones: the brand (which links home) carries the way back; the back link would crowd the controls. */
 @media (max-width: 420px) {
-  .igor-brand { display: none; }
-  .igor-back { padding-left: 0; border-left: 0; }
+  .igor-back { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -435,4 +455,5 @@
   .igor-archive > summary .igor-icon, .igor-sidebar, .igor-app[data-sidebar="open"] .igor-sidebar { transition: none; }
   .igor-dots::after { animation: none; content: "…"; }
   .igor-toast { animation: none; }
+  .igor-masthead__motion { transition: none; }
 }

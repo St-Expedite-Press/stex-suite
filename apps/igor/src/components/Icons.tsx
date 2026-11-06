@@ -96,3 +96,15 @@ export const SendIcon = () => (
     <path d="M4 12 20 4.5 15.5 20l-3.5-6.5zM12 13.5l8-9" />
   </Icon>
 );
+
+export const PauseIcon = () => (
+  <Icon>
+    <path d="M9 6v12M15 6v12" />
+  </Icon>
+);
+
+export const PlayIcon = () => (
+  <Icon>
+    <path d="M8 5.5v13l10-6.5z" />
+  </Icon>
+);
