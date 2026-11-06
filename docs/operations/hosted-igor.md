@@ -40,6 +40,14 @@ Node is `/opt/node` (v22, checked against nodejs.org SHA-256). Releases live in
 
 ## Go-live gates
 
+State on 2026-11-06:
+
+- **Done:** gates 1, 2, 4, and 5. The Access application is `Igor`; the team
+  domain is `<team>.cloudflareaccess.com`; the tunnel is
+  `<tunnel-id>`.
+- **Pending:** gate 3 (the connector) and gate 6 (egress lockdown). See the
+  [I2 report](../verification/igor-i2-hosted.md).
+
 Do these in order. Igor must never be reachable unauthenticated.
 
 1. **Access application.** Create a Zero Trust self-hosted application for
