@@ -9,6 +9,7 @@ are registered, honestly deferred domains.
 | Pantheon | `apps/pantheon` | Active shell and local proxy |
 | Frige | `apps/frige` | Active manuscripts, proofs, and preflight |
 | Seaxneat | `apps/seaxneat` | Active website workspaces and revisions |
+| Igor | `apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
 | Hermes | `runtime/hermes-agent`, `hermes`, `services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |

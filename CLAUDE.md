@@ -6,7 +6,7 @@ This file only imports it; add rules there, not here.
 @AGENTS.md
 
 Nested `AGENTS.md` files are loaded through sibling `CLAUDE.md` shims
-(`apps/frige/`, `apps/frige/books/lift-wind-love-heat/`,
+(`apps/frige/`, `apps/frige/books/lift-wind-love-heat/`, `apps/igor/`,
 `packages/design-system/`). Read
 `.github/agents/stex-documentation-director.agent.md` before documentation work
 and `packages/design-system/AGENTS.md` before any interface work.

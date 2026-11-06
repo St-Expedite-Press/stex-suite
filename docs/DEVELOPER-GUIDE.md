@@ -7,6 +7,7 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm test` | All deterministic suites |
 | `corepack pnpm dev:alpha` | Shell plus active application processes |
 | `corepack pnpm --dir apps/seaxneat build` | React production build |
+| `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
 | `corepack pnpm run test:hermes` | Validate the role/profile catalog |
 | `corepack pnpm run test:knowledge` | Validate the optional User Graph adapter |
 | `corepack pnpm run test:design-system` | Tokens, contrast, status colours, font coverage |
@@ -14,8 +15,9 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm assets:build [splash\|masthead\|emblems]` | Rebuild web media from masters, bit-exact (needs FFmpeg) |
 | `corepack pnpm verify:splash` | Browser check of the splash at 15 viewports (needs Chrome or Edge) |
 | `corepack pnpm verify:home` | Browser check of the command center with an isolated stack and disposable data (needs Chrome or Edge) |
+| `corepack pnpm verify:igor` | Browser check of the Igor handoff, conversation workflow, and layout at 5 viewports with a stub inference service (needs Chrome or Edge) |
 
-Use disposable temp data for Seaxneat through `STEX_SEAXNEAT_DATA_DIR`. Canonical
+Use disposable temp data for Seaxneat through `STEX_SEAXNEAT_DATA_DIR` and for Igor through `STEX_IGOR_DATA_DIR`. Canonical
 Pantheon and Frige settings are `STEX_PANTHEON_*` and `STEX_FRIGE_*`; legacy
 aliases are fallbacks. Remote Hermes configuration remains server-side; test
 the fake transport by default. Interface work uses `@stex/design-system`

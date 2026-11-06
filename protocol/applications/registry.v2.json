@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "stex.applications.registry.v2",
+  "applications": [
+    { "id": "frige", "name": "Frige", "kind": "studio", "route": "/frige/", "state": "active", "referenceKinds": ["book", "node", "proof"] },
+    { "id": "seaxneat", "name": "Seaxneat", "kind": "studio", "route": "/seaxneat/", "state": "active", "referenceKinds": ["project", "revision"] },
+    { "id": "eostre", "name": "Eostre", "kind": "studio", "route": "/eostre/", "state": "deferred", "referenceKinds": ["project", "asset"] },
+    { "id": "woden", "name": "Woden", "kind": "studio", "route": "/woden/", "state": "deferred", "referenceKinds": ["project", "manuscript"] },
+    { "id": "igor", "name": "Igor", "kind": "application", "route": "/igor/", "state": "active", "referenceKinds": ["conversation"] }
+  ]
+}

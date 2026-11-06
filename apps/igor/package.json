@@ -1,0 +1,30 @@
+{
+  "name": "@stex/igor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.30",
+    "@assistant-ui/react-markdown": "0.14.23",
+    "@stex/design-system": "workspace:*",
+    "@vitejs/plugin-react": "5.0.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remark-gfm": "4.0.1",
+    "typescript": "6.0.3",
+    "vite": "7.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  }
+}

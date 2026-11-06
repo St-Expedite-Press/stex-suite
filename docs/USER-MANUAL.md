@@ -13,7 +13,7 @@ prepared remote runtime exists for operator verification, but it is not enabled
 by the normal local workflow.
 
 - **Continue working** opens the project you changed most recently, in whichever studio owns it.
-- **Igor** is the assistant. Type a question and press the arrow. In the standard local stack, replies are simulated and say so ("Simulated reply · fake transport"); nothing you type is stored.
+- **Igor** is the assistant. Type a question on the home page and press the arrow: Igor opens it as a new conversation and answers there. **All conversations** opens Igor directly at `/igor/`, where you can start a conversation, continue one, rename, archive, or delete it, copy a reply, and retry a failed one. Press Enter to send and Shift+Enter for a new line; messages are up to 6,000 characters. Conversations are kept on this computer. In the standard local stack, replies are simulated and marked **Simulated**.
 - **Studios** opens Frige or Seaxneat. Ēostre and Woden are marked **Deferred** because they are not built yet.
 - **Recent projects** lists your latest five; **View all** (or the **Projects** tab) shows every project with its studio and current status, such as "Building" or "Build failed".
 - **Graph** and **Activity** say plainly that they are not built yet.

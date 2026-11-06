@@ -25,6 +25,7 @@ apps/texgraph/books/*/.texgraph/
 apps/texgraph/books/*/.obsidian/
 apps/seaxneat/.local-data/
 apps/seaxneat/.preview-state/
+apps/igor/.local-data/
 .playwright-mcp/
 services/inference/.state/
 vault/.obsidian/

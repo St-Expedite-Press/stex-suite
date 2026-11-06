@@ -1,4 +1,4 @@
-// Loads stex.projects.summary.v1 (protocol/projects) from each active studio
+// Loads stex.projects.summary.v1 (protocol/projects) from each active studio (kind "studio")
 // through Pantheon's proxy and renders Continue working, Recent projects, the
 // Projects table, and studio counts. A studio that does not answer within 2 s,
 // or answers with anything but a valid v1 document, is shown as unavailable.
@@ -54,7 +54,8 @@ async function loadStudio(application) {
 
 async function loadAll() {
   const registry = await (await fetch('/api/applications', { headers: { accept: 'application/json' } })).json();
-  const active = registry.applications.filter((application) => application.state === 'active');
+  // Only studios publish projects; other applications (Igor) are never polled.
+  const active = registry.applications.filter((application) => application.kind === 'studio' && application.state === 'active');
   const results = await Promise.all(active.map(loadStudio));
   const projects = results.flatMap((result) => result.projects).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
   return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };

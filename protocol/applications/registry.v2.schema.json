@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stex.applications.registry.v2.schema",
+  "type": "object",
+  "required": ["schemaVersion", "applications"],
+  "properties": {
+    "schemaVersion": { "const": "stex.applications.registry.v2" },
+    "applications": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind", "route", "state", "referenceKinds"],
+        "properties": {
+          "id": { "enum": ["frige", "seaxneat", "eostre", "woden", "igor"] },
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["studio", "application"] },
+          "route": { "pattern": "^/[a-z]+/$" },
+          "state": { "enum": ["active", "deferred"] },
+          "referenceKinds": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

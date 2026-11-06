@@ -17,14 +17,15 @@ holds acceptance evidence; update those, not this file, when status moves.
 
 - **Active, implemented and tested locally:** Frige (`apps/frige`),
   Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`) with its
-  public splash, the shared design system (`packages/design-system`), the
+  public splash, the Igor conversation application (`apps/igor`; fake transport
+  by default, live turns verified once on a local gateway), the shared design system (`packages/design-system`), the
   brand asset library (`assets`), the pinned upstream Hermes source
   (`runtime/hermes-agent`), and the `stex.hermes.turn.v1` fake/upstream API
   adapter in `services/inference`.
 - **Registered but deferred:** Eostre (`apps/eostre`) and Woden
   (`apps/woden`) — shell entries with an honest deferred state only.
-- **Not done or unverified:** any real provider-backed Hermes exchange,
-  runtime isolation acceptance, vault integration, deployment, and
+- **Not done or unverified:** provider-backed Frige exchanges, an OS-level
+  runtime isolation boundary (the local gateway is Docker on Windows), vault integration, deployment, and
   cross-application workflows.
 
 The historical Agent Studio migration that produced A0 is closed. Agent Studio
@@ -48,6 +49,7 @@ and authorization.
 | `apps/pantheon` | Pantheon shell, same-origin proxy, registry routes | `/` | 4300 | `test:pantheon` |
 | `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige` |
 | `apps/seaxneat` | **Seaxneat** — website workspaces, previews, revisions, UI | `/seaxneat/` | 4320 | `test:seaxneat`, `build:seaxneat` |
+| `apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor` |
 | `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
 | `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
 | `services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
@@ -61,7 +63,7 @@ and authorization.
 | `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
 
 Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
-`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_INFERENCE_PORT`). Legacy
+`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`). Legacy
 `STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility aliases. Supported target:
 local development on Node ≥ 22.13, pnpm 9.15 via Corepack, Git, and LuaLaTeX
 for Frige proof tests.
@@ -81,6 +83,7 @@ application's `README.md`, any nested `AGENTS.md` on the path you will touch,
 and the `protocol/` contracts you will cross. Current nested charters:
 
 - `apps/frige/AGENTS.md` — Frige engineering rules.
+- `apps/igor/AGENTS.md` — Igor application rules.
 - `apps/frige/books/*/AGENTS.md` — per-manuscript editorial rules.
 - `hermes/AGENTS.md` — declarative Hermes configuration rules.
 - `packages/design-system/AGENTS.md` — interface engineering rules. **Read it
@@ -104,7 +107,7 @@ import its modules as an integration shortcut. Cross-application interaction
 needs a versioned contract under `protocol/` covering ownership, validation,
 authorization, failure behavior, and migration; extend with a new version
 rather than editing a contract another product relies on. The application
-registry is `protocol/applications/registry.v1.json`; it declares navigation
+registry is `protocol/applications/registry.v2.json`; it declares navigation
 identities and grants no storage or authority. Use `stex://<product>/<kind>/<id>`
 references where useful; resolving one is an operation of the owning app.
 Pantheon lists projects only through each studio's read-only
@@ -127,8 +130,8 @@ workflow requires it.
   deterministic fake transport unless live verification is explicitly approved.
 - `services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
-  Browsers talk to their product server (Frige, or Pantheon's
-  `/api/igor/turn`), which holds the shared secret.
+  Browsers talk to their product server (Frige, or the Igor application),
+  which holds the shared secret; Pantheon holds none.
 - Authenticate remote calls; validate every request and reply against
   `protocol/hermes/*.v1.json`; bound payload, context, time, output, retries,
   and cancellation; classify failures (validation, authentication,

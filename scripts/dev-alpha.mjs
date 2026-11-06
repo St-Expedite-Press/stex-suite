@@ -6,6 +6,7 @@ const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 
 const shellPort = process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || '4300';
 const frigePort = process.env.STEX_FRIGE_PORT || process.env.TEXGRAPH_PORT || '4310';
 const seaxneatPort = process.env.SEAXNEAT_PORT || '4320';
+const igorPort = process.env.STEX_IGOR_PORT || '4330';
 const inferencePort = process.env.STEX_INFERENCE_PORT || '8100';
 const shared = process.env.STEX_INFERENCE_SHARED_SECRET || 'stex-alpha-local';
 
@@ -20,17 +21,20 @@ function run(args, environment = {}) {
   });
 }
 
-const buildCommand = process.platform === 'win32' ? process.execPath : 'corepack';
-const buildArgs = process.platform === 'win32'
-  ? [corepackEntry, 'pnpm', '--dir', 'apps/seaxneat', 'build']
-  : ['pnpm', '--dir', 'apps/seaxneat', 'build'];
-const build = spawnSync(buildCommand, buildArgs, {
-  cwd: root,
-  env: { ...process.env, SEAXNEAT_BASE_PATH: '/seaxneat/' },
-  stdio: 'inherit',
-  windowsHide: true,
-});
-if (build.status !== 0) process.exit(build.status || 1);
+// Seaxneat and Igor serve production builds; build both before anything starts.
+function build(directory, environment = {}) {
+  const command = process.platform === 'win32' ? process.execPath : 'corepack';
+  const args = ['pnpm', '--dir', directory, 'build'];
+  const result = spawnSync(command, process.platform === 'win32' ? [corepackEntry, ...args] : args, {
+    cwd: root,
+    env: { ...process.env, ...environment },
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  if (result.status !== 0) process.exit(result.status || 1);
+}
+build('apps/seaxneat', { SEAXNEAT_BASE_PATH: '/seaxneat/' });
+build('apps/igor');
 
 const children = [
   run(['pnpm', '--dir', 'services/inference', 'dev'], {
@@ -49,12 +53,17 @@ const children = [
   run(['pnpm', '--dir', 'apps/seaxneat', 'dev'], {
     SEAXNEAT_PORT: seaxneatPort,
   }),
+  // Igor holds the inference secret; Pantheon only proxies to it.
+  run(['pnpm', '--dir', 'apps/igor', 'dev'], {
+    STEX_IGOR_PORT: igorPort,
+    STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
+    STEX_INFERENCE_SHARED_SECRET: shared,
+  }),
   run(['pnpm', '--dir', 'apps/pantheon', 'dev'], {
     STEX_PANTHEON_PORT: shellPort,
     STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`,
     STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}`,
-    STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
-    STEX_INFERENCE_SHARED_SECRET: shared,
+    STEX_IGOR_URL: `http://127.0.0.1:${igorPort}`,
   }),
 ];
 

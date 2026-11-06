@@ -6,21 +6,21 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { IGOR_LIMITS, IgorError, assertSameOrigin, igorTurn } from './src/igor.mjs';
 import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage } from './src/pages.mjs';
-import { localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
+import { isLoopbackHost, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
 const booksDirectory = path.resolve(process.env.STEX_FRIGE_BOOKS_DIR || process.env.STEX_BOOKS_DIR || path.join(directory, '..', 'frige', 'books'));
 const port = Number(process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || 4300);
-const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v1.json');
+const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v2.json');
 let applications = shellApplications;
 try { applications = validateRegistry(JSON.parse(await readFile(registryFile, 'utf8'))); }
 catch (error) { console.warn(`Pantheon is using its built-in registry fallback: ${error.message}`); }
 const proxyTargets = {
   frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310'),
   seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
+  igor: localProxyTarget(process.env.STEX_IGOR_URL, 'http://127.0.0.1:4330'),
 };
 const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -29,7 +29,6 @@ const mime = {
 // The shared design system is served from its own package; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
-const inference = { inferenceUrl: process.env.STEX_INFERENCE_URL || '', sharedSecret: process.env.STEX_INFERENCE_SHARED_SECRET || '' };
 const pages = {
   '/home/': () => homePage(applications),
   '/projects/': () => projectsPage(),
@@ -38,12 +37,6 @@ const pages = {
   '/activity/': () => unbuiltPage('activity'),
 };
 function sendPage(response, html) { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); response.end(html); }
-// Counts bytes as they arrive and stops before parsing anything oversized.
-async function boundedJson(request, limit) {
-  const parts = []; let bytes = 0;
-  for await (const part of request) { bytes += part.length; if (bytes > limit) throw new IgorError(413, 'INVALID_REQUEST', 'That request is too large.'); parts.push(part); }
-  try { return bytes ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}; } catch { throw new IgorError(400, 'INVALID_REQUEST', 'Request body must be JSON.'); }
-}
 
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
 function requireBookId(id) { if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id)) throw new Error('Invalid book id.'); return id; }
@@ -225,6 +218,8 @@ function designSystemFile(pathname) {
 }
 
 http.createServer(async (request, response) => {
+  // Refused before routing: the proxy would otherwise lend a rebound page a loopback Host.
+  if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
     if (url.pathname === '/texgraph' || url.pathname.startsWith('/texgraph/')) {
@@ -246,7 +241,7 @@ http.createServer(async (request, response) => {
       catch (error) { if (!response.headersSent) send(response, error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? 400 : 502, { error: error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? error.message : `${application.name} is not available locally.` }); }
       return;
     }
-    if (url.pathname === '/api/applications' && request.method === 'GET') return send(response, 200, { schemaVersion: 'stex.applications.registry.v1', applications });
+    if (url.pathname === '/api/applications' && request.method === 'GET') return send(response, 200, { schemaVersion: 'stex.applications.registry.v2', applications });
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
@@ -257,10 +252,6 @@ http.createServer(async (request, response) => {
     const tab = tabs.find((entry) => url.pathname === entry.route.slice(0, -1));
     if (tab) { response.writeHead(308, { location: `${tab.route}${url.search}` }); response.end(); return; }
     if (pages[url.pathname] && ['GET', 'HEAD'].includes(request.method)) return sendPage(response, pages[url.pathname]());
-    if (url.pathname === '/api/igor/turn' && request.method === 'POST') {
-      try { assertSameOrigin(request.headers); return send(response, 200, await igorTurn(await boundedJson(request, IGOR_LIMITS.requestBytes), inference)); }
-      catch (error) { if (error instanceof IgorError) return send(response, error.status, { error: error.message, code: error.code }); throw error; }
-    }
     if (url.pathname.startsWith('/design-system/')) {
       const file = designSystemFile(url.pathname);
       return file ? await staticFile(request, response, file) : send(response, 404, { error: 'Not found.' });

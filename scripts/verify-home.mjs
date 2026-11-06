@@ -7,9 +7,8 @@ import { readManifest, repositoryRoot } from './assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser verification of the Pantheon command center (/home/ and its tabs).
-// Starts an isolated stack on spare ports with disposable data: the real
-// inference service (fake transport), real Frige with a synthetic book, and a
-// labelled Seaxneat stub serving stex.projects.summary.v1 (a real Seaxneat
+// Starts an isolated stack on spare ports with disposable data: real Frige
+// with a synthetic book and a labelled Seaxneat stub serving stex.projects.summary.v1 (a real Seaxneat
 // project needs a Next.js build per run, and the stub can show states a fresh
 // install cannot). Then checks layout, the masthead against P11's focal
 // regions, real-data rendering, an unavailable studio, Igor, motion, and the
@@ -17,9 +16,9 @@ import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/de
 //   corepack pnpm verify:home [--out <directory>]
 
 const viewports = [[1920, 1080], [1440, 789], [1366, 657], [1280, 689], [1100, 700], [1024, 768], [768, 1024], [390, 844], [320, 568]];
-const ports = { pantheon: 4426, seaxneat: 4427, frige: 4428, inference: 4429 };
+// igor points at a port nothing listens on: this stack runs no Igor server.
+const ports = { pantheon: 4426, seaxneat: 4427, frige: 4428, igor: 4429 };
 const outDirectory = outDirectoryFromArgs('stex-home-verification');
-const secret = 'verify-home-secret';
 const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 // Seaxneat stub: two fixture websites, or a failure when `failing` is set.
@@ -77,15 +76,14 @@ async function main() {
   await new Promise((resolve) => stub.listen(ports.seaxneat, '127.0.0.1', resolve));
   const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), env: { ...process.env, ...env } });
   const children = [
-    node('services/inference', { STEX_INFERENCE_PORT: String(ports.inference), STEX_INFERENCE_SHARED_SECRET: secret, STEX_HERMES_TRANSPORT: 'fake' }),
     node('apps/frige', { STEX_FRIGE_PORT: String(ports.frige), STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_FRIGE_PROJECT_DIR: data, STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_SHELL_URL: '/home/' }),
-    node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${ports.seaxneat}`, STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_INFERENCE_URL: `http://127.0.0.1:${ports.inference}`, STEX_INFERENCE_SHARED_SECRET: secret }),
+    node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${ports.seaxneat}`, STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_IGOR_URL: `http://127.0.0.1:${ports.igor}` }),
   ];
   const failures = []; const report = { viewports: [], data: {}, igor: {}, motion: {} };
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   let browser;
   try {
-    await Promise.all(children.map((child, index) => started(child, /ready|listening|running/i, ['Inference', 'Frige', 'Pantheon'][index])));
+    await Promise.all(children.map((child, index) => started(child, /ready|listening|running/i, ['Frige', 'Pantheon'][index])));
     browser = await launchBrowser();
     const { devtools } = browser; report.browser = browser.browserPath;
     const base = `http://127.0.0.1:${ports.pantheon}`;
@@ -166,15 +164,17 @@ async function main() {
     check(report.data.unavailable.notes.length === 1 && report.data.unavailable.notes[0].startsWith('Seaxneat is not responding') && report.data.unavailable.rows === 1, `Unavailable studio: ${JSON.stringify(report.data.unavailable)}.`);
     stubState.failing = false;
 
-    // Igor: a real round trip through Pantheon and the inference service, labelled as simulated.
+    // Igor: the home composer hands off to apps/igor. This stack runs no Igor
+    // server (verify:igor covers the handoff), so a submission must stay on
+    // /home/ and say Igor is unavailable rather than fail silently.
     await tab.go(`${base}/home/`); await settle(tab);
     report.igor = await tab.evaluate(`new Promise((resolve) => {
       const input = document.querySelector('.igor-input'); input.value = 'What should I work on?';
       document.querySelector('.igor-form').requestSubmit();
-      const poll = () => { const reply = document.querySelector('.igor-entry--assistant, .igor-entry--status'); if (reply) resolve({ role: reply.className, text: reply.querySelector('p').textContent, note: reply.querySelector('.stex-meta')?.textContent || null }); else setTimeout(poll, 50); };
+      const poll = () => { const text = document.querySelector('.igor-log')?.textContent.trim(); if (text) resolve({ path: location.pathname, text, allLink: document.querySelector('.igor a.section-link[href="/igor/"]')?.textContent.trim() || null }); else setTimeout(poll, 50); };
       setTimeout(() => resolve({ timeout: true }), 8000); poll();
     })`);
-    check(report.igor.role?.includes('assistant') && report.igor.note === 'Simulated reply · fake transport' && report.igor.text?.includes('What should I work on?'), `Igor: ${JSON.stringify(report.igor)}.`);
+    check(report.igor.path === '/home/' && report.igor.text && report.igor.allLink, `Igor handoff without Igor running: ${JSON.stringify(report.igor)}.`);
     const { data: igorShot } = await tab.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(outDirectory, 'home-igor-1440x900.png'), Buffer.from(igorShot, 'base64'));
 

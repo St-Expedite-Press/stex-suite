@@ -20,6 +20,7 @@ read-only adapter; applications continue to work without it.
 apps/pantheon   loopback shell
 apps/frige      publishing and typesetting
 apps/seaxneat   website workspaces
+apps/igor       conversations with the Pantheon Director
 apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain
 hermes          roster, profiles, skills, and policies

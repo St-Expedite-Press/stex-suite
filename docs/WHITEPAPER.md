@@ -45,8 +45,8 @@ boundary and declares that policy. The acknowledgement is not a technical
 proof of isolation. `tools: []` on the adapter request is defense in depth, not the
 security boundary. The local fake enables deterministic workflows. One bounded,
 provider-backed Hermes exchange has been verified directly through the local
-Igor gateway; Pantheon and Frige still use the fake transport, and their remote
-workflows remain unverified. Any additional provider call requires explicit
+Igor gateway; the Igor application and Frige still use the fake transport, and
+their remote workflows remain unverified. Any additional provider call requires explicit
 authorization and a bounded budget.
 
 See [STATUS.md](STATUS.md) and [protocol documentation](../protocol/README.md).

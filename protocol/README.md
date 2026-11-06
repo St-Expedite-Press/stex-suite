@@ -9,7 +9,9 @@ runtime memory or implementation modules as an integration API.
 - `hermes/` defines the product-neutral v1 remote-Hermes turn envelope.
 - `projects/` defines `stex.projects.summary.v1`, the read-only project
   summaries each studio serves for Pantheon's project lists.
-- `applications/` holds the versioned application registry.
+- `applications/` holds the versioned application registry (v2 is current).
+- `igor/` defines `stex.igor.conversations.v1`, the Igor application's
+  conversation API, including Pantheon's handoff.
 
 Contracts are versioned before two products rely on them. They describe data
 ownership and failure behavior; they do not grant authority.

@@ -106,11 +106,12 @@ export function homePage(applications) {
       <section class="igor" aria-labelledby="igor-title">
         <div class="igor-head"><span class="igor-emblem" aria-hidden="true"></span><h2 class="igor-name" id="igor-title">Igor</h2></div>
         <form class="igor-form" novalidate>
-          <input class="igor-input" id="igor-input" name="message" type="text" maxlength="2000" autocomplete="off" placeholder="Ask Igor…" aria-labelledby="igor-title" aria-describedby="igor-note" required disabled>
+          <input class="igor-input" id="igor-input" name="message" type="text" maxlength="6000" autocomplete="off" placeholder="Ask Igor…" aria-labelledby="igor-title" aria-describedby="igor-note" required disabled>
           <button class="stex-button stex-button--primary igor-send" type="submit" aria-label="Send to Igor" disabled><span aria-hidden="true">→</span></button>
         </form>
-        <p class="stex-meta igor-note" id="igor-note">Each reply says whether it was simulated. Nothing you ask is stored.</p>
+        <p class="stex-meta igor-note" id="igor-note">Your message opens a new conversation in Igor.</p>
         <ol class="igor-log" aria-live="polite"></ol>
+        <a class="section-link" href="/igor/">All conversations</a>
       </section>
     </div>
     <section aria-labelledby="studios-title">

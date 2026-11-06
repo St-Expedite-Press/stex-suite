@@ -669,6 +669,29 @@
       "derivatives": []
     },
     {
+      "id": "R03",
+      "title": "Igor conversational interface comp",
+      "owner": "pantheon",
+      "kind": "reference",
+      "revision": 1,
+      "master": {
+        "path": "assets/reference/pantheon-igor-comp.png",
+        "sourceName": "pasted into the design conversation, 2026-11-05 (original filename unknown)",
+        "sha256": "c7a4be1d166ce1e329634f4f5fc215b61ba384b228cf94b7d1cbe0e44c670391",
+        "bytes": 2358255,
+        "width": 1448,
+        "height": 1086
+      },
+      "provenance": {
+        "author": "STEX project owner",
+        "rights": "Owned by St. Expedite Press; all rights reserved.",
+        "notes": "Approved visual reference for milestone I1 (apps/igor): header with IGOR title and rules, conversation sidebar, editorial transcript, bottom composer. Reference only: its conversations, timestamps, archive count, and non-functional controls (attachment, Markdown, code, feedback thumbs, search) are mockup content and must not ship unless they become real features."
+      },
+      "usage": "Visual comparison for the apps/igor build (charter section III).",
+      "alt": "Not shipped.",
+      "derivatives": []
+    },
+    {
       "id": "S04",
       "title": "Seaxneat emblem: drafting compass",
       "owner": "seaxneat",

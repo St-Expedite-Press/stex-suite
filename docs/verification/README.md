@@ -10,6 +10,7 @@ then use a report here to inspect the command output and limits behind it.
 | --- | --- | --- |
 | Hermes / Igor H1 | [H1 preparation](hermes-h1-preparation.md) | One direct, tool-free OpenRouter turn is verified; product remote workflows are not |
 | Pantheon consolidation | [Consolidation report](pantheon-consolidation-report.md) | Fake inference and local workflows only |
+| Igor application (I1) | [Igor I1 report](igor-i1-application.md) | Browser evidence on stub inference; five live turns on a local Windows gateway |
 | Command center | [Command-center report](command-center-report.md) | Browser evidence uses the fake transport |
 | Splash and identity | [Identity and splash](identity-splash-report.md) | Chrome coverage; Safari and Firefox remain unrun |
 

@@ -1,0 +1,138 @@
+# Igor conversations contract v1
+
+`stex.igor.conversations.v1` is the API of `apps/igor`, the conversational
+application for **Igor**, the user-facing name of the Pantheon Director. Igor
+is not a separate agent: every reply comes from the existing director through
+`services/inference` and `stex.hermes.turn.v1` ([protocol/hermes](../hermes/README.md)).
+
+`apps/igor` owns conversation records (titles, messages, ordering, pending and
+failed state). It does not own Hermes profiles, models, credentials, sessions,
+or memory. Pantheon uses only the creation endpoint (the handoff); everything
+else is Igor's own frontend.
+
+## Mount and security
+
+Igor serves under `/igor/` both standalone (`http://127.0.0.1:4330/igor/`) and
+through Pantheon's proxy (`/igor/`). API paths below are relative to that mount:
+`POST /igor/api/conversations`.
+
+Every mutating request (`POST`, `PATCH`, `DELETE`) must have
+`content-type: application/json` (a body may be `{}`), a loopback `Host`, and
+no cross-site `Origin` or `Sec-Fetch-Site`; otherwise `415` or `403`. Bodies
+are limited to 64 KB. The inference shared secret never reaches a browser.
+
+## Data
+
+```ts
+type Conversation = {
+  id: string;                 // [a-z0-9]{12}
+  title: string;              // 1-120 chars
+  titleSource: 'auto' | 'user';
+  createdAt: string;          // ISO 8601 UTC
+  updatedAt: string;
+  archived: boolean;
+  messages: Message[];        // oldest first
+};
+
+type Message = {
+  id: string;                 // [A-Za-z0-9_-]{8,80}; also the Hermes requestId for its reply
+  role: 'user' | 'assistant';
+  content: string;            // Markdown for assistant replies; up to 6,000 chars for user input
+  createdAt: string;
+  status: 'complete' | 'pending' | 'failed';  // user messages are always 'complete'
+  replyTo?: string;           // assistant only: the user message it answers
+  transport?: 'fake' | 'remote';              // assistant only, from the reply itself
+  error?: { code: string; message: string };  // failed assistant only
+};
+
+type ConversationSummary = Pick<Conversation, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'archived'>
+  & { state: 'idle' | 'pending' | 'failed'; messageCount: number };
+```
+
+An automatic title is the first user message's first line, whitespace
+collapsed, cut at a word boundary to at most 60 characters (with `…`). An
+empty conversation is titled "New conversation". Renaming sets `titleSource`
+to `user`, and automatic titling never overrides it.
+
+## Endpoints
+
+| Method and path | Body | Result |
+| --- | --- | --- |
+| `GET /api/health` | — | `{ ok, transport }`, transport `fake`, `remote`, or `unavailable` (from the inference service's health) |
+| `GET /api/conversations` | — | `{ conversations: ConversationSummary[] }`, newest `updatedAt` first |
+| `POST /api/conversations` | `{ idempotencyKey, message? }` | `201` `{ conversation, route }` on creation; `200` with the same body when `idempotencyKey` was already used |
+| `GET /api/conversations/:id` | — | `{ conversation }` or `404` |
+| `PATCH /api/conversations/:id` | `{ title?, archived? }` | `{ conversation }` |
+| `DELETE /api/conversations/:id` | `{}` | `204` |
+| `POST /api/conversations/:id/messages` | `{ idempotencyKey, content }` | `202` `{ conversation }`; `200` on a repeated key; `409` while a reply is pending |
+| `POST /api/conversations/:id/messages/:messageId/retry` | `{}` | `202` `{ conversation }`; `409` unless `:messageId` is a failed assistant message that is the latest message |
+
+`route` is `/igor/c/<id>`. `idempotencyKey` matches `[A-Za-z0-9_-]{8,80}` and is
+remembered per Igor data directory. Errors are `{ error, code }`:
+
+| Status | Code | When |
+| --- | --- | --- |
+| `400` | `INVALID_REQUEST` | Invalid field, key, or JSON; a message over 6,000 characters |
+| `403` | `FORBIDDEN` | A non-loopback `Host` or `x-forwarded-host`, or a cross-site `Origin` or `Sec-Fetch-Site` |
+| `404` | `NOT_FOUND` | Unknown conversation or route (including a malformed `:messageId`) |
+| `405` | `INVALID_REQUEST` | Unsupported method |
+| `409` | `CONFLICT` | A reply is pending, a key was reused for another request, or a retry target is not the latest failed reply |
+| `413` | `INVALID_REQUEST` | Body over 64 KB |
+| `415` | `INVALID_REQUEST` | A mutation without a JSON content type |
+| `500` | `STORAGE_FAILED`, `INTERNAL` | Igor could not save, or failed unexpectedly |
+
+A failed assistant message carries `error: { code, message }`. Its codes are
+`UNCONFIGURED`, `UNAVAILABLE`, `TIMEOUT`, `UNAUTHORIZED`, `CANCELLED`,
+`MALFORMED_RESPONSE`, `INTERRUPTED`, `STORAGE_FAILED`, and `UPSTREAM_ERROR`
+(any other inference failure, named in the message by its upstream code).
+
+## Reply lifecycle
+
+Inference is driven by the server, never by the browser:
+
+1. Accepting a user message stores it and a `pending` assistant message
+   (`replyTo` set, `id` new), then starts exactly one inference turn in the
+   background and responds at once (`201`/`202`). Clients poll
+   `GET /api/conversations/:id` while any message is `pending`.
+2. The turn is `stex.hermes.turn.v1` with `product: "igor"`,
+   `conversation.id` = the Igor conversation id (the inference service derives
+   one stable upstream session from it), the bounded history ending with that
+   user message, `operation.kind: "conversation"`, and `requestId` = the
+   pending assistant message id.
+3. Success makes the message `complete` with the reply text and the transport
+   the reply reports. Failure makes it `failed` with a classified `error`; the
+   user message is always kept.
+4. **Retry** reuses the same assistant message and the same `requestId`, which
+   the inference service sends upstream as the `Idempotency-Key`, so a turn that
+   actually reached Hermes is not run twice.
+5. A message still `pending` when Igor starts (process restart) becomes `failed`
+   with code `INTERRUPTED`; it is never replayed automatically.
+6. Turns run one at a time across all conversations, in arrival order; a
+   waiting reply stays `pending`. Deleting a conversation aborts its running
+   turn and drops any queued one.
+
+Refreshing a page, navigating Back/Forward, or polling never submits anything.
+
+**Context.** Upstream Hermes continues a session from its own store when given
+the session id and ignores history in the body, so the Hermes session is the
+model's authoritative context. Igor's stored transcript is the user-facing
+record; the bounded history Igor sends is the fallback when no session exists.
+
+## Handoff from Pantheon
+
+The Pantheon home composer creates a conversation and navigates immediately:
+
+1. The browser generates an `idempotencyKey` once per submission and calls
+   `POST /igor/api/conversations` with `{ idempotencyKey, message }`.
+2. Igor stores the message, starts the reply (above), and returns `route`.
+3. The browser navigates to `route` without waiting for the reply. Igor's page
+   loads the persisted conversation and shows the pending reply.
+
+The message never travels in a URL. Repeating the request with the same key
+(a double click, a retried network call) returns the same conversation and
+starts nothing new.
+
+## Versioning
+
+Additive optional fields may be added to v1. Changing or removing a field, or
+the reply lifecycle above, requires v2.

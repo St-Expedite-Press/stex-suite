@@ -23,20 +23,25 @@ async function startPantheon(root, port, context, environment = {}) {
 test('defines stable shell routes and rejects non-loopback proxy targets', () => {
   assert.equal(mountedApplication('/frige/api/health')?.id, 'frige');
   assert.equal(mountedApplication('/woden/')?.state, 'deferred');
+  assert.equal(mountedApplication('/igor/c/abc')?.id, 'igor');
   assert.equal(localProxyTarget('http://127.0.0.1:4310', 'http://localhost:1').port, '4310');
   assert.throws(() => localProxyTarget('https://example.test', 'http://localhost:1'), /loopback HTTP/);
   assert.throws(() => localProxyTarget('http://127.0.0.1:4310/base', 'http://localhost:1'), /loopback HTTP/);
 });
 
-test('loads the four application identities from the versioned registry', async () => {
-  const registry = JSON.parse(await readFile(path.resolve(appDirectory, '..', '..', 'protocol', 'applications', 'registry.v1.json'), 'utf8'));
+test('loads the five application identities from the v2 registry', async () => {
+  const registry = JSON.parse(await readFile(path.resolve(appDirectory, '..', '..', 'protocol', 'applications', 'registry.v2.json'), 'utf8'));
   const applications = validateRegistry(registry);
-  assert.deepEqual(applications.map(({ id, route, state }) => ({ id, route, state })), [
-    { id: 'frige', route: '/frige/', state: 'active' },
-    { id: 'seaxneat', route: '/seaxneat/', state: 'active' },
-    { id: 'eostre', route: '/eostre/', state: 'deferred' },
-    { id: 'woden', route: '/woden/', state: 'deferred' },
+  assert.deepEqual(applications.map(({ id, kind, route, state }) => ({ id, kind, route, state })), [
+    { id: 'frige', kind: 'studio', route: '/frige/', state: 'active' },
+    { id: 'seaxneat', kind: 'studio', route: '/seaxneat/', state: 'active' },
+    { id: 'eostre', kind: 'studio', route: '/eostre/', state: 'deferred' },
+    { id: 'woden', kind: 'studio', route: '/woden/', state: 'deferred' },
+    { id: 'igor', kind: 'application', route: '/igor/', state: 'active' },
   ]);
+  assert.throws(() => validateRegistry({ ...registry, schemaVersion: 'stex.applications.registry.v1' }), /invalid/);
+  assert.throws(() => validateRegistry({ ...registry, applications: registry.applications.map((entry) => entry.id === 'igor' ? { ...entry, kind: 'agent' } : entry) }), /invalid/);
+  assert.throws(() => validateRegistry({ ...registry, applications: registry.applications.slice(0, 4) }), /invalid/);
 });
 
 test('routes compatibility aliases, deferred applications, and mounted loopback applications', async (context) => {
@@ -111,7 +116,17 @@ test('serves the command-center pages with honest states and no mockup records',
   }
   assert.match(home, /<h2 class="igor-name" id="igor-title">Igor<\/h2>/);
   assert.match(home, /<input class="igor-input"[^>]* disabled>/);
-  assert.match(home, /Each reply says whether it was simulated\. Nothing you ask is stored\./);
+  assert.match(home, /<input class="igor-input"[^>]* maxlength="6000"/);
+  // The Igor box is a handoff composer: it opens a conversation in Igor.
+  assert.match(home, /<form class="igor-form" novalidate>/);
+  assert.match(home, /<button class="stex-button stex-button--primary igor-send" type="submit" aria-label="Send to Igor" disabled>/);
+  assert.match(home, /id="igor-note">Your message opens a new conversation in Igor\.<\/p>/);
+  assert.match(home, /<a class="section-link" href="\/igor\/">All conversations<\/a>/);
+  assert.doesNotMatch(home, /Nothing you ask is stored/);
+  const script = await readFile(path.join(appDirectory, 'public', 'igor.js'), 'utf8');
+  assert.match(script, /fetch\('\/igor\/api\/conversations'/); assert.match(script, /idempotencyKey/); assert.match(script, /location\.assign\(result\.route\)/);
+  assert.doesNotMatch(script, /localStorage|\/api\/igor\/turn/);
+  assert.match(await readFile(path.join(appDirectory, 'public', 'projects.js'), 'utf8'), /application\.kind === 'studio' && application\.state === 'active'/);
   assert.match(home, /data-projects="continue"/); assert.match(home, /data-projects="recent" data-limit="5"/);
   await assertReferences(home, base);
   assert.match(await (await fetch(`${base}/graph/`)).text(), /not built yet/);
@@ -141,66 +156,31 @@ test('keeps studio and assistant text out of innerHTML', async () => {
   for (const file of ['projects.js', 'igor.js', 'motion.js']) assert.doesNotMatch(await readFile(path.join(appDirectory, 'public', file), 'utf8'), /innerHTML|insertAdjacentHTML|outerHTML/, file);
 });
 
-test('relays Igor turns to the inference service and labels simulated replies', async (context) => {
+test('proxies Igor, publishes the v2 registry, and no longer relays turns itself', async (context) => {
   const seen = [];
-  const inference = http.createServer(async (request, response) => {
+  const igor = http.createServer(async (request, response) => {
     let raw = ''; for await (const part of request) raw += part;
-    const turn = JSON.parse(raw); seen.push({ token: request.headers['x-stex-inference-token'], turn });
-    const message = turn.conversation.messages.at(-1).content;
-    response.writeHead(message === 'unauthorized' ? 401 : 200, { 'content-type': 'application/json' });
-    if (message === 'unauthorized') return response.end(JSON.stringify({ code: 'UNAUTHORIZED' }));
-    if (message === 'malformed') return response.end(JSON.stringify({ contract: 'stex.hermes.turn.v1', requestId: 'someone-else', events: [] }));
-    if (message === 'cancelled') return response.end(JSON.stringify({ contract: 'stex.hermes.turn.v1', requestId: turn.requestId, status: 'cancelled', events: [{ sequence: 1, type: 'status', payload: { code: 'CANCELLED' } }] }));
-    // A remote Hermes may report its own transport name; only "fake" means simulated.
-    const transport = message === 'remote' ? 'hermes' : 'fake';
-    response.end(JSON.stringify({ contract: 'stex.hermes.turn.v1', requestId: turn.requestId, status: 'completed', events: [{ sequence: 1, type: 'message', payload: { text: `Simulated: ${message}` } }], usage: { transport } }));
+    seen.push({ method: request.method, path: request.url, host: request.headers.host, forwardedHost: request.headers['x-forwarded-host'], body: raw });
+    response.writeHead(request.method === 'POST' ? 201 : 200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ path: request.url, prefix: request.headers['x-forwarded-prefix'] }));
   });
-  await new Promise((resolve) => inference.listen(4405, '127.0.0.1', resolve));
-  context.after(() => inference.close());
-  const ask = (port, body) => fetch(`http://127.0.0.1:${port}/api/igor/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  await new Promise((resolve) => igor.listen(4409, '127.0.0.1', resolve));
+  context.after(() => igor.close());
+  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4410, context, { STEX_IGOR_URL: 'http://127.0.0.1:4409' });
+  const base = 'http://127.0.0.1:4410';
+  assert.deepEqual(await (await fetch(`${base}/igor/c/abc123def456`)).json(), { path: '/igor/c/abc123def456', prefix: '/igor' });
+  const created = await fetch(`${base}/igor/api/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });
+  assert.equal(created.status, 201); await created.arrayBuffer();
+  assert.deepEqual(seen.at(-1), { method: 'POST', path: '/igor/api/conversations', host: '127.0.0.1:4409', forwardedHost: '127.0.0.1:4410', body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });
 
-  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4406, context, { STEX_INFERENCE_URL: 'http://127.0.0.1:4405', STEX_INFERENCE_SHARED_SECRET: 'test-secret' });
-  const reply = await ask(4406, { message: 'Hello', history: [{ role: 'assistant', content: 'Earlier' }, { role: 'system', content: 'ignored' }] });
-  assert.equal(reply.status, 200);
-  const result = await reply.json();
-  assert.equal(result.reply, 'Simulated: Hello'); assert.equal(result.transport, 'fake');
-  assert.equal(seen[0].token, 'test-secret');
-  assert.equal(seen[0].turn.product, 'pantheon'); assert.equal(seen[0].turn.operation.kind, 'conversation');
-  assert.deepEqual(seen[0].turn.conversation.messages, [{ role: 'assistant', content: 'Earlier' }, { role: 'user', content: 'Hello' }]);
-  for (const [body, status, code] of [[{ message: '  ' }, 400, 'INVALID_REQUEST'], [{ message: 'x'.repeat(2001) }, 400, 'INVALID_REQUEST'], [{ message: 'unauthorized' }, 502, 'UNAUTHORIZED'], [{ message: 'malformed' }, 502, 'MALFORMED_RESPONSE'], [{ message: 'cancelled' }, 502, 'CANCELLED'], ['{"message":', 400, 'INVALID_REQUEST'], [JSON.stringify({ message: 'x'.repeat(100_000) }), 413, 'INVALID_REQUEST']]) {
-    const response = await ask(4406, body);
-    assert.equal(response.status, status, JSON.stringify(body).slice(0, 40)); assert.equal((await response.json()).code, code);
-  }
-  assert.equal((await (await ask(4406, { message: 'remote' })).json()).transport, 'remote');
-
-  // A long multi-byte chat stays answerable: the oldest context is dropped to fit, the question always goes.
-  const long = Array.from({ length: 10 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: '語'.repeat(2000) }));
+  const registry = await (await fetch(`${base}/api/applications`)).json();
+  assert.equal(registry.schemaVersion, 'stex.applications.registry.v2');
+  assert.deepEqual(registry.applications.find((entry) => entry.id === 'igor'), { id: 'igor', name: 'Igor', kind: 'application', route: '/igor/', state: 'active', referenceKinds: ['conversation'] });
+  // A DNS-rebound page reaches Pantheon with a foreign Host; nothing is proxied.
   const before = seen.length;
-  const trimmed = await ask(4406, { message: 'Still here?', history: long });
-  assert.equal(trimmed.status, 200);
-  const sent = seen.at(-1).turn.conversation.messages;
-  assert.ok(seen.length === before + 1 && Buffer.byteLength(JSON.stringify(sent)) <= 20_000 && sent.at(-1).content === 'Still here?' && sent.length < 11);
-
-  // Only Pantheon's own pages may spend the shared secret.
-  const forged = (headers, body = JSON.stringify({ message: 'Hello' })) => fetch('http://127.0.0.1:4406/api/igor/turn', { method: 'POST', headers, body });
-  for (const [headers, status] of [[{ 'content-type': 'text/plain' }, 415], [{ 'content-type': 'application/json', origin: 'https://example.test' }, 403], [{ 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, 403]]) {
-    const response = await forged(headers);
-    assert.equal(response.status, status, JSON.stringify(headers)); await response.arrayBuffer();
-  }
-  assert.equal((await forged({ 'content-type': 'application/json', origin: 'http://127.0.0.1:4406', 'sec-fetch-site': 'same-origin' })).status, 200);
-  // fetch() cannot forge Host (a forbidden header), so DNS rebinding is simulated with a raw request.
-  const rebound = await new Promise((resolve, reject) => {
-    const request = http.request({ host: '127.0.0.1', port: 4406, path: '/api/igor/turn', method: 'POST', headers: { host: 'attacker.test:4406', 'content-type': 'application/json' } }, (response) => { response.resume(); resolve(response.statusCode); });
-    request.on('error', reject); request.end(JSON.stringify({ message: 'Hello' }));
-  });
-  assert.equal(rebound, 403);
-
-  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4407, context, { STEX_INFERENCE_URL: '', STEX_INFERENCE_SHARED_SECRET: '' });
-  const unconfigured = await ask(4407, { message: 'Hello' });
-  assert.equal(unconfigured.status, 503); assert.equal((await unconfigured.json()).code, 'UNCONFIGURED');
-  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4408, context, { STEX_INFERENCE_URL: 'http://127.0.0.1:4499', STEX_INFERENCE_SHARED_SECRET: 'x' });
-  const unreachable = await ask(4408, { message: 'Hello' });
-  assert.equal(unreachable.status, 503); assert.equal((await unreachable.json()).code, 'UNAVAILABLE');
+  const rebound = await new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port: 4410, path: '/igor/api/conversations', headers: { host: 'attacker.test:4410' } }, (response) => { response.resume(); resolve(response.statusCode); }).once('error', reject));
+  assert.equal(rebound, 403); assert.equal(seen.length, before);
+  const retired = await fetch(`${base}/api/igor/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'Hello' }) });
+  assert.equal(retired.status, 404); await retired.arrayBuffer();
 });
 
 test('serves byte ranges, revalidation, and HEAD for media', async (context) => {

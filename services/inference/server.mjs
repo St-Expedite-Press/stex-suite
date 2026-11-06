@@ -43,17 +43,27 @@ async function legacyTurn(kind, token, value, signal) {
   return kind === 'scope-turn' ? { ...base, changes: [], parts: [{ type: 'text', text: commentary }], droppedParts: [] } : base;
 }
 
+// Aborts only when the caller disconnects before its reply is written. Node 24
+// aborts request.signal as soon as the request body has been read, which would
+// cancel every remote turn before submission.
+function callerGone(response) {
+  const controller = new AbortController();
+  response.once('close', () => { if (!response.writableFinished) controller.abort(); });
+  return controller.signal;
+}
+
 http.createServer(async (request, response) => {
   const url = new URL(request.url, 'http://gateway');
+  const disconnected = callerGone(response);
   try {
     if (request.method === 'GET' && url.pathname === '/health') return json(response, 200, { ...(url.searchParams.get('probe') === '1' ? await hermes.probe({ token: request.headers['x-stex-inference-token'] }) : hermes.health()), provider: 'hermes' });
     if (request.method === 'GET' && url.pathname === '/v1/hermes/health') return json(response, 200, url.searchParams.get('probe') === '1' ? await hermes.probe({ token: request.headers['x-stex-inference-token'] }) : hermes.health());
     const token = request.headers['x-stex-inference-token'];
-    if (url.pathname === '/v1/hermes/turn' && request.method === 'POST') return json(response, 200, await hermes.turn({ token, body: await body(request), signal: request.signal }));
+    if (url.pathname === '/v1/hermes/turn' && request.method === 'POST') return json(response, 200, await hermes.turn({ token, body: await body(request), signal: disconnected }));
     if (url.pathname === '/v1/settings/models' || url.pathname === '/v1/models/catalog') return json(response, 410, { error: 'The legacy provider roster has been removed. Configure remote Hermes outside STEX.', code: 'GONE' });
     const kind = legacyRoutes.get(url.pathname);
     if (request.method !== 'POST' || !kind) return json(response, 404, { error: 'Not found.', code: 'NOT_FOUND' });
-    return json(response, 200, await legacyTurn(kind, token, await body(request), request.signal));
+    return json(response, 200, await legacyTurn(kind, token, await body(request), disconnected));
   } catch (error) {
     if (!error.code) console.error(error);
     json(response, error.status || 500, { error: error.code ? error.message : 'The inference gateway failed unexpectedly.', code: error.code || 'GATEWAY_ERROR' });
