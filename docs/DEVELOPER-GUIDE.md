@@ -34,7 +34,7 @@ Initialize the suite-owned upstream source before working on Hermes:
 git submodule update --init --recursive
 ```
 
-The pinned source is `runtime/hermes-agent` (H1 currently pins commit
+The pinned source is `stex-igor/runtime/hermes-agent` (H1 currently pins commit
 `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac`). Its supported
 native-Windows installer is documented in that checkout. It installs outside
 the repository, under `%LOCALAPPDATA%\hermes`; do not copy session data,
@@ -59,7 +59,7 @@ the default multiplexer from serving specialists.
 
 Before starting a live gateway, pre-pull and locally verify the sandbox image
 without calling a provider; see the exact commands in
-[`runtime/README.md`](../runtime/README.md). One direct no-tool OpenRouter turn
+[`runtime/README.md`](../stex-igor/runtime/README.md). One direct no-tool OpenRouter turn
 has succeeded, but that is not Pantheon or Frige remote-workflow evidence.
 
 For an authorized provider-backed STEX integration activation, set only these STEX values in ignored

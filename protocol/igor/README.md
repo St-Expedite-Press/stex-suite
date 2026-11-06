@@ -1,11 +1,11 @@
 # Igor conversations contract v1
 
-`stex.igor.conversations.v1` is the API of `apps/igor`, the conversational
+`stex.igor.conversations.v1` is the API of `stex-igor/apps/igor`, the conversational
 application for **Igor**, the user-facing name of the Pantheon Director. Igor
 is not a separate agent: every reply comes from the existing director through
-`services/inference` and `stex.hermes.turn.v1` ([protocol/hermes](../hermes/README.md)).
+`stex-igor/services/inference` and `stex.hermes.turn.v1` ([protocol/hermes](../hermes/README.md)).
 
-`apps/igor` owns conversation records (titles, messages, ordering, pending and
+`stex-igor/apps/igor` owns conversation records (titles, messages, ordering, pending and
 failed state). It does not own Hermes profiles, models, credentials, sessions,
 or memory. Pantheon uses only the creation endpoint (the handoff); everything
 else is Igor's own frontend.

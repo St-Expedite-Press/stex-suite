@@ -3,7 +3,7 @@
 These rules govern agents that build Frige (`apps/frige/`). The root
 `AGENTS.md` stays authoritative; this file adds Frige-specific
 requirements. Developer agents are not Hermes: Hermes is the runtime director
-inside the product, reached only through `services/inference/`.
+inside the product, reached only through `stex-igor/services/inference/`.
 
 Frige's goal is a graph-native literary typesetting and publishing
 workstation in which textual integrity, typographic quality, reproducibility

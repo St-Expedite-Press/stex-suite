@@ -287,36 +287,6 @@
           "budgetBytes": 110000,
           "recipe": "scripts/assets/build-media.mjs masthead",
           "crop": "1920:480:0:220"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-still-1920w.webp",
-          "sha256": "32fd6dea87a7ab9a6539ff1dfa65e310b80a2e56f4fa705fe2658217687efd57",
-          "bytes": 196364,
-          "width": 1920,
-          "height": 288,
-          "budgetBytes": 230000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-1920w.webp (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-still-1280w.webp",
-          "sha256": "68f2ac6a937db9fa622004f3aa22ffb6ed75b713ab844f6d01525445802221d8",
-          "bytes": 93028,
-          "width": 1280,
-          "height": 192,
-          "budgetBytes": 115000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-1280w.webp (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-still-960w.webp",
-          "sha256": "dc65b46be9bd57588ef06ab5168287d81c268b705179b6b848dd5f82e060ba3a",
-          "bytes": 86522,
-          "width": 960,
-          "height": 240,
-          "budgetBytes": 110000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-960w.webp (Igor serves its own media when hosted)",
-          "crop": "1920:480:0:220"
         }
       ]
     },
@@ -647,72 +617,6 @@
           "height": 240,
           "budgetBytes": 750000,
           "recipe": "scripts/assets/build-media.mjs masthead",
-          "crop": "1920:480:0:220",
-          "codecs": "avc1.64001E"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-1920w.webm",
-          "sha256": "442c810e56fc2279892f47c22032a0b98bd24cc272efd7a4e6f62a78bae88067",
-          "bytes": 1342195,
-          "width": 1920,
-          "height": 288,
-          "budgetBytes": 1800000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.webm (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300",
-          "codecs": "av01.0.04M.10"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-1920w.mp4",
-          "sha256": "6c71e0b65f63aa870aa54a8518307752f294e283b35a1705efd31fc46d91281a",
-          "bytes": 1560921,
-          "width": 1920,
-          "height": 288,
-          "budgetBytes": 2000000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.mp4 (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300",
-          "codecs": "avc1.64001F"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-1280w.webm",
-          "sha256": "462c10d896a86756b7ee634b856f223f2dedb5ebf86019abca1d4989e194e9e3",
-          "bytes": 584798,
-          "width": 1280,
-          "height": 192,
-          "budgetBytes": 900000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.webm (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300",
-          "codecs": "av01.0.01M.10"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-1280w.mp4",
-          "sha256": "f4721a61e9741024747b213cb96c407cb5202911cb0cb57c9af3a5d9a687d842",
-          "bytes": 649240,
-          "width": 1280,
-          "height": 192,
-          "budgetBytes": 1000000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.mp4 (Igor serves its own media when hosted)",
-          "crop": "1920:288:0:300",
-          "codecs": "avc1.64001E"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-960w.webm",
-          "sha256": "47565f5359c21be55499b042040be2f3ad5ce0569c8910a29c50f788d517416f",
-          "bytes": 471594,
-          "width": 960,
-          "height": 240,
-          "budgetBytes": 650000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.webm (Igor serves its own media when hosted)",
-          "crop": "1920:480:0:220",
-          "codecs": "av01.0.01M.10"
-        },
-        {
-          "path": "apps/igor/public/media/masthead/pantheon-masthead-loop-960w.mp4",
-          "sha256": "ba436b286c8021b417a211f09d87e1e71fc737966ba41e7ef65f41415683af8a",
-          "bytes": 530605,
-          "width": 960,
-          "height": 240,
-          "budgetBytes": 750000,
-          "recipe": "byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.mp4 (Igor serves its own media when hosted)",
           "crop": "1920:480:0:220",
           "codecs": "avc1.64001E"
         }

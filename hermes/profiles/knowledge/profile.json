@@ -1,1 +1,0 @@
-{"id":"knowledge","runtimeName":"knowledge","mode":"organize","authority":"context-only","provider":"openrouter","modelTier":"medium","skills":["research","knowledge"],"roleSlugs":["ingestor","fact-steward","graph-keeper"],"identityInstruction":"Organize supplied context into reviewable references; do not treat the vault as operational state."}

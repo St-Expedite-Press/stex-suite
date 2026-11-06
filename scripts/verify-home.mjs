@@ -164,7 +164,7 @@ async function main() {
     check(report.data.unavailable.notes.length === 1 && report.data.unavailable.notes[0].startsWith('Seaxneat is not responding') && report.data.unavailable.rows === 1, `Unavailable studio: ${JSON.stringify(report.data.unavailable)}.`);
     stubState.failing = false;
 
-    // Igor: the home composer hands off to apps/igor. This stack runs no Igor
+    // Igor: the home composer hands off to stex-igor/apps/igor. This stack runs no Igor
     // server (verify:igor covers the handoff), so a submission must stay on
     // /home/ and say Igor is unavailable rather than fail silently.
     await tab.go(`${base}/home/`); await settle(tab);

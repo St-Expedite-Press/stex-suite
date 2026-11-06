@@ -12,12 +12,12 @@ same-origin proxy to the studios. Pantheon owns no product state.
 | `/graph/`, `/activity/` | Honest "not built yet" pages |
 | `/home`, `/projects`, … | `308` to the trailing-slash route |
 | `/frige/`, `/seaxneat/` | Proxied to the active studios on loopback |
-| `/igor/` | Proxied to the Igor application ([apps/igor](../igor/README.md)) on loopback |
+| `/igor/` | Proxied to the Igor application ([apps/igor](../../stex-igor/apps/igor/README.md)) on loopback |
 | `/eostre/`, `/woden/` | Deferred studio pages in the same shell |
 | `/texgraph/`, `/screenlab/`, `/novelgraph/` | `308` compatibility redirects |
 | `/design-system/…` | `@stex/design-system` `src`, `fonts`, `brand`, `icons`, `specimen` folders only |
 | `/media/…` | Splash, masthead, and studio-emblem derivatives (Git LFS); byte ranges supported |
-| `POST /api/igor/turn` | Retired: `404`. Igor turns belong to `apps/igor` |
+| `POST /api/igor/turn` | Retired: `404`. Igor turns belong to `stex-igor/apps/igor` |
 | `/api/applications` | The versioned application registry |
 | `/api/books…` | Legacy routes; do not extend (see root `AGENTS.md`) |
 
@@ -75,7 +75,7 @@ Graph, and Activity.
   Frige or Seaxneat.
 - **Igor** is the user-facing name of the STEX assistant, the Pantheon
   Director (Hermes internally). Its conversations live in the Igor application
-  ([apps/igor](../igor/README.md)), which Pantheon proxies at `/igor/`. The
+  ([apps/igor](../../stex-igor/apps/igor/README.md)), which Pantheon proxies at `/igor/`. The
   home composer hands a message off: `public/igor.js` posts it to
   `/igor/api/conversations` with one idempotency key per message text, then
   navigates to the returned route at once, before Igor has answered. A

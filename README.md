@@ -9,10 +9,10 @@ are registered, honestly deferred domains.
 | Pantheon | `apps/pantheon` | Active shell and local proxy |
 | Frige | `apps/frige` | Active manuscripts, proofs, and preflight |
 | Seaxneat | `apps/seaxneat` | Active website workspaces and revisions |
-| Igor | `apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
+| Igor | `stex-igor/apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
-| Hermes | `runtime/hermes-agent`, `hermes`, `services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |
+| Hermes | `stex-igor/runtime/hermes-agent`, `stex-igor/hermes`, `stex-igor/services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |
 | User Graph | `vault`, `services/knowledge` | Optional portable vault; read-only adapter |
 
 ## Prerequisites
@@ -62,12 +62,12 @@ knowledge, never application state, Hermes memory, or credentials.
 ## Hermes / Igor H1 runtime
 
 The suite carries the upstream Hermes Agent source as the pinned
-`runtime/hermes-agent` submodule. Initialize it after cloning with
+`stex-igor/runtime/hermes-agent` submodule. Initialize it after cloning with
 `git submodule update --init --recursive`. STEX's production-shaped adapter
 keeps `stex.hermes.turn.v1` stable and translates it to Hermes's authenticated
 OpenAI-compatible API; the safe default remains the deterministic fake.
 
-The checked-in [runtime profile manifest](hermes/runtime-profiles.json) maps
+The checked-in [runtime profile manifest](stex-igor/hermes/runtime-profiles.json) maps
 Igor and seven parked specialists to STEX's declarative roles. Run
 `corepack pnpm run check:hermes-runtime` to read and reconcile the local
 upstream profile catalog, model-provider selections, and empty CLI/API-server
@@ -79,7 +79,7 @@ runtime tools enabled; it is otherwise stopped. STEX `.env` holds only the
 loopback URL and API credential, never `OPENROUTER_API_KEY`. One bounded direct
 provider turn has been verified, but STEX applications remain on the fake
 transport and any additional paid turn needs explicit authorization and a
-budget. See [the runtime package](runtime/README.md), [inference service](services/inference/README.md),
+budget. See [the runtime package](stex-igor/runtime/README.md), [inference service](stex-igor/services/inference/README.md),
 and [developer guide](docs/DEVELOPER-GUIDE.md).
 
 ## Documentation

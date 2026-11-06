@@ -17,7 +17,7 @@ provider use, vault integration, or an application workflow from a plan alone.
 
 Document application ownership: Frige owns manuscript/proof state; Seaxneat
 owns local website workspaces and Git history; Lab is a router, not storage;
-the vault is optional user knowledge; `services/inference` owns the server-side
+the vault is optional user knowledge; `stex-igor/services/inference` owns the server-side
 Hermes boundary. Never put keys, private prompts, or user content in docs.
 
 For substantial documentation work, use bounded read-only investigation and a

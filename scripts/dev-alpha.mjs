@@ -34,10 +34,10 @@ function build(directory, environment = {}) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 build('apps/seaxneat', { SEAXNEAT_BASE_PATH: '/seaxneat/' });
-build('apps/igor');
+build('stex-igor/apps/igor');
 
 const children = [
-  run(['pnpm', '--dir', 'services/inference', 'dev'], {
+  run(['pnpm', '--dir', 'stex-igor/services/inference', 'dev'], {
     STEX_INFERENCE_PORT: inferencePort,
     STEX_INFERENCE_SHARED_SECRET: shared,
     STEX_HERMES_TRANSPORT: 'fake',
@@ -54,7 +54,7 @@ const children = [
     SEAXNEAT_PORT: seaxneatPort,
   }),
   // Igor holds the inference secret; Pantheon only proxies to it.
-  run(['pnpm', '--dir', 'apps/igor', 'dev'], {
+  run(['pnpm', '--dir', 'stex-igor/apps/igor', 'dev'], {
     STEX_IGOR_PORT: igorPort,
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,

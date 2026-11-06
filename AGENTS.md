@@ -17,11 +17,11 @@ holds acceptance evidence; update those, not this file, when status moves.
 
 - **Active, implemented and tested locally:** Frige (`apps/frige`),
   Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`) with its
-  public splash, the Igor conversation application (`apps/igor`; fake transport
+  public splash, the Igor conversation application (`stex-igor/apps/igor`; fake transport
   by default, live turns verified once on a local gateway), the shared design system (`packages/design-system`), the
   brand asset library (`assets`), the pinned upstream Hermes source
-  (`runtime/hermes-agent`), and the `stex.hermes.turn.v1` fake/upstream API
-  adapter in `services/inference`.
+  (`stex-igor/runtime/hermes-agent`), and the `stex.hermes.turn.v1` fake/upstream API
+  adapter in `stex-igor/services/inference`.
 - **Registered but deferred:** Eostre (`apps/eostre`) and Woden
   (`apps/woden`) — shell entries with an honest deferred state only.
 - **Not done or unverified:** provider-backed Frige exchanges, an OS-level
@@ -49,12 +49,13 @@ and authorization.
 | `apps/pantheon` | Pantheon shell, same-origin proxy, registry routes | `/` | 4300 | `test:pantheon` |
 | `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige` |
 | `apps/seaxneat` | **Seaxneat** — website workspaces, previews, revisions, UI | `/seaxneat/` | 4320 | `test:seaxneat`, `build:seaxneat` |
-| `apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor` |
+| `stex-igor/apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor` |
 | `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
 | `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
-| `services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
-| `runtime/hermes-agent` | Pinned upstream Hermes source submodule | loopback API when explicitly activated | 8642 | upstream runtime checks |
-| `hermes` | Declarative STEX role, profile, skill, and policy configuration | — | — | `test:hermes` |
+| `stex-igor/services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
+| `stex-igor/runtime/hermes-agent` | Pinned upstream Hermes source (submodule of stex-igor) | loopback API when explicitly activated | 8642 | upstream runtime checks |
+| `stex-igor/hermes` | Declarative STEX role, profile, skill, and policy configuration | — | — | `test:hermes` |
+| `stex-igor` | **Submodule** `St-Expedite-Press/stex-igor`: everything that runs on the hosted VM; deploys on push to its `main` | — | — | `test:stex-igor-sync` |
 | `services/knowledge` | Optional read-only User Graph adapter | — | — | `test:knowledge` |
 | `vault` | Optional, portable Obsidian User Graph | — | — | adapter tests |
 | `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
@@ -76,6 +77,26 @@ corepack pnpm build:seaxneat        # React production build
 corepack pnpm dev:alpha             # shell + apps + fake inference, loopback only
 ```
 
+### The stex-igor submodule
+
+`stex-igor/` is the separate repository `St-Expedite-Press/stex-igor`. It
+holds everything that runs on the hosted VM: Igor, the inference service, and
+the Hermes roster, profiles, and runtime pin.
+
+- **Get it** with `git clone --recursive` or
+  `git submodule update --init`. Git LFS is required for the masthead media.
+  The nested `runtime/hermes-agent` pin is not needed for development.
+- **Change it** inside `stex-igor/`. Commit there, then commit the updated
+  submodule pointer in stex-suite. A push to stex-igor's `main` **deploys to
+  the live VM** once its CI passes. That is publishing: it needs the owner's
+  authorization.
+- **The design system and masthead media stay owned here.** After changing
+  `packages/design-system` or Pantheon's masthead media, run
+  `corepack pnpm sync:stex-igor` and commit the copies inside stex-igor.
+  `test:stex-igor-sync` fails while they differ.
+- **Contracts stay in `protocol/`.** stex-igor implements them, and Pantheon
+  and Frige depend on them.
+
 ## Instruction sources
 
 Read, in order: this file, `README.md`, `docs/STATUS.md`, the owning
@@ -83,9 +104,10 @@ application's `README.md`, any nested `AGENTS.md` on the path you will touch,
 and the `protocol/` contracts you will cross. Current nested charters:
 
 - `apps/frige/AGENTS.md` — Frige engineering rules.
-- `apps/igor/AGENTS.md` — Igor application rules.
+- `stex-igor/AGENTS.md` — the hosted-VM repository's charter (submodule).
+- `stex-igor/apps/igor/AGENTS.md` — Igor application rules.
 - `apps/frige/books/*/AGENTS.md` — per-manuscript editorial rules.
-- `hermes/AGENTS.md` — declarative Hermes configuration rules.
+- `stex-igor/hermes/AGENTS.md` — declarative Hermes configuration rules.
 - `packages/design-system/AGENTS.md` — interface engineering rules. **Read it
   for any UI, styling, artwork, or asset change in any application**, not only
   inside `packages/`.
@@ -122,13 +144,13 @@ workflow requires it.
 ## Hermes and inference
 
 - **Igor** is the user-facing name of the assistant in interfaces and user
-  docs; **Hermes** remains the internal layer (`hermes/`, `services/inference`,
+  docs; **Hermes** remains the internal layer (`stex-igor/hermes/`, `stex-igor/services/inference`,
   `stex.hermes.turn.v1`). Do not rename internal identifiers or contracts.
-- STEX-owned Hermes profiles, roster, skills, and policies live in `hermes/`.
-  The upstream source is pinned as `runtime/hermes-agent`; never copy it into
+- STEX-owned Hermes profiles, roster, skills, and policies live in `stex-igor/hermes/`.
+  The upstream source is pinned as `stex-igor/runtime/hermes-agent`; never copy it into
   application code or its configuration subtree. Development and tests use the
   deterministic fake transport unless live verification is explicitly approved.
-- `services/inference` is the only path to remote Hermes. Browsers and product
+- `stex-igor/services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
   Browsers talk to their product server (Frige, or the Igor application),
   which holds the shared secret; Pantheon holds none.

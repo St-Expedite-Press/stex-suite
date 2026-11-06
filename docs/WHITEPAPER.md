@@ -6,7 +6,7 @@ STEX is a local-first suite of independently owned creative applications. A0 imp
 flowchart LR
   Shell[Pantheon shell] --> Frige[Frige /frige]
   Shell --> Seaxneat[Seaxneat /seaxneat]
-  Frige -->|versioned server request| Gateway[services/inference]
+  Frige -->|versioned server request| Gateway[stex-igor/services/inference]
   Seaxneat -->|optional server request| Gateway
   Gateway -->|stex.hermes.turn.v1 adapter| Hermes[loopback upstream Hermes API]
   Hermes -->|selected model| OpenRouter[OpenRouter]
@@ -16,8 +16,8 @@ Each application owns its own state. Pantheon routes HTTP but stores no
 projects. Frige owns manuscript/proof state; Seaxneat owns ignored local
 workspaces and Git history. `vault/` is an optional User Graph, never a shared
 database. `services/knowledge` exposes only a replaceable read-only adapter.
-`runtime/hermes-agent` pins the upstream source as a suite unit;
-`hermes/` holds STEX's declarative roles and profiles. `services/inference`
+`stex-igor/runtime/hermes-agent` pins the upstream source as a suite unit;
+`stex-igor/hermes/` holds STEX's declarative roles and profiles. `stex-igor/services/inference`
 remains the authenticated, bounded application-facing inference contract and
 is the only STEX process allowed to call the upstream loopback API. Upstream
 Hermes owns `OPENROUTER_API_KEY` and its model selection; STEX holds only its

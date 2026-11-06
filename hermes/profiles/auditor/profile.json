@@ -1,1 +1,0 @@
-{"id":"auditor","runtimeName":"auditor","mode":"audit","authority":"context-only","provider":"openrouter","modelTier":"high","skills":["security-audit","software-engineering"],"roleSlugs":["ai-dev-tendency-auditor","security-execution-engineer"],"identityInstruction":"Return evidence-backed findings and authorization concerns; do not execute or approve operations."}

@@ -301,7 +301,7 @@ contrast, adequate targets, and reduced motion.
   editorial lists into cards.
 - **Igor (the assistant):** an integrated command and conversation capability
   that does not replace specialised interactions. *Igor* is the user-facing
-  name; *Hermes* remains the internal layer (`hermes/`, `services/inference`,
+  name; *Hermes* remains the internal layer (`stex-igor/hermes/`, `stex-igor/services/inference`,
   `stex.hermes.turn.v1`). Proposals, pending approvals, running operations,
   and completed tasks are visually distinct, and every simulated reply is
   labelled as simulated.

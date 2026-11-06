@@ -117,7 +117,7 @@ book in table-of-contents order through the selected scope.
 ## Conversation boundary
 
 The conversation is a front end to Hermes through the server-side inference
-gateway (`services/inference`). The browser talks only to Frige; Frige talks
+gateway (`stex-igor/services/inference`). The browser talks only to Frige; Frige talks
 only to that gateway; browser code receives neither Hermes nor provider
 credentials. A0 defaults to a deterministic no-change transport.
 

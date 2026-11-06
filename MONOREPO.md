@@ -6,8 +6,8 @@ Pantheon routes local HTTP and reads the versioned application registry. Each
 application owns its UI, canonical data, and workflow state. No product
 imports another product's private storage as an integration shortcut.
 
-`services/inference` is the only application-facing Hermes boundary.
-`runtime/hermes-agent` pins the upstream runtime source; `hermes/` holds
+`stex-igor/services/inference` is the only application-facing Hermes boundary.
+`stex-igor/runtime/hermes-agent` pins the upstream runtime source; `stex-igor/hermes/` holds
 STEX-owned declarative configuration only. Activation remains separately
 authorized because the upstream runtime has powerful tools and owns provider
 credentials. `vault/` is an optional
@@ -20,13 +20,11 @@ read-only adapter; applications continue to work without it.
 apps/pantheon   loopback shell
 apps/frige      publishing and typesetting
 apps/seaxneat   website workspaces
-apps/igor       conversations with the Pantheon Director
 apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain
-hermes          roster, profiles, skills, and policies
-runtime         pinned upstream runtime source (Git submodule)
 vault           optional portable User Graph
-services        inference and knowledge boundaries
+services        knowledge boundary
+stex-igor       hosted-VM submodule: Igor, inference, Hermes roster and runtime pin
 protocol        versioned public contracts
 ```
 

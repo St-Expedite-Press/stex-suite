@@ -11,7 +11,7 @@ by the project owner on 2026-11-06. The owner's decisions were:
 - a three-turn live budget.
 
 **Base revision:** `329ecf6`. The operating procedure is in
-[the runbook](../operations/hosted-igor.md).
+[the runbook](../../stex-igor/docs/operations/hosted-igor.md).
 
 ## Scope delivered
 

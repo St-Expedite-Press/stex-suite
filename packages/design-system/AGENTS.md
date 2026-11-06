@@ -1,7 +1,7 @@
 # STEX Pantheon — Interface Engineering Charter
 
 **Scope:** `packages/design-system/`, `assets/`, `apps/pantheon/`, and every
-interface change in `apps/igor/`, `apps/frige/`, `apps/seaxneat/`,
+interface change in `stex-igor/apps/igor/`, `apps/frige/`, `apps/seaxneat/`,
 `apps/eostre/`, and `apps/woden/`. The root [AGENTS.md](../../AGENTS.md) routes all interface work
 here, because a nested charter otherwise applies only to its own folder.
 
@@ -106,8 +106,8 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   until real features exist; never fill them with sample data. No permanent
   sidebar.
 - **Igor** is the user-facing name of the assistant; Hermes stays the internal
-  name. Igor turns go browser → the Igor application (`apps/igor`, proxied at
-  `/igor/`) → `services/inference` only, and every simulated reply is
+  name. Igor turns go browser → the Igor application (`stex-igor/apps/igor`, proxied at
+  `/igor/`) → `stex-igor/services/inference` only, and every simulated reply is
   labelled. Igor's reference comp is R03 (`assets/reference/pantheon-igor-comp.png`).
 - Settings and account controls belong in a user menu or labelled utility
   navigation, not a decorative card.

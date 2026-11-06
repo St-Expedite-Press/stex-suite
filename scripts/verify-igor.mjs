@@ -9,7 +9,7 @@ import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/de
 
 // Browser acceptance for Igor (milestone I1). Runs an isolated stack on spare
 // ports with disposable data: Pantheon, the Igor server (built interface), and
-// a counting stub in place of services/inference, so "exactly once" and
+// a counting stub in place of stex-igor/services/inference, so "exactly once" and
 // session continuity are measured rather than assumed. The stub answers like
 // the fake transport (labelled simulated); it is not evidence of live Hermes.
 //   corepack pnpm build:igor && corepack pnpm verify:igor [--out <directory>]
@@ -40,7 +40,7 @@ function inferenceStub(state) {
 }
 
 async function main() {
-  const dist = path.join(repositoryRoot, 'apps', 'igor', 'dist', 'index.html');
+  const dist = path.join(repositoryRoot, 'stex-igor', 'apps', 'igor', 'dist', 'index.html');
   if (!existsSync(dist)) throw new Error('Igor is not built: run corepack pnpm build:igor first.');
   await mkdir(outDirectory, { recursive: true });
   const data = await mkdtemp(path.join(os.tmpdir(), 'stex-verify-igor-'));
@@ -49,7 +49,7 @@ async function main() {
   await new Promise((resolve) => stub.listen(ports.inference, '127.0.0.1', resolve));
   const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), env: { ...process.env, ...env } });
   const children = [
-    node('apps/igor', { STEX_IGOR_PORT: String(ports.igor), STEX_IGOR_DATA_DIR: path.join(data, 'igor'), STEX_INFERENCE_URL: `http://127.0.0.1:${ports.inference}`, STEX_INFERENCE_SHARED_SECRET: secret }),
+    node('stex-igor/apps/igor', { STEX_IGOR_PORT: String(ports.igor), STEX_IGOR_DATA_DIR: path.join(data, 'igor'), STEX_INFERENCE_URL: `http://127.0.0.1:${ports.inference}`, STEX_INFERENCE_SHARED_SECRET: secret }),
     node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_IGOR_URL: `http://127.0.0.1:${ports.igor}`, STEX_FRIGE_URL: 'http://127.0.0.1:4498', STEX_SEAXNEAT_URL: 'http://127.0.0.1:4499', STEX_FRIGE_BOOKS_DIR: path.join(data, 'books') }),
   ];
   const failures = []; const report = { flows: {}, viewports: [] };

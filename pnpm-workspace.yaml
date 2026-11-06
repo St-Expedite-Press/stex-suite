@@ -2,3 +2,6 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+  # stex-igor (submodule): its vendor/ copy of the design system stays out of this workspace.
+  - "stex-igor/apps/*"
+  - "stex-igor/services/*"
