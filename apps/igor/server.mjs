@@ -5,6 +5,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createAccessVerifier, hostedConfig } from './server/access.mjs';
 import { createConversations } from './server/conversations.mjs';
 import { IgorError, assertLoopbackHost, assertSameOrigin, readJson, sendError, sendJson } from './server/http.mjs';
 import { createInference } from './server/inference.mjs';
@@ -23,15 +24,22 @@ let inference;
 try { inference = createInference({ url: process.env.STEX_INFERENCE_URL || '', sharedSecret: process.env.STEX_INFERENCE_SHARED_SECRET || '' }); }
 catch (error) { console.error(`Igor will not start: ${error.message}`); process.exit(1); }
 const conversations = createConversations({ store, inference });
+// Hosted mode (behind Cloudflare Tunnel and Access) is off unless configured,
+// and refuses to start half-configured.
+let hosted;
+try { hosted = hostedConfig(process.env); }
+catch (error) { console.error(`Igor will not start: ${error.message}`); process.exit(1); }
+const verifyAccess = hosted ? createAccessVerifier(hosted) : null;
+const origin = hosted ? { publicHost: hosted.publicHost, publicOrigin: hosted.publicOrigin } : {};
 
 const notFound = () => new IgorError(404, 'NOT_FOUND', 'Not found.');
 const notAllowed = () => new IgorError(405, 'INVALID_REQUEST', 'That method is not supported here.');
 const withRoute = (conversation) => ({ conversation, route: `/igor/c/${conversation.id}` });
 
 async function api(request, response, route) {
-  assertLoopbackHost(request.headers);
+  assertLoopbackHost(request.headers, origin);
   const method = request.method;
-  if (['POST', 'PATCH', 'DELETE'].includes(method)) assertSameOrigin(request.headers);
+  if (['POST', 'PATCH', 'DELETE'].includes(method)) assertSameOrigin(request.headers, origin);
   if (route === '/health') {
     if (method !== 'GET') throw notAllowed();
     return sendJson(response, 200, await inference.health());
@@ -72,6 +80,8 @@ const server = http.createServer(async (request, response) => {
   try { url = new URL(request.url, 'http://igor.invalid'); } catch { return sendError(response, new IgorError(400, 'INVALID_REQUEST', 'Invalid request path.')); }
   const { pathname } = url;
   try {
+    // Nothing, not even the page shell, is served to a request Access did not sign.
+    if (verifyAccess) { assertLoopbackHost(request.headers, origin); await verifyAccess(request.headers); }
     if (pathname === '/' || pathname === '/igor') { response.writeHead(308, { location: `/igor/${url.search}` }); response.end(); return; }
     if (pathname.startsWith('/igor/api/')) return await api(request, response, pathname.slice('/igor/api'.length));
     const readable = ['GET', 'HEAD'].includes(request.method);
@@ -89,4 +99,4 @@ const server = http.createServer(async (request, response) => {
 function stop() { server.close(); store.queue.finally(() => process.exit(0)); }
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
-server.listen(port, '127.0.0.1', () => console.log(`Igor is ready at http://127.0.0.1:${port}/igor/`));
+server.listen(port, '127.0.0.1', () => console.log(`Igor is ready at http://127.0.0.1:${port}/igor/${hosted ? ` (hosted as ${hosted.publicOrigin}, Cloudflare Access required)` : ''}`));

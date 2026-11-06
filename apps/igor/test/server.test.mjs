@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createAccessVerifier, hostedConfig } from '../server/access.mjs';
 import { turnHistory } from '../server/inference.mjs';
 import { autoTitle } from '../server/store.mjs';
 
@@ -20,8 +22,8 @@ async function temporary(context, prefix) {
 }
 
 // Spawns the real server; every byte it prints is kept so tests can check logs.
-async function startIgor(context, port, { dataDir, distDir, inferenceUrl = '' }) {
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_IGOR_PORT: String(port), STEX_IGOR_DATA_DIR: dataDir, STEX_IGOR_DIST_DIR: distDir, STEX_INFERENCE_URL: inferenceUrl, STEX_INFERENCE_SHARED_SECRET: SECRET } });
+async function startIgor(context, port, { dataDir, distDir, inferenceUrl = '', env = {} }) {
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_IGOR_PORT: String(port), STEX_IGOR_DATA_DIR: dataDir, STEX_IGOR_DIST_DIR: distDir, STEX_INFERENCE_URL: inferenceUrl, STEX_INFERENCE_SHARED_SECRET: SECRET, ...env } });
   const output = { text: '' };
   child.stderr.on('data', (data) => { output.text += data; });
   const exited = new Promise((resolve) => child.once('exit', resolve));
@@ -327,4 +329,86 @@ test('reports an unreachable inference service as unavailable', async (context) 
   const created = (await api('POST', '/igor/api/conversations', { idempotencyKey: key('down'), message: 'Hello' })).body.conversation;
   assert.equal((await settled(api, created.id)).body.conversation.messages[1].error.code, 'UNAVAILABLE');
   assert.deepEqual((await api('GET', '/igor/api/health')).body, { ok: false, transport: 'unavailable' });
+});
+
+// Hosted mode: Cloudflare Access tokens signed with a test key, served by a loopback stand-in for the team's certs URL.
+const TEAM = 'stex-test.cloudflareaccess.com';
+const AUD = 'a'.repeat(64);
+const PUBLIC = 'https://igor.example.test';
+function accessToken(privateKey, claims, { kid = 'test-key', alg = 'RS256' } = {}) {
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const body = `${part({ alg, kid, typ: 'JWT' })}.${part(claims)}`;
+  return `${body}.${sign('RSA-SHA256', Buffer.from(body), privateKey).toString('base64url')}`;
+}
+function hostedRequest(port, method, route, headers, body) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: '127.0.0.1', port, path: route, method, headers }, (response) => {
+      let text = ''; response.on('data', (data) => { text += data; }); response.on('end', () => resolve({ status: response.statusCode, text }));
+    });
+    request.on('error', reject); request.end(body);
+  });
+}
+
+test('hosted mode serves nothing without a valid Cloudflare Access token and accepts only its public origin', async (context) => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const other = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
+  const certs = http.createServer((request, response) => { response.writeHead(200, json); response.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256' }] })); });
+  await new Promise((resolve) => certs.listen(4641, '127.0.0.1', resolve));
+  context.after(() => certs.close());
+  const env = { STEX_IGOR_PUBLIC_ORIGIN: PUBLIC, STEX_IGOR_ACCESS_TEAM_DOMAIN: TEAM, STEX_IGOR_ACCESS_AUD: AUD, STEX_IGOR_ACCESS_CERTS_URL: 'http://127.0.0.1:4641/certs', STEX_IGOR_ACCESS_EMAILS: 'owner@example.test' };
+  const dist = await temporary(context, 'igor-dist-');
+  await writeFile(path.join(dist, 'index.html'), '<!doctype html><title>Igor fixture</title>');
+  await startIgor(context, 4642, { dataDir: await temporary(context, 'igor-data-'), distDir: dist, env });
+
+  const now = Math.floor(Date.now() / 1000);
+  const good = { iss: `https://${TEAM}`, aud: [AUD], email: 'owner@example.test', exp: now + 600, nbf: now - 5 };
+  const valid = accessToken(privateKey, good);
+  const as = (token, extra = {}) => ({ host: 'igor.example.test', ...(token ? { 'cf-access-jwt-assertion': token } : {}), ...extra });
+
+  // No token, or any defect in it: the page shell, assets, and API are all refused.
+  for (const route of ['/igor/', '/design-system/brand/pantheon-favicon.svg', '/igor/api/conversations']) assert.equal((await hostedRequest(4642, 'GET', route, as(null))).status, 403, route);
+  const forged = [
+    ['other signing key', accessToken(other, good)],
+    ['wrong audience', accessToken(privateKey, { ...good, aud: ['b'.repeat(64)] })],
+    ['wrong issuer', accessToken(privateKey, { ...good, iss: 'https://evil.cloudflareaccess.com' })],
+    ['expired', accessToken(privateKey, { ...good, exp: now - 600 })],
+    ['not yet valid', accessToken(privateKey, { ...good, nbf: now + 600 })],
+    ['other email', accessToken(privateKey, { ...good, email: 'someone@example.test' })],
+    ['alg none', `${Buffer.from(JSON.stringify({ alg: 'none', kid: 'test-key' })).toString('base64url')}.${Buffer.from(JSON.stringify(good)).toString('base64url')}.`],
+    ['garbage', 'not-a-token'],
+  ];
+  for (const [label, token] of forged) assert.equal((await hostedRequest(4642, 'GET', '/igor/api/conversations', as(token))).status, 403, label);
+
+  // A valid token works for the public host; a foreign Host is still refused.
+  assert.equal((await hostedRequest(4642, 'GET', '/igor/', as(valid))).status, 200);
+  assert.equal((await hostedRequest(4642, 'GET', '/igor/api/conversations', as(valid))).status, 200);
+  assert.equal((await hostedRequest(4642, 'GET', '/igor/api/conversations', as(valid, { host: 'attacker.test' }))).status, 403);
+
+  // Mutations accept only the https public origin.
+  const body = (label) => JSON.stringify({ idempotencyKey: key(label) });
+  const write = (origin, label) => hostedRequest(4642, 'POST', '/igor/api/conversations', as(valid, { 'content-type': 'application/json', origin, 'sec-fetch-site': 'same-origin' }), body(label));
+  assert.equal((await write(PUBLIC, 'public')).status, 201);
+  assert.equal((await write('http://igor.example.test', 'plain-http')).status, 403);
+  assert.equal((await write('https://evil.example.test', 'evil')).status, 403);
+});
+
+test('hosted mode refuses to start half-configured, and fails closed when the signing keys cannot be read', async (context) => {
+  assert.equal(hostedConfig({}), null);
+  assert.throws(() => hostedConfig({ STEX_IGOR_PUBLIC_ORIGIN: PUBLIC }), /STEX_IGOR_ACCESS_TEAM_DOMAIN/);
+  assert.throws(() => hostedConfig({ STEX_IGOR_PUBLIC_ORIGIN: PUBLIC, STEX_IGOR_ACCESS_TEAM_DOMAIN: TEAM }), /STEX_IGOR_ACCESS_AUD/);
+  assert.throws(() => hostedConfig({ STEX_IGOR_PUBLIC_ORIGIN: 'http://igor.example.test', STEX_IGOR_ACCESS_TEAM_DOMAIN: TEAM, STEX_IGOR_ACCESS_AUD: AUD }), /https origin/);
+  assert.throws(() => hostedConfig({ STEX_IGOR_PUBLIC_ORIGIN: PUBLIC, STEX_IGOR_ACCESS_TEAM_DOMAIN: TEAM, STEX_IGOR_ACCESS_AUD: AUD, STEX_IGOR_ACCESS_CERTS_URL: 'http://certs.example.test/' }), /must be https/);
+
+  const config = hostedConfig({ STEX_IGOR_PUBLIC_ORIGIN: PUBLIC, STEX_IGOR_ACCESS_TEAM_DOMAIN: TEAM, STEX_IGOR_ACCESS_AUD: AUD });
+  assert.equal(config.certsUrl, `https://${TEAM}/cdn-cgi/access/certs`);
+  const verify = createAccessVerifier(config, { fetchImpl: async () => { throw new Error('offline'); } });
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const now = Math.floor(Date.now() / 1000);
+  await assert.rejects(verify({ 'cf-access-jwt-assertion': accessToken(privateKey, { iss: `https://${TEAM}`, aud: AUD, exp: now + 60 }) }), (error) => error.status === 503);
+
+  // The server itself will not start in hosted mode without its Access settings.
+  const refused = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_IGOR_PORT: '4643', STEX_IGOR_DATA_DIR: await temporary(context, 'igor-data-'), STEX_IGOR_PUBLIC_ORIGIN: PUBLIC } });
+  let output = ''; refused.stderr.on('data', (data) => { output += data; });
+  assert.equal(await new Promise((resolve) => refused.once('exit', resolve)), 1);
+  assert.match(output, /STEX_IGOR_ACCESS_TEAM_DOMAIN/);
 });
