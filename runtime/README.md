@@ -39,6 +39,13 @@ current upstream `gateway.standalone` compatibility setting is intentional:
 `hermes -p igor gateway run` serves only Igor, while all specialists are
 parked. STEX calls this loopback API only through `services/inference`.
 
+Before a live turn, make the Docker boundary ready without invoking a provider:
+
+```powershell
+docker pull nousresearch/hermes-sandbox:desktop
+docker run --rm --network none --entrypoint /bin/sh nousresearch/hermes-sandbox:desktop -c 'echo sandbox-ready'
+```
+
 Starting the local API and reading `/v1/models` does not invoke a model. A
 provider-backed completion, direct OpenRouter verification, or enabling the
 STEX remote transport requires explicit authorization and a bounded paid test

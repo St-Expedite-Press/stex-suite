@@ -1,8 +1,9 @@
 # H1 Hermes / Igor preparation report
 
 **Status:** PARTIAL — the repository unit, local Igor-only runtime boundary,
-and STEX adapter are complete and locally verified. Two bounded, authorized
-provider attempts timed out before a completion or usage record was returned.
+and STEX adapter are complete and locally verified. One bounded, authorized
+OpenRouter completion has returned successfully; full H1 acceptance remains
+incomplete.
 
 ## Recorded runtime source
 
@@ -23,7 +24,9 @@ seven profiles are parked. The ignored OpenRouter credential is scoped to
 Igor's `.env`, and all Igor toolsets are disabled on both the CLI and
 `api_server` platforms. Its configured Docker terminal has no environment
 forwarding, host mounts, or container network, but it was not invoked because
-no toolset is enabled.
+no toolset is enabled. The required `nousresearch/hermes-sandbox:desktop`
+image is pre-pulled locally; it starts successfully with no network or host
+mount.
 
 ## Implemented boundary
 
@@ -49,12 +52,15 @@ no toolset is enabled.
   API credential retrieved local `/v1/models` metadata. Neither test sends a
   completion request or proves provider availability. It was stopped after the
   bounded direct verification attempts.
-- An initial provider attempt exposed an upstream configuration distinction:
+- Initial provider attempts exposed an upstream configuration distinction:
   empty CLI toolsets did not disable the `api_server` platform's toolsets. The
   request was interrupted before it completed. H1 now disables and reconciles
   both platforms, and a second 16-token, 15-second request ran with no enabled
   toolsets. It also timed out before returning a completion or usage record and
-  was forcibly cancelled. The final gateway was stopped after cancellation.
+  was forcibly cancelled. Investigation found Docker Desktop's WSL distribution
+  stopped and the required sandbox image absent. After Docker Desktop/WSL was
+  restarted and the image pulled, a final 16-token request completed with
+  `STEX-H1-OK`; the gateway was then stopped.
 
 ## Evidence run
 
@@ -69,20 +75,18 @@ no toolset is enabled.
 | `corepack pnpm run check:hermes-runtime` | Passed: all eight expected local profiles observed; default plus all profiles pinned to OpenRouter; CLI and API-server toolsets empty; read-only |
 | `hermes -p igor gateway status` | Passed before direct verification: running standalone gateway, Igor only; default and seven specialists unserved |
 | Local `GET /v1/models` checks | Invalid API credential rejected (401); matching credential returned local metadata; no completion submitted |
-| Authorized direct `POST /v1/chat/completions` | Two bounded attempts: the first was cancelled after discovering API-server toolset drift; the second used 16 max tokens and timed out at 15 seconds. Neither returned content or usage; gateway stopped and process cancelled. |
+| Authorized direct `POST /v1/chat/completions` | First two bounded attempts were cancelled/time-limited while Docker was unhealthy. After repair, a no-tool 16-token request returned `STEX-H1-OK` in 11.5 seconds with 4,503 prompt tokens, 7 completion tokens, and `finish_reason: stop`; gateway stopped afterward. |
 
-All adapter tests use stubs. No provider-backed completion, pricing, token
-usage, full Pantheon live conversation, or Frige live scoped conversation was
-completed. The configured OpenRouter model is `openai/gpt-4.1-mini`; each
-authorized direct attempt instantiated its OpenRouter client, but neither
-returned a provider usage record. Actual cost is therefore unknown and must
-not be reported as zero.
+All adapter tests use stubs. One provider-backed direct completion succeeded,
+but pricing/cost, a full Pantheon live conversation, and a Frige live scoped
+conversation remain unverified. The configured OpenRouter model is
+`openai/gpt-4.1-mini`; the successful gateway response reported 4,510 total
+tokens. No monetary cost was returned by the response, so this report does not
+claim an exact spend.
 
 ## Required live-activation gate
 
-Before calling this H1 COMPLETE, diagnose the upstream request timeout without
-loosening the empty API-server tool policy, then run and record a successful
-direct authenticated positive turn, multi-turn, invalid-model, timeout, and
-tool-negative tests; record actual model, usage, and cost; and run Pantheon and
-Frige end-to-end using disposable data. Any additional paid turn requires an
-explicit authorization and budget.
+Before calling this H1 COMPLETE, run and record multi-turn, invalid-model,
+timeout, and tool-negative tests; record actual model and cost; and run
+Pantheon and Frige end-to-end using disposable data. Any additional paid turn
+requires an explicit authorization and budget.
