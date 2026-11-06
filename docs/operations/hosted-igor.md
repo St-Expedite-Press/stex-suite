@@ -77,7 +77,9 @@ Do these in order. Igor must never be reachable unauthenticated.
 ## Deploy a release
 
 ```powershell
-git archive --format=tar.gz -o stex-igor-<commit>.tar.gz <commit> package.json pnpm-lock.yaml pnpm-workspace.yaml apps/igor services/inference packages/design-system protocol
+# From a clean checkout of <commit>. A working-tree tar is used because git archive
+# would ship Git LFS pointers instead of the masthead media.
+git ls-files -z package.json pnpm-lock.yaml pnpm-workspace.yaml apps/igor services/inference packages/design-system protocol | tar --force-local --null -T - -czf stex-igor-<commit>.tar.gz
 gcloud compute scp stex-igor-<commit>.tar.gz <hosted-vm>:/tmp/ --zone us-central1-a --project <gcp-project> --tunnel-through-iap
 ```
 

@@ -54,6 +54,16 @@ During turn 1, Hermes still started its terminal container with
 network, and its storage probe ran `hello-world`. The egress lockdown confines
 both.
 
+### Browser acceptance
+
+The owner signed in at `https://igor.stexpedite.press/igor/` with an Access
+one-time code. The owner asked Igor "what model are you using" and got a live
+reply ("I'm using the GPT-4.1-mini model"). The conversation was saved and
+auto-titled, and the footer read "Live · Hermes".
+
+Release `083532f` adds the animated P11 masthead. It was deployed with all nine
+media files intact, and an unsigned request for the media still gets `403`.
+
 ## Egress lockdown (owner-run)
 
 A global network firewall policy, scoped to the VM's service account. It allows:
