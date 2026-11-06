@@ -77,6 +77,12 @@ and a stub inference service that counts turns. It checks the following:
 | `STEX_IGOR_DATA_DIR` | Conversation store (default ignored `apps/igor/.local-data/`) |
 | `STEX_IGOR_DIST_DIR` | Built client (default `apps/igor/dist`; without it pages answer `503`) |
 | `STEX_INFERENCE_URL`, `STEX_INFERENCE_SHARED_SECRET` | The inference service and its shared secret; without a URL every reply fails as `UNCONFIGURED` |
+| `STEX_IGOR_PUBLIC_ORIGIN` | Hosted mode: the https origin users reach (for example `https://igor.stexpedite.press`). Unset means local-only |
+| `STEX_IGOR_ACCESS_TEAM_DOMAIN`, `STEX_IGOR_ACCESS_AUD` | Required in hosted mode: the Cloudflare Access team domain (`<team>.cloudflareaccess.com`) and the application's audience tag |
+| `STEX_IGOR_ACCESS_EMAILS` | Optional comma-separated allow-list checked against the Access token's email |
+| `STEX_IGOR_ACCESS_CERTS_URL` | Override of the signing-key URL (https, or loopback for tests) |
+
+The hosted deployment is described in [docs/operations/hosted-igor.md](../../docs/operations/hosted-igor.md).
 
 Only the Igor server holds the inference secret. Pantheon proxies `/igor/` to
 `STEX_IGOR_URL` and holds none.

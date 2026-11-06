@@ -21,6 +21,21 @@ Every mutating request (`POST`, `PATCH`, `DELETE`) must have
 no cross-site `Origin` or `Sec-Fetch-Site`; otherwise `415` or `403`. Bodies
 are limited to 64 KB. The inference shared secret never reaches a browser.
 
+**Hosted mode.** When `STEX_IGOR_PUBLIC_ORIGIN` is set (for example
+`https://igor.stexpedite.press`), Igor runs behind Cloudflare Tunnel and
+Cloudflare Access:
+
+- Every request must carry a valid Access application token
+  (`Cf-Access-Jwt-Assertion`). That includes the page shell, assets, and the
+  API.
+- The token must be RS256-signed by the team's published keys, with the
+  configured issuer and audience. It must not have expired, and its email must
+  be on the allow-list when one is set. Otherwise Igor answers `403`.
+- Signing keys that cannot be read give `503`.
+- The public host is allowed as `Host`, and only the https public origin is
+  allowed as `Origin`, alongside loopback.
+- Igor will not start in hosted mode without its Access settings.
+
 ## Data
 
 ```ts
