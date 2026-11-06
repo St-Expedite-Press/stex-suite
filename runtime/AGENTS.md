@@ -15,9 +15,10 @@ new Hermes features. Read the root `AGENTS.md`, this charter, and
 - STEX's source-controlled roster, profile mapping, tests, and reconciliation
   command live in `../hermes/`; the product-facing contract and adapter live in
   `../services/inference/`.
-- The local H1 runtime is an Igor-only, loopback gateway. It has one verified
-  direct, tool-free provider turn, but Pantheon and Frige remain on the fake
-  transport and their remote workflows are not accepted.
+- The local H1 runtime is an Igor-only, loopback gateway. I1 verified a
+  tool-negative turn and four product turns through Pantheon → Igor →
+  `services/inference` ([I1 report](../docs/verification/igor-i1-application.md)).
+  Frige's remote workflow is not accepted.
 - Installed runtime profile settings, provider keys, API keys, sessions, logs,
   caches, Docker state, and sandbox files remain ignored local state outside
   this repository. The source-controlled profile manifest remains in
@@ -37,7 +38,9 @@ new Hermes features. Read the root `AGENTS.md`, this charter, and
 - Keep Igor toolsets empty on both the CLI and API-server platforms. The Docker
   terminal boundary has no forwarded secrets, host mounts, or network egress;
   altering that policy requires an explicitly authorised milestone and fresh
-  security evidence.
+  security evidence. Known upstream exception (I1): with empty toolsets the
+  gateway still starts a `--network=none` terminal container, and its
+  cgroup-limit probe runs `sleep 0` on Docker's default bridge network.
 - Remote/provider calls, model changes, Docker pulls that materially change the
   runtime, and gateway start/stop actions are operational work. Require the
   authorization, bounded budget, and evidence stated in the root charter.
