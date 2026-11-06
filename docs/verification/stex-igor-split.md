@@ -34,11 +34,33 @@ GitHub Action. The project owner authorised it on 2026-11-06 and decided:
 | `verify:igor`, `verify:home` from the submodule layout | Pass |
 | Suite link check | No new broken links. The protected manuscript's existing links were not touched |
 
+### First automated deploy
+
+The owner created the Workload Identity Federation pool and provider:
+
+- the provider is limited to `St-Expedite-Press/stex-igor` on
+  `refs/heads/main`;
+- the deploy service account `stex-igor-deploy` gets `compute.viewer`,
+  `iap.tunnelResourceAccessor`, `compute.osAdminLogin` on the VM only, and
+  `serviceAccountUser` on the VM's account.
+
+One binding (`workloadIdentityUser`) had to be re-run with the project
+number filled in. Two repository variables were then set.
+
+Deploy run `42261497879` passed CI in 33 s and deployed in 56 s. On the VM:
+
+- `/opt/stex/current` → `stex-igor-3a0a19ce237e` (the new layout);
+- `stex-inference` and `stex-igor` run from `current/inference` and
+  `current/igor`;
+- the stale `STEX_IGOR_DIST_DIR` line is removed;
+- `conversations.json` is kept, and remote inference is still configured;
+- `sshd` logged two `sa_` logins from the deploy account;
+- the public `/igor/` still redirects to Access (`302`).
+
 ## Limitations
 
-- **No automated deploy has run yet.** It needs the owner to create Workload
-  Identity Federation and a deploy service account (commands in the
-  stex-igor runbook), then set two repository variables.
-- **The VM still runs release `083532f`** in the old directory layout. The
-  first automated deploy migrates it: new unit files, and a stale
-  `STEX_IGOR_DIST_DIR` line removed from `/etc/stex/igor.env`.
+- **Automatic rollback has not been exercised** against a deliberately
+  failing release.
+- **Earlier hand-installed releases** (`083532f`, `ccc3fb5`) remain in
+  `/opt/stex/releases`. They will be pruned, because only the five newest
+  are kept.
