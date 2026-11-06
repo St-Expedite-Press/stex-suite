@@ -51,12 +51,14 @@ request fields is a tool-security boundary.
 the upstream API when remote mode is safely configured. It reports configured,
 unreachable, unavailable, or key-rejected state; it does not prove a
 provider-backed completion. The probe needs the STEX shared token, so an
-unauthenticated local page cannot drive repeated upstream checks. Starting the service and all repository tests make
-no paid calls. Direct runtime and paid provider verification remain explicitly
-authorized operations.
+unauthenticated local page cannot drive repeated upstream checks. Starting the
+service and all repository tests make no paid calls. A direct runtime provider
+turn has been verified separately; any additional provider work remains an
+explicitly authorized operation.
 
 The prepared local runtime serves only the `igor` profile on
 `http://127.0.0.1:8642`; its upstream toolsets are disabled. Keep
-`STEX_HERMES_TRANSPORT=fake` until a bounded paid verification is explicitly
-authorized. The authenticated `/v1/models` response proves only the local API
-credential path, not an OpenRouter completion or model availability.
+`STEX_HERMES_TRANSPORT=fake` until a separately authorized STEX integration
+test is ready. The authenticated `/v1/models` response proves only the local
+API credential path; one direct completion separately proves provider reachability,
+not this service's remote integration or model cost.

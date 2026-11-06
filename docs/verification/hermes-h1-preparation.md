@@ -49,9 +49,9 @@ mount.
   the adapter. No proposal is automatically applied to canonical source.
 - The upstream API gateway was started manually for Igor only on
   `127.0.0.1:8642`. An invalid bearer key received HTTP 401; the matching STEX
-  API credential retrieved local `/v1/models` metadata. Neither test sends a
-  completion request or proves provider availability. It was stopped after the
-  bounded direct verification attempts.
+  API credential retrieved local `/v1/models` metadata. Neither metadata check
+  sends a completion request or proves provider availability. It was stopped
+  after the bounded direct verification attempts.
 - Initial provider attempts exposed an upstream configuration distinction:
   empty CLI toolsets did not disable the `api_server` platform's toolsets. The
   request was interrupted before it completed. H1 now disables and reconciles

@@ -8,8 +8,12 @@ The splash shows the Pantheon artwork and an entrance panel. Choose **Sign in** 
 
 ## The command center
 
+The standard local stack uses the deterministic fake transport. A separately
+prepared remote runtime exists for operator verification, but it is not enabled
+by the normal local workflow.
+
 - **Continue working** opens the project you changed most recently, in whichever studio owns it.
-- **Igor** is the assistant. Type a question and press the arrow. Replies are simulated for now and say so ("Simulated reply · fake transport"); nothing you type is stored.
+- **Igor** is the assistant. Type a question and press the arrow. In the standard local stack, replies are simulated and say so ("Simulated reply · fake transport"); nothing you type is stored.
 - **Studios** opens Frige or Seaxneat. Ēostre and Woden are marked **Deferred** because they are not built yet.
 - **Recent projects** lists your latest five; **View all** (or the **Projects** tab) shows every project with its studio and current status, such as "Building" or "Build failed".
 - **Graph** and **Activity** say plainly that they are not built yet.

@@ -55,7 +55,12 @@ checks both surfaces. `hermes -p igor gateway run` is the only H1 gateway
 command; its upstream `gateway.standalone` compatibility configuration prevents
 the default multiplexer from serving specialists.
 
-For an authorized provider-backed STEX activation, set only these STEX values in ignored
+Before starting a live gateway, pre-pull and locally verify the sandbox image
+without calling a provider; see the exact commands in
+[`runtime/README.md`](../runtime/README.md). One direct no-tool OpenRouter turn
+has succeeded, but that is not Pantheon or Frige remote-workflow evidence.
+
+For an authorized provider-backed STEX integration activation, set only these STEX values in ignored
 `.env`: `STEX_HERMES_TRANSPORT=remote`,
 `STEX_HERMES_URL=http://127.0.0.1:8642`, `STEX_HERMES_API_KEY`,
 `STEX_HERMES_ISOLATION=verified`, and

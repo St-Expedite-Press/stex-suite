@@ -69,16 +69,32 @@ OpenAI-compatible API; the safe default remains the deterministic fake.
 The checked-in [runtime profile manifest](hermes/runtime-profiles.json) maps
 Igor and seven parked specialists to STEX's declarative roles. Run
 `corepack pnpm run check:hermes-runtime` to read and reconcile the local
-upstream profile catalog and model-provider selections; it changes nothing and
-never reads a credential.
+upstream profile catalog, model-provider selections, and empty CLI/API-server
+tool policies; it changes nothing and never reads a credential.
 
-Local gateway preparation is deliberately fail-closed. The live local gateway
-is an Igor-only loopback API with its provider credential scoped to Igor and
-with no runtime tools enabled. STEX `.env` holds only the loopback URL and
-API credential, never `OPENROUTER_API_KEY`. A provider-backed completion still
-requires explicit authorization and a bounded paid test budget. See [the
-runtime package](runtime/README.md), [inference service](services/inference/README.md),
+Local gateway preparation is deliberately fail-closed. When manually started,
+the Igor-only loopback API has its provider credential scoped to Igor and no
+runtime tools enabled; it is otherwise stopped. STEX `.env` holds only the
+loopback URL and API credential, never `OPENROUTER_API_KEY`. One bounded direct
+provider turn has been verified, but STEX applications remain on the fake
+transport and any additional paid turn needs explicit authorization and a
+budget. See [the runtime package](runtime/README.md), [inference service](services/inference/README.md),
 and [developer guide](docs/DEVELOPER-GUIDE.md).
+
+## Documentation
+
+Start here, then choose the reader path that fits:
+
+| Reader | Document | What it establishes |
+| --- | --- | --- |
+| Evaluator or prospective user | [User manual](docs/USER-MANUAL.md) | What the local shell and active studios do today |
+| Product or architecture reader | [Whitepaper](docs/WHITEPAPER.md) | Ownership, boundaries, and the local-first model |
+| Contributor or operator | [Developer guide](docs/DEVELOPER-GUIDE.md) | Setup, commands, and guarded Hermes activation |
+| Status reviewer | [Status](docs/STATUS.md) | Implemented, tested, deferred, and unverified claims |
+| Evidence reviewer | [Verification index](docs/verification/README.md) | Current H1 evidence and dated historical reports |
+
+The default product experience uses deterministic fake inference. The direct
+Hermes verification does not make a remote Pantheon or Frige workflow live.
 
 Interface work follows [the design doctrine](docs/DESIGN-SYSTEM.md) and
 [the interface charter](packages/design-system/AGENTS.md); artwork and media
