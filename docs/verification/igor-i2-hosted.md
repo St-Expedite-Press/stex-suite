@@ -24,7 +24,7 @@ by the project owner on 2026-11-06. The owner's decisions were:
 | Hermes `e76fbd80` (`hermes-igor`), inference (`stex-inference`), and Igor (`stex-igor`) as loopback-only systemd services | Running |
 | Access application `Igor` (one-time email PIN, `editor@stexpedite.press` only); tunnel `stex-igor`; proxied DNS `igor` | Done |
 | Old `stexpedite-hermes` tunnel and its `engine`, `llmchat`, `profiles` records | Deleted |
-| Tunnel connector on the VM | Pending: the owner installs it with the tunnel token |
+| Tunnel connector on the VM | Installed by the owner (`cloudflared` 2026.10.7, token file `/etc/cloudflared/token`); tunnel healthy with 4 QUIC connections |
 | Egress lockdown | Pending: commands in this report |
 
 ## Evidence
@@ -68,6 +68,14 @@ All other egress is denied and logged. Cloudflare's optional connector update
 checks on 443 are left blocked.
 
 ## Limitations
+
+- **Accepted risk: the tunnel token was not rotated.** It was pasted into the
+  agent session in full while the connector was being set up. The owner chose
+  not to rotate it, treating the deployment as narrowly scoped. Anyone holding
+  the token could run a connector for `igor.stexpedite.press`. Access would
+  still gate every visitor, but such a connector could receive signed-in
+  traffic. To rotate: **Rotate token** in the dashboard, then reinstall the
+  service with the new token.
 
 - **Turns 2 and 3 skipped the browser and Igor's API.** In hosted mode Igor
   requires an Access login that automation cannot complete, so the owner's

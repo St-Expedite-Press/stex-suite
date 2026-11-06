@@ -45,7 +45,9 @@ State on 2026-11-06:
 - **Done:** gates 1, 2, 4, and 5. The Access application is `Igor`; the team
   domain is `<team>.cloudflareaccess.com`; the tunnel is
   `<tunnel-id>`.
-- **Pending:** gate 3 (the connector) and gate 6 (egress lockdown). See the
+- **Done:** gate 3. The connector is installed; the token is not rotated, an
+  accepted risk.
+- **Pending:** gate 6 (egress lockdown). See the
   [I2 report](../verification/igor-i2-hosted.md).
 
 Do these in order. Igor must never be reachable unauthenticated.
