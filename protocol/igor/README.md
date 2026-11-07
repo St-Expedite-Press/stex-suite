@@ -73,6 +73,7 @@ to `user`, and automatic titling never overrides it.
 
 | Method and path | Body | Result |
 | --- | --- | --- |
+| `GET /api/session` · `POST /api/session` · `DELETE /api/session` | `{ username, password }` (POST) | Hosted password mode only. POST sets the session cookie or answers `401`, or `429` after repeated failures. GET returns `{ mode: "password", username, role }` or `401`; outside password mode it returns `{ mode: "access" }` or `{ mode: "local" }`. DELETE signs out. Every other endpoint answers `401` without a session. |
 | `GET /api/ready` | — | Operational, not for clients: `{ ok, release, store, inference }` with counts only. In hosted mode it is served without an Access token **only** to loopback requests that no proxy forwarded; everyone else gets `403`. |
 | `GET /api/health` | — | `{ ok, transport }`, transport `fake`, `remote`, or `unavailable` (from the inference service's health) |
 | `GET /api/conversations` | — | `{ conversations: ConversationSummary[] }`, newest `updatedAt` first |
