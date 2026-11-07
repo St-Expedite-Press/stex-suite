@@ -60,6 +60,8 @@ browser work use disposable synthetic data and fake/stub inference only.
 | Documentation link/command audit | PASS: 35 changed Markdown files, 117 local links, no broken local targets; 29 documented command names resolve in suite/submodule scripts or pnpm built-ins |
 | Protected-source diff | PASS: zero changed files under protected manuscript trees |
 | Independent review | Two rounds complete. Reviewer independently ran four new API/security tests: all pass. Origin protection, directory alias, private preview origin, pending-proposal display and preview-asset evidence findings are repaired and reverified |
+| Igor GitHub CI | PASS: [run 42416095145](https://github.com/St-Expedite-Press/stex-igor/actions/runs/42416095145), including tests, typecheck and build |
+| Suite GitHub CI | Test job SKIPPED: [run 42416481282](https://github.com/St-Expedite-Press/stex-suite/actions/runs/42416481282). The gate could not obtain `STEX_IGOR_READ_TOKEN`; workflow success is not evidence of remote test execution. Local full-suite evidence above remains valid. No credential was changed |
 
 The browser verifier runs the actual `scripts/dev-alpha.mjs` stack, real
 Next.js install/build commands and mounted preview, with all data in system
@@ -92,6 +94,22 @@ system docs and synced copies, knowledge/vault boundaries, and evidence index.
 Unrelated manuscript instructions, source-library material, licenses and
 upstream documents are not architecture documentation and are unchanged.
 Dated historical acceptance reports preserve their original evidence.
+
+## Publication
+
+Implementation commit: `eb6a2be70205f33707e24192ca5929649924e35c` (the
+subsequent documentation commit adds these observed publication/CI results).
+Published review branches and draft PRs:
+
+- [Suite PR 5](https://github.com/St-Expedite-Press/stex-suite/pull/5),
+  `feat/pantheon-platform-p1`.
+- [Igor PR 1](https://github.com/St-Expedite-Press/stex-igor/pull/1),
+  `docs/pantheon-platform-p1`, at `2f9b43d17629d19bef80179eac2ed78289e6d486`.
+
+Remote branch tips were checked against local revisions; both working trees
+were clean after the implementation commits. Neither main branch was moved.
+Merging Igor's PR would trigger a production deployment and is not authorized
+by publication of these review branches.
 
 ## Limits and next increment
 

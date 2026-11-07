@@ -3,6 +3,7 @@
 | Area | Status | Evidence / limit |
 | --- | --- | --- |
 | Platform transition P0/P1 | Implemented and tested; increment accepted | [Ordered plan](PLATFORM-TRANSITION.md), [P1 evidence](verification/platform-transition-p1.md). Existing Frige, Seaxneat and Igor work is retained; Ēostre/Woden stay deferred. Later stages are planned, not delivered |
+| P1 GitHub publication / CI | Review branches pushed; Igor CI passed, suite test job skipped | [Suite PR 5](https://github.com/St-Expedite-Press/stex-suite/pull/5), [Igor PR 1](https://github.com/St-Expedite-Press/stex-igor/pull/1). The suite gate could not obtain its private-submodule read token; 130 local tests pass. No deployment or credential change |
 | Seaxneat platform presentation and engine boundary | Implemented and tested | Pantheon owns `/workspaces/seaxneat/`; Seaxneat owns state through `stex.seaxneat.workspace.v1`. `test:seaxneat`, `verify:platform`: real create/edit/diff/restore/preview, five Chrome viewports, executing Next runtime/CSS, and sandbox negative checks |
 | Pantheon legacy book storage access | Removed | `/api/books…` proxies Frige's versioned compatibility boundary; Frige owns settings, uploads and review. Legacy books-directory alias preserved |
 | Shared project-aware Igor / evolving knowledge projections | Specified and planned | P2/P3/P4 acceptance gates in the transition plan; no shared context, graph events, embeddings or multimodal retrieval implemented |

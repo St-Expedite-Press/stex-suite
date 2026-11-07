@@ -32,6 +32,13 @@ application READMEs, and [verification reports](verification/).
 
 ## Platform transition
 
+The suite's GitHub CI needs the repository secret `STEX_IGOR_READ_TOKEN` to
+read the private submodule. Its gate intentionally skips the test job when
+the token is unavailable; a green workflow alone does not prove tests ran.
+P1's suite PR encountered that limit, while all 130 tests passed locally and
+Igor's independent GitHub CI ran successfully. Credential changes require
+separate owner authorization.
+
 Follow [the ordered plan](PLATFORM-TRANSITION.md). Pantheon owns the common
 shell and `apps/pantheon/workspaces/seaxneat` presentation; Seaxneat owns
 workspace state and operations through
