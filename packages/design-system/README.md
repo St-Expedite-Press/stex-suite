@@ -28,7 +28,8 @@ are in [AGENTS.md](AGENTS.md).
 
 Serve the package from the application's own origin. Pantheon maps
 `/design-system/*` to the package's `src`, `fonts`, `brand`, and `specimen`
-folders only (see `apps/pantheon/server.mjs`); a Vite application imports
+folders only (see `apps/pantheon/server.mjs`), and Frige maps it to `src`,
+`fonts`, `brand`, and `icons` (see `apps/frige/server.mjs`); a Vite application imports
 `@stex/design-system/stex.css` and lets the bundler resolve the font and brand
 URLs. Add `"@stex/design-system": "workspace:*"` to the consuming package.
 

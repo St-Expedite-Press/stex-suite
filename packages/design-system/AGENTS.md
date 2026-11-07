@@ -46,7 +46,7 @@ The interface type is **CSS-first, platform-native web UI**:
 
 - Shared tokens, typography, and components come only from
   `@stex/design-system` (`src/stex.css`). Never duplicate palette values in an
-  application; Frige's `living.css`/`palette.js` are legacy pending migration.
+  application; Seaxneat's light theme is legacy pending migration.
 - Plain CSS in cascade layers `stex.tokens, stex.base, stex.components`;
   application CSS stays unlayered so it always wins. No component framework,
   Tailwind, CSS-in-JS, or runtime theme engine. React apps use the same class
@@ -158,7 +158,7 @@ same files. The integrating agent owns the final review and status evidence.
 | A | Baseline, tokens, specimen proving all five accents | Done |
 | B | Pantheon public entrance (splash) | Done; real identity deferred |
 | C | Pantheon command center from real data | Done; Igor on the fake transport |
-| D | Frige and Seaxneat adoption without workflow regressions | Planned |
+| D | Frige and Seaxneat adoption without workflow regressions | Frige done (D4); Seaxneat planned |
 | E | Ēostre and Woden foundations on authentic placeholders | Planned |
 | F | Stabilisation: trim, consolidate, compare to approved art | Planned |
 
@@ -171,7 +171,8 @@ For each meaningful change:
 2. Branding, surfaces, type, and studio colour come from shared tokens;
    illustration is not required for comprehension.
 3. Desktop, tablet, and phone layouts have no accidental cropping, overflow,
-   or unreachable actions (`corepack pnpm verify:splash`, `verify:home`).
+   or unreachable actions (`corepack pnpm verify:splash`, `verify:home`,
+   `verify:frige`).
 4. Focus, keyboard order, labels, targets, and contrast work; motion respects
    reduced motion. Contrast and token drift: `corepack pnpm test:design-system`;
    keyboard order, focus, and motion on the splash: `corepack pnpm verify:splash`.
