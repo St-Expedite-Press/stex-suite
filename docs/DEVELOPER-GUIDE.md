@@ -5,7 +5,7 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | Command | Purpose |
 | --- | --- |
 | `corepack pnpm test` | All deterministic suites, including `test:stex-igor-sync` |
-| `corepack pnpm sync:stex-igor` | Copy `packages/design-system` and the masthead media into the `stex-igor` submodule after changing them; then commit inside `stex-igor` |
+| `corepack pnpm sync:stex-igor` | Copy `packages/design-system`, the masthead and splash media, and Pantheon's `splash.css` and `motion.js` into the `stex-igor` submodule after changing them; then commit inside `stex-igor` |
 | `corepack pnpm dev:alpha` | Shell plus active application processes |
 | `corepack pnpm --dir apps/seaxneat build` | React production build |
 | `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
@@ -16,6 +16,7 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm assets:build [splash\|masthead\|emblems]` | Rebuild web media from masters, bit-exact (needs FFmpeg) |
 | `corepack pnpm verify:splash` | Browser check of the splash at 15 viewports (needs Chrome or Edge) |
 | `corepack pnpm verify:home` | Browser check of the command center with an isolated stack and disposable data (needs Chrome or Edge) |
+| `corepack pnpm verify:igor-login` | Browser check of hosted Igor's password sign-in page (the Pantheon splash with a form) at 15 viewports, plus a real sign-in, with a disposable user; needs `corepack pnpm build:igor` and Chrome or Edge |
 | `corepack pnpm verify:igor` | Browser check of the Igor handoff, conversation workflow, and layout at 5 viewports with a stub inference service (needs Chrome or Edge) |
 
 Use disposable temp data for Seaxneat through `STEX_SEAXNEAT_DATA_DIR` and for Igor through `STEX_IGOR_DATA_DIR`. Canonical

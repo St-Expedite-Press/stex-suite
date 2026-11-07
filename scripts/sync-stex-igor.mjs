@@ -1,6 +1,9 @@
 // Keeps stex-igor's copies of suite-owned files identical to their sources:
 //   packages/design-system (tracked files)  ->  stex-igor/vendor/design-system
 //   apps/pantheon/public/media/masthead      ->  stex-igor/apps/igor/public/media/masthead
+//   apps/pantheon/public/media/splash        ->  stex-igor/apps/igor/public/media/splash
+//   apps/pantheon/public/{splash.css,motion.js} -> stex-igor/apps/igor/public/splash
+//     (hosted Igor's sign-in page is the Pantheon splash)
 // stex-suite is the source of truth. `--check` fails on any difference, missing,
 // or extra file (part of `corepack pnpm test`); without it, the copies are
 // rewritten and must then be committed in stex-igor.
@@ -20,6 +23,8 @@ const textExtensions = new Set(['.css', '.md', '.json', '.svg', '.txt', '.mjs', 
 const pairs = [
   { source: 'packages/design-system', target: 'stex-igor/vendor/design-system', files: () => tracked('packages/design-system') },
   { source: 'apps/pantheon/public/media/masthead', target: 'stex-igor/apps/igor/public/media/masthead', files: () => tracked('apps/pantheon/public/media/masthead') },
+  { source: 'apps/pantheon/public/media/splash', target: 'stex-igor/apps/igor/public/media/splash', files: () => tracked('apps/pantheon/public/media/splash') },
+  { source: 'apps/pantheon/public', target: 'stex-igor/apps/igor/public/splash', files: () => ['splash.css', 'motion.js'] },
 ];
 
 function tracked(directory) {

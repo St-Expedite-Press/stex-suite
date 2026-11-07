@@ -51,7 +51,7 @@ and authorization.
 | `apps/pantheon` | Pantheon shell, same-origin proxy, registry routes | `/` | 4300 | `test:pantheon` |
 | `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige`, `verify:frige` |
 | `apps/seaxneat` | **Seaxneat** — website workspaces, previews, revisions, UI | `/seaxneat/` | 4320 | `test:seaxneat`, `build:seaxneat` |
-| `stex-igor/apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor` |
+| `stex-igor/apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor`, `verify:igor-login` |
 | `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
 | `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
 | `stex-igor/services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
@@ -92,8 +92,10 @@ the Hermes roster, profiles, and runtime pin.
   submodule pointer in stex-suite. A push to stex-igor's `main` **deploys to
   the live VM** once its CI passes. That is publishing: it needs the owner's
   authorization.
-- **The design system and masthead media stay owned here.** After changing
-  `packages/design-system` or Pantheon's masthead media, run
+- **The design system, masthead, and splash stay owned here.** After changing
+  `packages/design-system`, Pantheon's masthead or splash media, or
+  `apps/pantheon/public/splash.css` or `motion.js` (hosted Igor's sign-in page
+  is the splash), run
   `corepack pnpm sync:stex-igor` and commit the copies inside stex-igor.
   `test:stex-igor-sync` fails while they differ.
 - **Contracts stay in `protocol/`.** stex-igor implements them, and Pantheon
