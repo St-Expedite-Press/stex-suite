@@ -6,6 +6,11 @@
    screens give the brand its own solid row. */
 
 .shell { min-height: 100svh; background: var(--stex-bg); }
+.platform-instrumental { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+.platform-instrumental > .masthead, .platform-instrumental > .tabs { flex: none; }
+.platform-compact .masthead-brand { position: static; padding: 8px 16px; font: 500 24px/1.2 var(--stex-font-display); }
+.platform-compact .stex-emblem { width: 28px; height: 28px; }
+.platform-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
 .skip-link { position: absolute; left: var(--stex-space-4); top: -48px; z-index: 2; padding: var(--stex-space-2) var(--stex-space-3); background: var(--stex-action); color: var(--stex-action-text); }
 .skip-link:focus { top: var(--stex-space-2); }
 

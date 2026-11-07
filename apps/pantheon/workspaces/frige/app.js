@@ -90,9 +90,9 @@ function renderNodes() {
 
 // What a conversation with each kind of scope is about, in the author's terms.
 function scopeSubject(scope) {
-  if (scope.kind === 'book') return { name: 'the whole book', short: 'Whole book', reach: 'Hermes can suggest changes to the table of contents and discuss any part of the book.' };
-  if (scope.kind === 'node') return { name: `“${scope.title}”`, short: scope.title, reach: 'Hermes can suggest changes to this page.' };
-  return { name: `the section “${scope.title}”`, short: scope.title, reach: `Hermes can suggest changes to the ${scope.nodeIds.length} piece${scope.nodeIds.length === 1 ? '' : 's'} in this section.` };
+  if (scope.kind === 'book') return { name: 'the whole book', short: 'Whole book', reach: 'Igor can suggest changes to the table of contents and discuss any part of the book.' };
+  if (scope.kind === 'node') return { name: `“${scope.title}”`, short: scope.title, reach: 'Igor can suggest changes to this page.' };
+  return { name: `the section “${scope.title}”`, short: scope.title, reach: `Igor can suggest changes to the ${scope.nodeIds.length} piece${scope.nodeIds.length === 1 ? '' : 's'} in this section.` };
 }
 
 // Keeps the reader at the bottom of the thread unless they have scrolled up to reread.
@@ -331,18 +331,18 @@ async function saveSource() {
 
 function sizeComposer() { const input = $('#message'); input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 220)}px`; }
 
-// The Hermes pill reports the gateway's own health: model, key and reachability.
-async function refreshHermes() {
+// The Igor pill reports the gateway's own health: model, key and reachability.
+async function refreshIgor() {
   const pill = $('#gateway-state');
   try {
     const health = await request('/api/inference/health');
-    const text = { ready: `Hermes · ${health.model}`, simulated: 'Hermes · simulated', unconfigured: 'Hermes not configured', 'key-rejected': 'Hermes key rejected', 'provider-unreachable': 'Hermes unreachable', 'gateway-unreachable': 'Gateway not running' }[health.state] || 'Hermes status unknown';
+    const text = { ready: `Igor · ${health.model}`, simulated: 'Igor · simulated', unconfigured: 'Igor not configured', 'key-rejected': 'Igor key rejected', 'provider-unreachable': 'Igor unreachable', 'gateway-unreachable': 'Gateway not running' }[health.state] || 'Igor status unknown';
     pill.textContent = text; pill.title = health.detail || ''; pill.className = `status-pill ${health.state === 'ready' ? 'available' : 'unavailable'}`;
-  } catch { pill.textContent = 'Hermes status unknown'; pill.className = 'status-pill unavailable'; }
+  } catch { pill.textContent = 'Igor status unknown'; pill.className = 'status-pill unavailable'; }
 }
 
 // Answering a choice or form is a turn: the store validates it against the prompt and
-// Hermes replies. Until Hermes has the answer it is kept as a draft, so a failure or a
+// Igor replies. Until Igor has the answer it is kept as a draft, so a failure or a
 // re-render leaves the form filled in and sendable again.
 async function sendAnswer(promptId, values) {
   const scope = state.scope; if (state.thinking) return;
@@ -352,7 +352,7 @@ async function sendAnswer(promptId, values) {
     state.drafts.delete(promptId);
   } catch (error) {
     state.notice = `Answer not sent: ${error.message}`;
-    if (error.status === 503) refreshHermes();
+    if (error.status === 503) refreshIgor();
   } finally {
     // Reload either way: a 409 means it was answered elsewhere, and the thread should show that.
     if (state.scope?.id === scope.id) [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
@@ -369,7 +369,7 @@ async function sendTurn(event) {
   state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString() }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
     const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
-    if (result.availability !== 'available') refreshHermes();
+    if (result.availability !== 'available') refreshIgor();
     if (state.scope?.id !== scope.id) return;
     [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
   } catch (error) {
@@ -447,7 +447,7 @@ async function refresh() {
 }
 
 async function bootstrap() {
-  if (!book) { location.replace(globalThis.STEX_SHELL_URL || '/'); return; }
+  if (!book) { location.replace('/frige/'); return; }
   const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
   Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
   const design = await request('/api/project/design');
@@ -457,10 +457,10 @@ async function bootstrap() {
   state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
-  renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshHermes();
+  renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor();
   $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign);
   $('#turn-form').addEventListener('submit', sendTurn);
-  const modelSettings = createModelSettings({ request, onSaved: refreshHermes });
+  const modelSettings = createModelSettings({ request, onSaved: refreshIgor });
   $('#configure-models').addEventListener('click', () => { $('#settings-menu').open = false; modelSettings.open(); });
   document.addEventListener('click', (event) => { if (!$('#settings-menu').contains(event.target)) $('#settings-menu').open = false; });
   // Enter sends; Shift+Enter starts a new line; the box grows with its text.
@@ -477,5 +477,8 @@ async function bootstrap() {
 bootstrap().catch((error) => {
   // The server reads these files fresh from disk, so a server started before an update serves a page it cannot answer.
   const stale = error.message === 'Unknown API route.';
-  document.body.textContent = stale ? `Frige could not start: this page is newer than the Frige server at ${location.host}. Stop that server and start it again (corepack pnpm dev:frige), then reload.` : `Frige could not start: ${error.message}`;
+  document.querySelector('main').textContent = stale ? `Frige could not start: this page is newer than the Frige server at ${location.host}. Stop that server and start it again (corepack pnpm dev:frige), then reload.` : `Frige could not start: ${error.message}`;
 });
+
+// Global platform navigation must not discard an unsaved manuscript draft.
+addEventListener('beforeunload', (event) => { if (state.sourceDirty) { event.preventDefault(); event.returnValue = ''; } });

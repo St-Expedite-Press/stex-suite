@@ -49,7 +49,7 @@ function navigation(active) {
   return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul><button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
-export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon' }) {
+export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main' }) {
   const pageScripts = ['/shell.js', ...scripts].map((src) => `<script type="module" src="${src}"></script>`).join('');
   return `<!doctype html>
 <html lang="en" data-stex-app="${escape(app)}">
@@ -64,11 +64,11 @@ export function shell({ active, title, body, scripts = [], styles = [], app = 'p
   ${styles.map((href) => `<link rel="stylesheet" href="${escape(href)}">`).join('')}
   ${pageScripts}
 </head>
-<body class="shell">
-  <a class="skip-link" href="#main">Skip to content</a>
-  ${masthead}
+<body class="shell${instrumental ? ' platform-instrumental' : ''}">
+  <a class="skip-link" href="#${escape(skipTarget)}">Skip to content</a>
+  ${instrumental ? '<header class="masthead platform-compact"><a class="masthead-brand" href="/home/"><span class="stex-emblem" aria-hidden="true"></span><span>Pantheon</span></a></header>' : masthead}
   ${navigation(active)}
-  <main class="page" id="main">
+  <main class="${escape(contentClass)}" id="main">
 ${body}
   </main>
 </body>
@@ -79,6 +79,14 @@ export function developmentPage() {
   return shell({ active: 'studios', title: 'Website workspace', app: 'seaxneat',
     scripts: ['/workspace-assets/seaxneat.js'], styles: ['/workspace-assets/seaxneat.css'],
     body: '<div id="development-workspace"></div><noscript><p>The website workspace needs JavaScript to operate the Seaxneat engine.</p></noscript>',
+  });
+}
+
+export function publishingPage(fragment, workstation = false) {
+  return shell({ active: 'studios', title: workstation ? 'Publishing workspace' : 'Book projects', app: 'frige',
+    instrumental: workstation, contentClass: workstation ? 'platform-workspace frige-workstation' : 'page frige-lobby', skipTarget: workstation ? 'conversation' : 'main',
+    scripts: workstation ? ['/frige/workspace.js', '/frige/app.js'] : ['/frige/lobby.js'],
+    styles: [workstation ? '/frige/style.css' : '/frige/lobby.css'], body: fragment,
   });
 }
 

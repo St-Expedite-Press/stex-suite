@@ -87,10 +87,16 @@ suites and full deterministic suite; TypeScript/production build; disposable
 browser create/edit/diff/restore/preview workflow; failed-build and stale
 proposal evidence; sandbox negative check; no protected manuscript changes.
 
-P0 and P1 are the current delivery increment. The following stages describe
-the remaining transition rather than pretending the entire vision is done.
+P0 and P1 are accepted increments, not the endpoint of the owner's goal.
+Continue through P2, P3 and the bounded P4 knowledge foundation, updating
+acceptance evidence as each stage works. The active applications remain Frige,
+Seaxneat and Igor; Ēostre/Woden and speculative plug-in infrastructure stay
+deferred. The full goal is incomplete while required transition stages remain
+planned or unverified.
 
 ### P2 — publishing presentation
+
+Implemented and tested: [P2 evidence](verification/platform-transition-p2.md).
 
 Migrate Frige's existing library and manuscript workstation into Pantheon
 presentation ownership through a versioned publishing API. Keep the current

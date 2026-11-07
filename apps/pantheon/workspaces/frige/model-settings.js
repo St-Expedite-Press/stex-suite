@@ -20,7 +20,7 @@ const context = (model) => (model?.contextLength ? `${Math.round(model.contextLe
 export function createModelSettings({ request, onSaved }) {
   const dialog = element('dialog', 'model-settings');
   dialog.setAttribute('aria-labelledby', 'model-settings-title');
-  document.body.append(dialog);
+  document.querySelector('.frige-workstation').append(dialog);
   let draft = null; let catalog = { available: false, models: [] }; let byId = new Map(); let errors = []; let status = ''; let saving = false;
 
   function modelRow(role, model, index) {

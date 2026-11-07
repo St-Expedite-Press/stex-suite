@@ -15,10 +15,10 @@ is what releases to production. The full ownership matrix is in
 [the D1 report](docs/verification/stex-deployment-d1.md#3-ownership).
 
 
-Pantheon owns shared presentation, composes Seaxneat's website workspace, routes
+Pantheon owns shared presentation, composes publishing and website workspaces, routes
 local HTTP, and reads the versioned application registry. Each engine owns its
-canonical data and workflow state. Frige and Igor retain transitional
-frontends; [the transition plan](docs/PLATFORM-TRANSITION.md) defines their
+canonical data and workflow state. Igor retains its transitional
+frontend; [the transition plan](docs/PLATFORM-TRANSITION.md) defines its
 migration gates. No product
 imports another product's private storage as an integration shortcut.
 
@@ -34,7 +34,7 @@ read-only adapter; applications continue to work without it.
 
 ```
 apps/pantheon   common web environment and workspace presentation
-apps/frige      publishing and typesetting
+apps/frige      publishing engine; UI in apps/pantheon/workspaces/frige
 apps/seaxneat   website engine; UI in apps/pantheon/workspaces/seaxneat
 apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain

@@ -20,6 +20,9 @@ preferences are honoured per component; the design system applies no global
 motion override, so proof viewers, editors, and canvases keep their own. Frige
 adopted the system in D4 (tokens, Dusty Garnet accent, masthead, responsive
 workstation; see the [D4 report](verification/frige-d4-design-system.md)).
+P2 moves that mature workstation and library into Pantheon, retaining the
+editor/proof controls while using a shared compact instrumental header and
+global navigation. See [P2 evidence](verification/platform-transition-p2.md).
 Seaxneat's presentation now lives in Pantheon and uses shared role tokens,
 Azurite, and the common shell at `/workspaces/seaxneat/`; its former light
 frontend is removed. See [P1 evidence](verification/platform-transition-p1.md)

@@ -8,7 +8,8 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
-| Platform transition P0/P1 | [P1 report](platform-transition-p1.md) | First composed workspace; Frige/Igor presentation and knowledge projections remain staged |
+| Platform transition P0/P1 | [P1 report](platform-transition-p1.md) | First composed workspace; subsequent publishing evidence is in P2 below; Igor/knowledge remain staged |
+| Platform publishing P2 | [P2 report](platform-transition-p2.md) | Mature Frige UI composed in Pantheon; real PDF and stub inference, Chrome only |
 | Hermes / Igor H1 | [H1 preparation](hermes-h1-preparation.md) | Direct runtime evidence; later I1/I2 reports establish bounded Igor integration/hosting, not Frige remote behavior |
 | Pantheon consolidation | [Consolidation report](pantheon-consolidation-report.md) | Fake inference and local workflows only |
 | Frige design system (D4) | [D4 report](frige-d4-design-system.md) | Chrome only; conversation cards and a typeset proof not rendered in the browser |

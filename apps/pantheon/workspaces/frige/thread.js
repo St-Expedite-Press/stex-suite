@@ -1,4 +1,4 @@
-// The conversation thread: Hermes's replies as typed parts (prose, artifact cards,
+// The conversation thread: Igor's replies as typed parts (prose, artifact cards,
 // choices and forms), the changes it suggests shown inside the reply that made them,
 // and the author's answers. Everything is built from text nodes, so nothing a model
 // writes is ever parsed as HTML.
@@ -107,7 +107,7 @@ function artifactCard(part, artifactUrl) {
 }
 
 // A choice or form; once answered it shows the answer and can no longer be sent. An
-// unsent draft refills it after a re-render, and it cannot be sent while Hermes replies.
+// unsent draft refills it after a re-render, and it cannot be sent while Igor replies.
 function promptCard(part, answer, onAnswer, draft, busy) {
   const shown = answer || draft;
   const form = element('form', `prompt prompt-${part.type}${answer ? ' answered' : ''}`);
@@ -162,7 +162,7 @@ function message(turn, { changeSet, answers, drafts, busy, onDecide, onAnswer, a
   }
   const fromUser = turn.role === 'user';
   const item = element('article', `msg ${fromUser ? 'from-user' : 'from-hermes'}${turn.kind === 'answer' ? ' is-answer' : ''}${turn.availability && turn.availability !== 'available' ? ' failed' : ''}`);
-  const label = fromUser ? (turn.kind === 'answer' ? 'You · answer' : 'You') : `Hermes${turn.meta?.model ? ` · ${turn.meta.model}` : ''}`;
+  const label = fromUser ? (turn.kind === 'answer' ? 'You · answer' : 'You') : `Igor${turn.meta?.model ? ` · ${turn.meta.model}` : ''}`;
   const meta = element('div', 'msg-meta', `${label}${turn.at ? ` · ${time(turn.at)}` : ''}`);
   if (turn.meta?.skipped?.length) meta.append(element('span', 'msg-fallback', ` · ${turn.meta.skipped.join(', ')} unavailable`));
   item.append(meta);
@@ -201,7 +201,7 @@ export function renderThread(box, { turns, thinking, notice, changeSet, empty, d
   const items = turns.map((turn) => message(turn, { changeSet, answers, drafts, busy: thinking, onDecide, onAnswer, artifactUrl }));
   // Pending changes whose reply is no longer in view still need a decision.
   if (changeSet?.changes.some((change) => change.status === 'pending') && !turns.some((turn) => turn.changeSetId === changeSet.id)) items.push(changeCards(changeSet, onDecide));
-  if (thinking) { const typing = element('article', 'msg from-hermes thinking'); typing.append(element('div', 'msg-meta', 'Hermes'), element('div', 'typing', '')); typing.lastChild.append(element('i'), element('i'), element('i')); items.push(typing); }
+  if (thinking) { const typing = element('article', 'msg from-hermes thinking'); typing.append(element('div', 'msg-meta', 'Igor'), element('div', 'typing', '')); typing.lastChild.append(element('i'), element('i'), element('i')); items.push(typing); }
   if (notice) items.push(element('div', 'msg from-system notice', notice));
   box.replaceChildren(...items);
   return items.at(-1);

@@ -16,8 +16,9 @@ implemented and tested behavior from specified or planned work.
 Pantheon owns common presentation, navigation, workspace composition, and the
 display of engine results. The first composed workspace is Seaxneat's website
 development surface, implemented in Pantheon and backed by a versioned engine
-API. Frige and Igor retain their existing frontends during incremental
-migration. They have not yet become fully composed platform workspaces.
+API. Frige's existing library and mature manuscript workstation also live in
+Pantheon and use an additive publishing v1 engine boundary. Igor's conversation
+surface remains the next composition stage.
 
 Frige owns manuscripts, source revisions, editorial acceptance, typography,
 LuaLaTeX proofs, and preflight. Seaxneat owns website workspaces, Git history,

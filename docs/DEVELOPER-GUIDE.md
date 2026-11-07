@@ -42,8 +42,10 @@ separate owner authorization.
 Follow [the ordered plan](PLATFORM-TRANSITION.md). Pantheon owns the common
 shell and `apps/pantheon/workspaces/seaxneat` presentation; Seaxneat owns
 workspace state and operations through
-[`stex.seaxneat.workspace.v1`](../protocol/seaxneat/README.md). Frige and Igor
-retain transitional frontends. Do not relocate canonical state to Pantheon.
+[`stex.seaxneat.workspace.v1`](../protocol/seaxneat/README.md). Publishing UI
+lives in `apps/pantheon/workspaces/frige` and consumes
+[`stex.frige.publishing.v1`](../protocol/frige/README.md#publishing-v1).
+Igor's conversation composition is next. Do not relocate canonical state to Pantheon.
 The legacy `/api/books` API now proxies a
 [Frige-owned boundary](../protocol/frige/README.md).
 

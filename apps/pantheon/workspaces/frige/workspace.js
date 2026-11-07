@@ -10,7 +10,7 @@ const scrim = document.querySelector('.drawer-scrim');
 const buttons = [...document.querySelectorAll('.workspace-views [data-view]')];
 const contents = buttons.find((button) => button.dataset.view === 'contents');
 // The panes the open drawer covers; inert keeps Tab and screen readers in the drawer.
-const covered = [...document.querySelectorAll('.conversation, .preview')];
+const covered = [...document.querySelectorAll('.skip-link, .masthead, .tabs, .publishing-toolbar, .workspace-views, .conversation, .preview')];
 const phone = matchMedia('(max-width: 639.98px)');
 const tablet = matchMedia('(min-width: 640px) and (max-width: 1023.98px)');
 
@@ -44,6 +44,12 @@ for (const button of buttons) {
 scrim.addEventListener('click', () => setDrawer(false, { restoreFocus: true }));
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && shell.dataset.drawer === 'open') setDrawer(false, { restoreFocus: true });
+  if (event.key === 'Tab' && shell.dataset.drawer === 'open') {
+    const controls = [...navigatorPane.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')].filter((node) => !node.disabled && node.getClientRects().length);
+    const first = controls[0]; const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
 });
 // Choosing a piece, section, or the whole book moves on to it: the drawer
 // closes, and a phone shows the editor.

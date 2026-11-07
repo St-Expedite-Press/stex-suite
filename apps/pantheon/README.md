@@ -3,8 +3,8 @@
 The common STEX web environment: public splash, command center, workspace
 presentation, and same-origin engine proxies. Pantheon owns no engine state.
 The [transition plan](../../docs/PLATFORM-TRANSITION.md) defines the staged
-destination; Seaxneat is the first composed workspace, while Frige and Igor
-retain transitional frontends.
+destination. Seaxneat and Frige have platform-owned workspaces; Igor's
+conversation composition follows next.
 
 | Route | Behaviour |
 | --- | --- |
@@ -14,7 +14,7 @@ retain transitional frontends.
 | `/studios/` | The four studios with their registered state and project counts |
 | `/graph/`, `/activity/` | Honest "not built yet" pages |
 | `/home`, `/projects`, … | `308` to the trailing-slash route |
-| `/frige/` | Proxied to the existing Frige frontend and engine on loopback |
+| `/frige/` | Platform-owned publishing library, or workstation for `?book=…`; `/frige/api/…` proxies the engine |
 | `/workspaces/seaxneat/` | Pantheon-owned website workspace, using the versioned Seaxneat API |
 | `/seaxneat/` | `308` to `/workspaces/seaxneat/`; query preserved; `/seaxneat/api/…` remains the engine proxy |
 | `/igor/` | Proxied to the Igor application ([apps/igor](../../stex-igor/apps/igor/README.md)) on loopback |

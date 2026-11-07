@@ -5,11 +5,17 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage } from './src/pages.mjs';
+import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage } from './src/pages.mjs';
 import { isLoopbackHost, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
+const publishingDirectory = path.join(directory, 'workspaces', 'frige');
+const publishingTemplates = {
+  library: await readFile(path.join(publishingDirectory, 'lobby.html'), 'utf8'),
+  workstation: await readFile(path.join(publishingDirectory, 'index.html'), 'utf8'),
+};
+const publishingAssets = new Set(['app.js', 'base-path.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'model-settings.js', 'proof-viewer.js', 'style.css', 'thread.js', 'workspace.js']);
 const port = Number(process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || 4300);
 const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v2.json');
 let applications = shellApplications;
@@ -74,6 +80,14 @@ http.createServer(async (request, response) => {
   if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
+    if (url.pathname === '/frige') { response.writeHead(308, { location: `/frige/${url.search}` }); response.end(); return; }
+    if (url.pathname === '/frige/' && ['GET', 'HEAD'].includes(request.method)) {
+      const workstation = Boolean(url.searchParams.get('book') || url.searchParams.get('project'));
+      return sendPage(response, publishingPage(publishingTemplates[workstation ? 'workstation' : 'library'], workstation));
+    }
+    if (url.pathname.startsWith('/frige/') && publishingAssets.has(url.pathname.slice('/frige/'.length))) {
+      return await staticFile(request, response, path.join(publishingDirectory, url.pathname.slice('/frige/'.length)));
+    }
     if (url.pathname === '/seaxneat' || url.pathname === '/seaxneat/' || url.pathname === '/workspaces/seaxneat') {
       response.writeHead(308, { location: `/workspaces/seaxneat/${url.search}` }); response.end(); return;
     }

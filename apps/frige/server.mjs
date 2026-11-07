@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { legacyBooksApi } from './src/legacy-books.mjs';
+import { publishingRoute } from './src/publishing-contract.mjs';
 import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
@@ -393,6 +394,14 @@ http.createServer(async (request, response) => {
       if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
+    if (url.pathname === '/api/stex/publishing/v1' || url.pathname.startsWith('/api/stex/publishing/v1/')) {
+      const suffix = url.pathname.slice('/api/stex/publishing/v1'.length);
+      const methods = publishingRoute(suffix);
+      if (!methods) return json(response, 404, { error: 'Unknown publishing v1 route.' });
+      if (!methods.includes(request.method)) { response.setHeader('allow', methods.join(', ')); return json(response, 405, { error: 'Method not allowed.' }); }
+      response.setHeader('x-stex-contract', 'stex.frige.publishing.v1');
+      url.pathname = `/api${suffix}`;
+    }
     if (/^\/api\/stex\/legacy-books\/v1(?:\/|$)/.test(url.pathname)) return await legacyBooks(request, response, url);
     // Suite settings belong to the gateway, not to a book.
     const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
@@ -416,7 +425,11 @@ http.createServer(async (request, response) => {
     }
     const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
     if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
-    const requested = url.pathname === '/' && !url.searchParams.get('book') && !url.searchParams.get('project') ? '/lobby.html' : url.pathname === '/' ? '/index.html' : url.pathname;
+    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/lobby.html') {
+      const target = new URL('/frige/', platformOrigin); target.search = url.search;
+      response.writeHead(308, { location: target.href }); response.end(); return;
+    }
+    const requested = url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);

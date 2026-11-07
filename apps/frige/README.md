@@ -1,11 +1,11 @@
 # Frige
 
-Frige is STEX Pantheon's local publishing and typesetting application. It is
+Frige is STEX Pantheon's local publishing and typesetting engine. It is
 available at `/frige/`; `/texgraph/` remains a route compatibility redirect.
 Frige is the publishing capability engine in the
-[platform transition](../../docs/PLATFORM-TRANSITION.md). Its current frontend
-remains transitional until the P2 publishing presentation gate is accepted;
-manuscript and proof authority stays in Frige throughout.
+[platform transition](../../docs/PLATFORM-TRANSITION.md). Pantheon owns its
+library and workstation presentation at `apps/pantheon/workspaces/frige`;
+manuscript and proof authority stays in this engine.
 Never use a real manuscript as a test fixture or alter
 `books/*/manuscript/` for layout convenience.
 
@@ -19,15 +19,17 @@ From the repository root:
 
 ```powershell
 corepack pnpm install
-corepack pnpm dev:frige
+corepack pnpm dev:alpha
 ```
 
 `pdfjs-dist` (pinned) supplies the proof viewer; the server exposes only its
 two browser files under `/vendor/pdfjs/`. Without it, the Studio falls back to
 the browser's own PDF viewer.
 
-Then open <http://127.0.0.1:4310>. LuaLaTeX must be installed and available on
-`PATH` to build a preview. The app binds to loopback only.
+Open <http://127.0.0.1:4300/frige/>. The engine's direct UI entry on port 4310
+redirects there; Pantheon must run for the interface. `dev:frige` still starts
+the engine alone for API work. LuaLaTeX must be installed and available on
+`PATH` to build a proof. Both servers bind to loopback only.
 
 The first launch creates an ignored local book at `apps/frige/.local-book`.
 Set `STEX_FRIGE_PROJECT_DIR` to use another local project directory, or
@@ -46,7 +48,10 @@ project lists. Its `updatedAt` is the newest file modification time in the
 book, excluding Frige's private `.texgraph` and `.obsidian` folders. It reads
 file metadata only and never opens a manuscript.
 
-## Current contract
+## One-page compatibility contract
+
+The primary platform library opens Markdown manuscript books (below). The
+engine also retains its older one-page local-book format:
 
 - `book.json` and `pages/*.tex` are the canonical local book and page source.
 - `.texgraph/` holds conversation JSONL, pending/accepted proposal records,
@@ -171,20 +176,20 @@ The single-page local book (`book.json`) still uses `page-turn` v1.
 
 ## Interface
 
-Frige uses the shared design system (`@stex/design-system`, a workspace
-dependency) with `data-stex-app="frige"` and the Dusty Garnet accent. The
-server exposes only the package's `src`, `fonts`, `brand`, and `icons`
-folders under `/design-system/`, and serves its own byte-identical copies of
-the masthead media and emblem from `public/media/` (recorded in
-`assets/manifest.json` with `copyOf`); it never reads Pantheon's files.
+Pantheon renders the existing publishing library and workstation with the
+shared design system and Dusty Garnet accent. The common platform header and
+navigation replace duplicate Frige mastheads; the workstation uses a compact
+header. The engine serves no UI code and never reads Pantheon's files. Its
+design-system, media copies and PDF.js resources remain available for
+compatibility. The platform consumes
+[`stex.frige.publishing.v1`](../../protocol/frige/README.md#publishing-v1).
 
-- The project library has the full masthead; the workstation a compact
-  88 px one. Both follow Pantheon's motion policy: the
-  `stex.pantheon.motion` preference, reduced motion, and Save-Data keep the
-  still, and the pause/play control is always present. Mounted under
-  Pantheon, a "‹ Pantheon" link returns to `/home/`.
+- The project library uses the common motion policy; the instrumental
+  workstation omits artwork. Global navigation and Book projects remain
+  available. Unsaved Markdown triggers the native leave-page protection.
 - The workstation keeps three columns at 1024 px and wider. From 640 to
-  1023 px the contents tree becomes a drawer (Escape closes it); below 640 px
+  1023 px the contents tree becomes a drawer (Tab stays inside, Escape closes
+  it and restores focus); below 640 px
   one view shows at a time (Contents, Editor, Proof). Layout state is
   presentation only and never changes a book.
 - Interface fonts and colours never reach book output: proof pages stay white
@@ -196,10 +201,13 @@ the masthead media and emblem from `public/media/` (recorded in
 Push-Location apps/frige
 corepack pnpm test
 Pop-Location
-corepack pnpm verify:frige   # Chrome: library and workstation at 5 widths, standalone and mounted
+corepack pnpm verify:frige   # Chrome: platform create/save/stale-save/accept/proof/profile, 5 widths
 ```
 
-The proof test compiles a synthetic book with LuaLaTeX and is skipped when
-`lualatex` is not on `PATH`. `verify:frige` starts its own servers on spare
-ports with a disposable synthetic book and an inference address nothing
-listens on, and saves screenshots (`--out <directory>`).
+Proof tests compile synthetic books with LuaLaTeX and skip when it is absent.
+`verify:frige` requires LuaLaTeX for its real PDF evidence. It starts Pantheon,
+Frige and a labelled local inference stub with disposable books. It covers
+creation, Unicode/indentation-preserving save, stale-write refusal, visible
+proposal/explicit acceptance, rendered compiler-mapped PDF, profile freshness,
+model-settings styling, keyboard focus, tablet drawer and five widths. It
+saves screenshots/report outside the repository (`--out <directory>`).

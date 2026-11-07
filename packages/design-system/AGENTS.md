@@ -116,9 +116,11 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
 - Pantheon progressively owns workspace presentation while engines own state
   and validation. Seaxneat's UI lives in `apps/pantheon/workspaces/seaxneat`
   and uses the common shell at `/workspaces/seaxneat/`; its engine owns Git,
-  proposals, builds and preview lifecycle. Frige and Igor retain transitional
-  frontends until [their migration gates](https://github.com/St-Expedite-Press/stex-suite/blob/feat/pantheon-platform-p1/docs/PLATFORM-TRANSITION.md)
-  pass. Generated preview documents remain sandboxed outside the trusted UI.
+  proposals, builds and preview lifecycle. Frige's library/workstation now live
+  in `apps/pantheon/workspaces/frige`, with the shared header and navigation;
+  the instrumental view uses a compact header. Igor's composition follows
+  [its migration gate](https://github.com/St-Expedite-Press/stex-suite/blob/feat/pantheon-platform-p1/docs/PLATFORM-TRANSITION.md).
+  Generated preview documents remain sandboxed outside the trusted UI.
 
 ## 7. Artwork
 

@@ -1,49 +1,8 @@
-<!doctype html>
-<html lang="en" data-stex-app="frige">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Frige Studio</title>
-    <meta name="theme-color" content="#0B1518">
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./design-system/src/stex.css">
-    <link rel="stylesheet" href="./masthead.css">
-    <link rel="stylesheet" href="./style.css">
-  </head>
-  <body class="frige-workstation">
-    <a class="skip-link" href="#conversation">Skip to the workspace</a>
-    <header class="masthead masthead--compact">
-      <div class="masthead-art" aria-hidden="true">
-        <picture>
-          <source media="(max-width: 899px)" srcset="./media/masthead/pantheon-masthead-still-960w.webp">
-          <img class="masthead-still" alt="" width="1920" height="288" fetchpriority="high" decoding="async" src="./media/masthead/pantheon-masthead-still-1920w.webp" srcset="./media/masthead/pantheon-masthead-still-1280w.webp 1280w, ./media/masthead/pantheon-masthead-still-1920w.webp 1920w" sizes="100vw">
-        </picture>
-        <video class="masthead-motion" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback tabindex="-1">
-          <!-- Codec strings are the encoded profile and level recorded for P11 in assets/manifest.json. -->
-          <source media="(max-width: 899px)" src="./media/masthead/pantheon-masthead-loop-960w.webm" type='video/webm; codecs="av01.0.01M.10"'>
-          <source media="(max-width: 899px)" src="./media/masthead/pantheon-masthead-loop-960w.mp4" type='video/mp4; codecs="avc1.64001E"'>
-          <source media="(max-width: 1279px)" src="./media/masthead/pantheon-masthead-loop-1280w.webm" type='video/webm; codecs="av01.0.01M.10"'>
-          <source media="(max-width: 1279px)" src="./media/masthead/pantheon-masthead-loop-1280w.mp4" type='video/mp4; codecs="avc1.64001E"'>
-          <source src="./media/masthead/pantheon-masthead-loop-1920w.webm" type='video/webm; codecs="av01.0.04M.10"'>
-          <source src="./media/masthead/pantheon-masthead-loop-1920w.mp4" type='video/mp4; codecs="avc1.64001F"'>
-        </video>
-      </div>
-      <div class="masthead-start">
-        <a class="masthead-brand" href="./" title="All book projects">
-          <img class="masthead-emblem" alt="" width="194" height="65" src="./media/studios/frige-emblem-194w.webp" srcset="./media/studios/frige-emblem-194w.webp 1x, ./media/studios/frige-emblem-388w.webp 2x">
-          <span class="stex-wordmark masthead-wordmark"><span class="stex-wordmark__org"><abbr title="St. Expedite Press">STEX</abbr></span> <span class="stex-wordmark__name">Frige</span></span>
-        </a>
-        <a class="back-link" href="/home/" data-shell-link hidden><span aria-hidden="true">‹</span> Pantheon</a>
-      </div>
-      <div class="masthead-end">
-        <button class="motion-toggle" type="button" hidden><span class="motion-verb">Pause</span> <span class="motion-noun">motion</span></button>
-        <details id="settings-menu" class="settings-menu"><summary>Settings</summary><div class="settings-items" role="menu"><button id="configure-models" type="button" role="menuitem">Configure models</button></div></details>
-      </div>
-    </header>
+<div class="publishing-toolbar"><p>Frige &middot; Publishing</p><a class="quiet-button" href="/frige/">Book projects</a><details id="settings-menu" class="settings-menu"><summary>Settings</summary><div class="settings-items" role="menu"><button id="configure-models" type="button" role="menuitem">Configure models</button></div></details></div>
     <nav class="workspace-views" aria-label="Workspace views">
       <button type="button" data-view="contents" aria-controls="navigator">Contents</button><button type="button" data-view="editor" aria-controls="conversation">Editor</button><button type="button" data-view="proof" aria-controls="preview">Proof</button>
     </nav>
-    <main class="studio-shell" data-view="editor">
+    <div class="studio-shell" data-view="editor">
       <aside id="navigator" class="navigator" aria-label="Manuscript graph">
         <section class="book-card"><p class="eyebrow">Book</p><h1 id="book-title">Loading…</h1></section>
         <div class="navigator-toolbar"><button id="refresh" class="quiet-button" type="button">Refresh vault</button><span id="diagnostics"></span></div>
@@ -51,7 +10,7 @@
       </aside>
       <div class="drawer-scrim" hidden></div>
       <section id="conversation" class="conversation" aria-label="Conversation and Markdown editor">
-        <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Hermes</span></header>
+        <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Igor</span></header>
         <div class="view-switch" role="tablist" aria-label="Conversation or source"><button id="show-thread" type="button" role="tab" aria-selected="true">Conversation</button><button id="show-source" type="button" role="tab" aria-selected="false">Source</button></div>
         <section id="source-panel" class="source-panel hidden" aria-label="Markdown source"><div class="source-meta"><span id="source-label">Canonical Markdown</span><span id="source-hash"></span></div><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source"></textarea><div class="source-actions"><span id="save-state"></span><span class="source-buttons"><button id="node-pages" type="button" class="quiet-button hidden"></button><button id="save-source" type="button" class="quiet-button">Save Markdown</button></span></div></section>
         <div id="turns" class="thread" aria-live="polite"></div>
@@ -72,10 +31,4 @@
         <details id="build-log-section" class="build-log-section"><summary class="log-heading"><span>Build log</span><span id="build-state">Not built</span></summary><pre id="build-log"></pre></details>
       </section>
       <footer id="production-status" class="production-status" aria-label="Production status" aria-live="polite"></footer>
-    </main>
-    <script src="./runtime-config.js"></script>
-    <script type="module" src="./masthead.js"></script>
-    <script type="module" src="./workspace.js"></script>
-    <script type="module" src="./app.js"></script>
-  </body>
-</html>
+    </div>

@@ -1,3 +1,4 @@
+import { appUrl } from './base-path.js';
 const projects = document.querySelector('#projects');
 const createForm = document.querySelector('#create-project');
 const createState = document.querySelector('#create-state');
@@ -15,7 +16,7 @@ function card(project) {
 }
 
 async function load() {
-  const response = await fetch('./api/books', { headers: { accept: 'application/json' } });
+  const response = await fetch(appUrl('/api/books'), { headers: { accept: 'application/json' } });
   const list = await response.json();
   if (!response.ok) throw new Error(list.error || 'The local project list could not be loaded.');
   const rows = Object.assign(document.createElement('ul'), { className: 'project-list' }); rows.append(...list.map(card));
@@ -28,7 +29,7 @@ createForm.addEventListener('submit', async (event) => {
   button.disabled = true; createState.textContent = 'Creating local book project…';
   try {
     const data = new FormData(createForm);
-    const response = await fetch('./api/books', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: data.get('title'), author: data.get('author') }) });
+    const response = await fetch(appUrl('/api/books'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: data.get('title'), author: data.get('author') }) });
     const project = await response.json();
     if (!response.ok) throw new Error(project.error || 'Project creation failed.');
     location.assign(`./?book=${encodeURIComponent(project.id)}`);

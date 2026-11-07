@@ -7,8 +7,16 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { localProxyTarget, mountedApplication, validateRegistry } from '../src/shell.mjs';
+import { appBase, appUrl } from '../workspaces/frige/base-path.js';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+test('publishing UI resolves versioned APIs without changing proof resources or mount selection', () => {
+  assert.equal(appBase('http://127.0.0.1:4300/frige/?book=fixture'), '/frige');
+  assert.equal(appUrl('/api/project/graph', 'http://127.0.0.1:4300/frige/'), '/frige/api/stex/publishing/v1/project/graph');
+  assert.equal(appUrl('/vendor/pdfjs/pdf.min.mjs', 'http://127.0.0.1:4300/frige/'), '/frige/vendor/pdfjs/pdf.min.mjs');
+  assert.throws(() => appUrl('api/project/graph'), /start with/);
+});
 
 async function startPantheon(root, port, context, environment = {}) {
   const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_PANTHEON_PORT: String(port), STEX_FRIGE_BOOKS_DIR: root, ...environment } });
@@ -75,6 +83,24 @@ test('routes compatibility aliases, deferred applications, and mounted loopback 
   assert.match(composed, /workspace-assets\/seaxneat.js/);
   const unsafe = await fetch('http://127.0.0.1:4400/frige/%2e%2e/secret');
   assert.equal(unsafe.status, 404);
+});
+
+test('owns the publishing library and workstation inside the platform shell even when the engine is unavailable', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-platform-publishing-'));
+  await startPantheon(root, 4493, context, { STEX_FRIGE_URL: 'http://127.0.0.1:4494' });
+  const base = 'http://127.0.0.1:4493';
+  const library = await (await fetch(base + '/frige/')).text();
+  const workspace = await (await fetch(base + '/frige/?book=fixture')).text();
+  for (const html of [library, workspace]) {
+    assert.match(html, /aria-label="Pantheon"/);
+    assert.equal((html.match(/<main /g) || []).length, 1);
+    assert.equal((html.match(/<header class="masthead/g) || []).length, 1);
+    assert.doesNotMatch(html, /masthead--full|masthead--compact|src=".*masthead\.js"/);
+  }
+  assert.match(library, /Book projects/); assert.match(workspace, /id="source"/); assert.match(workspace, /id="proof-viewer"/);
+  for (const asset of ['app.js', 'base-path.js', 'lobby.js', 'style.css', 'proof-viewer.js', 'thread.js', 'workspace.js']) assert.equal((await fetch(base + '/frige/' + asset)).status, 200);
+  const api = await fetch(base + '/frige/api/stex/publishing/v1/project/graph?book=fixture');
+  assert.equal(api.status, 502);
 });
 
 test('serves the public splash with a real local entry and no counterfeit authentication', async (context) => {
@@ -286,4 +312,15 @@ test('accepts an interview ticket and creates a structured project vault', async
   const manifest = await fetch(`http://127.0.0.1:4398/api/books/${book.id}/documents`);
   assert.equal((await manifest.json()).length, 1);
   await assert.rejects(() => fetch(`http://127.0.0.1:4398/api/books/${book.id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ documents: [{ name: '../../bad.md', contentBase64: 'eA==' }] }) }).then((result) => { if (!result.ok) throw new Error('Rejected unsafe filename.'); }), /Rejected unsafe filename/);
+});
+
+test('reviews a proposed change as a line diff that collapses distant unchanged lines', async () => {
+  const { lineDiff } = await import('../workspaces/frige/line-diff.js');
+  const before = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'old line', 'f'].join('\n');
+  const after = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'new line', 'f', 'added'].join('\n');
+  assert.deepEqual(lineDiff(before, after), [
+    { type: 'skip', count: 4 }, { type: 'same', text: 'd' }, { type: 'same', text: 'e' },
+    { type: 'del', text: 'old line' }, { type: 'add', text: 'new line' }, { type: 'same', text: 'f' }, { type: 'add', text: 'added' },
+  ]);
+  assert.deepEqual(lineDiff('same', 'same'), [{ type: 'skip', count: 1 }]);
 });

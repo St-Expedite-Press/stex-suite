@@ -5,13 +5,13 @@
    Dusty Garnet marks identity, selection, and focus only; operational states
    use the shared status colours and always say what they are in words.
    Proof pages stay paper-white: the PDF is never recoloured, and interface
-   fonts never reach book output. The masthead is in masthead.css. */
+   fonts never reach book output. Pantheon owns the shared header and navigation. */
 
 .frige-workstation {
   --frige-rule: var(--stex-hairline) solid var(--stex-border-decor);
   --frige-tint: color-mix(in srgb, var(--stex-accent) 20%, var(--stex-surface));
   display: flex; flex-direction: column;
-  height: 100vh; height: 100dvh; overflow: hidden;
+  flex: 1; min-height: 0; overflow: hidden;
   background: var(--stex-bg);
 }
 .frige-workstation ::selection { background: color-mix(in srgb, var(--stex-accent) 45%, var(--stex-bg)); color: var(--stex-text); }
@@ -365,3 +365,6 @@ h1, h2, h3, p { margin-top: 0; }
   :where(.frige-workstation) button, .navigator, .studio-shell[data-drawer="open"] .navigator { transition: none; }
   .typing i { animation: none; opacity: .6; }
 }
+
+.publishing-toolbar { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: var(--stex-space-3); padding: var(--stex-space-2) var(--stex-space-4); border-bottom: var(--frige-rule); }
+.publishing-toolbar p { margin: 0 auto 0 0; color: var(--stex-accent); }

@@ -14,7 +14,7 @@ runtime memory or implementation modules as an integration API.
   conversation API, including Pantheon's handoff.
 - `seaxneat/` defines `stex.seaxneat.workspace.v1`, the composed website
   workspace's engine API.
-- `frige/` specifies the extracted legacy books v1 compatibility boundary.
+- `frige/` specifies publishing v1 and the extracted legacy books v1 compatibility boundary.
 
 Contracts are versioned before two products rely on them. They describe data
 ownership and failure behavior; they do not grant authority.

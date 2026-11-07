@@ -6,15 +6,15 @@ publishing state, Seaxneat owns website workspaces, and Igor supplies the
 Hermes-derived intelligence layer. Ēostre and Woden remain deferred.
 
 The [platform transition plan](docs/PLATFORM-TRANSITION.md) distinguishes the
-destination from implementation. Its first composed workspace is Seaxneat;
-Frige and Igor retain their existing frontends during the staged migration.
+destination from implementation. Seaxneat and Frige now have platform-owned
+workspaces; Igor's composition remains the next presentation stage.
 The evolving User Graph and multimodal knowledge base remain specified future
 work; the current knowledge adapter is optional and read-only.
 
 | Subsystem | Path | Status |
 | --- | --- | --- |
 | Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
-| Frige | `apps/frige` | Active manuscripts, proofs, and preflight |
+| Frige | `apps/frige`; UI in `apps/pantheon/workspaces/frige` | Engine-owned manuscripts/proofs and platform-owned publishing workspace |
 | Seaxneat | `apps/seaxneat`; UI in `apps/pantheon/workspaces/seaxneat` | Active engine and platform-owned website workspace |
 | Igor | `stex-igor/apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
@@ -65,7 +65,8 @@ corepack pnpm dev:alpha
 
 Open `http://127.0.0.1:4300/` for the splash; **Sign in** enters the command
 center at `/home/` (a local single-user entry, not authentication). Pantheon
-proxies Frige at `/frige/`; `/seaxneat/` redirects to the platform-owned
+renders Frige at `/frige/`, proxying its versioned engine API;
+`/seaxneat/` redirects to the platform-owned
 `/workspaces/seaxneat/`, whose API calls reach the Seaxneat engine through
 the proxy. `/texgraph/` remains
 an explicit Frige compatibility redirect. The fake Hermes transport is deterministic and makes no provider

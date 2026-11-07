@@ -31,6 +31,6 @@ claims, and limitations. Do not change product behavior, install dependencies,
 make provider calls, deploy, or push without explicit authorization.
 
 Use `docs/PLATFORM-TRANSITION.md` for the target architecture and ordered
-acceptance gates. Seaxneat presentation is platform-owned; Frige/Igor frontend
-migration, contextual assistance and knowledge projections remain staged.
+acceptance gates. Seaxneat and Frige presentation is platform-owned; Igor
+composition, contextual assistance and knowledge projections remain staged.
 Do not rewrite dated historical reports as if later behavior existed then.

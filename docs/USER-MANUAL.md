@@ -22,7 +22,16 @@ If a studio is not running, the command center says so ("Seaxneat is not respond
 
 ## Frige
 
-Choose **Frige** on the command center, or open a book from its project lists. Select an existing local book or create a new scaffold. A book opens only after explicit selection. Edit a source node, save it, typeset a proof, inspect the PDF and preflight, and review any fake-Hermes proposal before accepting it. Do not use a protected manuscript as a test fixture.
+Choose **Frige** on the command center, or open a book from its project lists.
+The library and workstation use Pantheon's common navigation. Select an
+existing local book or create a new scaffold; a book opens only after explicit
+selection. Edit a source node, save it, typeset a proof, inspect the PDF and
+preflight, and review any simulated Igor proposal before accepting it.
+Switch Contents, Editor and Proof on phones; Contents opens a keyboard-safe
+drawer on tablets. A stale source save is refused rather than overwriting a
+concurrent edit. Unsaved source triggers the browser's leave-page protection.
+Publication-profile changes mark an existing proof stale; a mapped proof is
+not a press-readiness claim. Do not use protected manuscripts as test fixtures.
 
 ## Seaxneat
 
@@ -47,8 +56,8 @@ State remains local in the Seaxneat engine; the vault is disabled by default.
 ## What is still planned
 
 The [platform transition](PLATFORM-TRANSITION.md) concentrates on Frige,
-Seaxneat, and Igor. Frige's workstation and Igor's conversations still use
-their current interfaces; shared project-aware assistance is planned.
+Seaxneat, and Igor. Frige and Seaxneat workspaces are now platform-owned;
+Igor conversation composition and shared project-aware assistance are next.
 The User Graph is intended as a persistent second brain and digital twin
 linked to a source/artifact knowledge base, with explicit provenance and
 correctable inferences. Today Graph and Activity remain unbuilt, and the
