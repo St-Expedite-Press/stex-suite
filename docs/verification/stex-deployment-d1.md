@@ -61,11 +61,11 @@ Status values: PASS, FAIL, BLOCKED, NOT TESTED, NOT APPLICABLE.
 | Repository consolidation and submodule integrity | PASS |
 | Shared-asset synchronisation | PASS locally; CI detection waits for a read-only token |
 | Authentication boundary (UI, API, forged credentials, direct origin) | PASS |
-| Deployment pipeline hardening (pinned actions, least-privilege permissions, release metadata, generation guard, active-SHA verification) | Implemented; not yet deployed |
-| Health checks, deployment record, staging slot, backups, and restore verification | Implemented; independent review found issues to fix before the first deploy |
+| Deployment pipeline hardening (pinned actions, least-privilege permissions, release metadata, generation guard, active-SHA verification) | PASS (deployed; the workflow verified the active commit on the VM) |
+| Health checks, deployment record, staging slot, backups, and restore verification | PASS (deployed; independent review rounds 1–2 fixed) |
 | Deployment identity tightening, egress policy, and edge TLS settings | Prepared; waiting for owner-run changes |
 | Provider spend | Application-side bounds PASS; provider limit not applicable (owner decision) |
-| Rollback exercise and restore verification on the VM | NOT TESTED |
-| Independent review | Round 1 complete; findings tracked privately |
+| Rollback exercise and restore verification on the VM | PASS (broken release rolled back healthy, also with the SSH session dropped; a backup restored and verified) |
+| Independent review | PASS (two rounds; findings fixed or recorded privately) |
 
-**D1 is not complete.** The Python migration waits until it is accepted.
+**D1 is not complete.** The engineering side is verified in production. What remains is owner-run: deployment identity tightening, the egress policy, edge TLS settings, a disk-snapshot schedule, and the suite CI token. The Python migration waits until D1 is accepted.
