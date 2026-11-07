@@ -11,7 +11,8 @@
 | Igor application (`stex-igor/apps/igor`, `stex.igor.conversations.v1`) | Implemented and tested; I1 accepted | `test:igor`, `verify:igor` (Chrome, 5 viewports, stub inference). Pantheon hands home-composer messages to Igor and holds no inference secret; the `/api/igor/turn` relay is retired. Five provider-backed turns through Pantheon → Igor → inference → Hermes verified continuity, session isolation, an auth failure, and retry ([I1 report](verification/igor-i1-application.md)). Seaxneat previews can still reach Igor same-origin (open review finding) |
 | Graph and Activity tabs | Unimplemented | Honest "not built yet" pages; no sample data |
 | Accounts and sign-in | Unimplemented | Splash **Sign in** is a local single-user entry, not authentication |
-| Frige and Seaxneat visual identity | Conflict | Still pre-doctrine styles (Frige living palette, Seaxneat light theme); adoption planned |
+| Frige visual identity (D4) | Implemented and tested | Frige serves `@stex/design-system`, the Dusty Garnet accent, and the masthead (full on the project library, compact on the workstation) under Pantheon's motion policy; the living palette is removed. `test:frige`, `verify:frige` (Chrome, 5 viewports, standalone and mounted, synthetic book). Conversation cards and a typeset proof were not rendered in the browser; Safari and Firefox not run ([D4 report](verification/frige-d4-design-system.md)) |
+| Seaxneat visual identity | Conflict | Still the pre-doctrine light theme; adoption planned |
 | Frige migration, proofs, and preflight | Implemented and tested | `test:frige`; protected manuscript bytes preserved |
 | Seaxneat workflow | Implemented and tested | `test:seaxneat`, production build |
 | Eostre and Woden | Deferred | Canonical directory and honest shell state only |

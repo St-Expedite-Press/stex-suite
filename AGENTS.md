@@ -49,7 +49,7 @@ and authorization.
 | Path | Role and owner | Shell route | Dev port | Owning check |
 | --- | --- | --- | --- | --- |
 | `apps/pantheon` | Pantheon shell, same-origin proxy, registry routes | `/` | 4300 | `test:pantheon` |
-| `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige` |
+| `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige`, `verify:frige` |
 | `apps/seaxneat` | **Seaxneat** — website workspaces, previews, revisions, UI | `/seaxneat/` | 4320 | `test:seaxneat`, `build:seaxneat` |
 | `stex-igor/apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor` |
 | `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |

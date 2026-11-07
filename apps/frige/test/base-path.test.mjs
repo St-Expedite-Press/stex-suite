@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -67,6 +68,87 @@ test('serves stex.projects.summary.v1 from file times without touching the manus
     projects: [{ reference: 'stex://frige/project/field-notes', id: 'field-notes', title: 'Field Notes', kind: 'book', updatedAt: authored.toISOString(), status: { state: 'ready', label: 'Manuscript' }, openPath: '/?book=field-notes' }],
   });
   assert.equal(await readFile(path.join(book, 'manuscript', 'Programme.md'), 'utf8'), '# Programme\n');
+});
+
+const repositoryRoot = path.resolve(appDirectory, '..', '..');
+const rawGet = (port, requestPath) => new Promise((resolve, reject) => {
+  // node:http keeps the path as written, so traversal attempts reach the server unnormalised.
+  http.get({ host: '127.0.0.1', port, path: requestPath }, (response) => { let text = ''; response.on('data', (chunk) => { text += chunk; }); response.on('end', () => resolve({ status: response.statusCode, text })); }).on('error', reject);
+});
+
+test('serves the shared design system read-only, mounted and standalone, and nothing else of the package', async (context) => {
+  const mounted = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-ds-'));
+  await startFrige(mounted, 4414, context);
+  const standalone = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-ds-direct-'));
+  await startFrige(standalone, 4415, context, { STEX_FRIGE_BASE_PATH: '', TEXGRAPH_BASE_PATH: '' });
+  const source = await readFile(path.join(repositoryRoot, 'packages', 'design-system', 'src', 'stex.css'));
+  for (const base of ['http://127.0.0.1:4414/frige', 'http://127.0.0.1:4415']) {
+    const css = await fetch(`${base}/design-system/src/stex.css`);
+    assert.equal(css.status, 200); assert.match(css.headers.get('content-type'), /^text\/css/);
+    assert.deepEqual(Buffer.from(await css.arrayBuffer()), source);
+    for (const [file, type] of [['fonts/inter-latin-wght-normal.woff2', 'font/woff2'], ['brand/pantheon-emblem.svg', 'image/svg+xml'], ['icons/book-open.svg', 'image/svg+xml']]) {
+      const response = await fetch(`${base}/design-system/${file}`);
+      assert.equal(response.status, 200, file); assert.equal(response.headers.get('content-type'), type, file); await response.arrayBuffer();
+    }
+    for (const refused of ['package.json', 'README.md', 'AGENTS.md', 'specimen/index.html', 'test/tokens.test.mjs', 'src/', '']) {
+      const response = await fetch(`${base}/design-system/${refused}`);
+      assert.equal(response.status, 404, refused); await response.arrayBuffer();
+    }
+  }
+  const prefix = { 4414: '/frige', 4415: '' };
+  for (const port of [4414, 4415]) {
+    for (const attempt of ['/design-system/src/../../package.json', '/design-system/src/%2e%2e/%2e%2e/package.json', '/design-system/src/..%2f..%2fpackage.json', '/design-system/fonts/..%5c..%5cpackage.json', '/design-system/../server.mjs', '/design-system/src/../../../frige/server.mjs']) {
+      const response = await rawGet(port, `${prefix[port]}${attempt}`);
+      assert.notEqual(response.status, 200, attempt);
+      assert.doesNotMatch(response.text, /"name": "@stex\/|createServer/, attempt);
+    }
+  }
+});
+
+test('serves its own masthead media, byte-identical to Pantheon, with byte ranges for video', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-media-'));
+  await startFrige(root, 4416, context);
+  const base = 'http://127.0.0.1:4416/frige';
+  for (const [file, type] of [['masthead/pantheon-masthead-still-1920w.webp', 'image/webp'], ['masthead/pantheon-masthead-loop-960w.mp4', 'video/mp4'], ['studios/frige-emblem-388w.webp', 'image/webp']]) {
+    const response = await fetch(`${base}/media/${file}`);
+    assert.equal(response.status, 200, file); assert.equal(response.headers.get('content-type'), type, file);
+    const pantheon = await readFile(path.join(repositoryRoot, 'apps', 'pantheon', 'public', 'media', file));
+    assert.ok(Buffer.from(await response.arrayBuffer()).equals(pantheon), `${file} differs from Pantheon's copy`);
+  }
+  const range = await fetch(`${base}/media/masthead/pantheon-masthead-loop-1920w.webm`, { headers: { range: 'bytes=0-99' } });
+  assert.equal(range.status, 206); assert.equal(range.headers.get('content-type'), 'video/webm');
+  assert.match(range.headers.get('content-range'), /^bytes 0-99\/\d+$/); assert.equal((await range.arrayBuffer()).byteLength, 100);
+});
+
+test('heads the project library and the workstation with the P11 masthead and a motion control', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-masthead-'));
+  await startFrige(root, 4417, context);
+  const base = 'http://127.0.0.1:4417/frige';
+  const manifest = JSON.parse(await readFile(path.join(repositoryRoot, 'assets', 'manifest.json'), 'utf8'));
+  const codecs = new Map(manifest.assets.flatMap((asset) => asset.derivatives || []).filter((entry) => entry.codecs).map((entry) => [entry.path, entry.codecs]));
+  const pages = { lobby: await (await fetch(`${base}/`)).text(), workstation: await (await fetch(`${base}/?book=fixture`)).text() };
+  for (const [name, html] of Object.entries(pages)) {
+    assert.match(html, /<html lang="en" data-stex-app="frige">/, name);
+    const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((match) => match[1]);
+    assert.deepEqual(sheets, ['./design-system/src/stex.css', './masthead.css', name === 'lobby' ? './lobby.css' : './style.css'], name);
+    assert.match(html, new RegExp(`<header class="masthead masthead--${name === 'lobby' ? 'full' : 'compact'}">`), name);
+    assert.match(html, /<img class="masthead-still" alt=""[^>]* src="\.\/media\/masthead\/pantheon-masthead-still-1920w\.webp"/, name);
+    assert.match(html, /<video class="masthead-motion" muted loop playsinline preload="none"/, name);
+    assert.match(html, /<button class="motion-toggle" type="button" hidden>/, name);
+    assert.match(html, /class="back-link" href="\/home\/" data-shell-link hidden/, name);
+    assert.match(html, /<script type="module" src="\.\/masthead\.js"><\/script>/, name);
+    assert.doesNotMatch(html, /palette\.js|living\.css/, name);
+    let sources = 0;
+    for (const [, src, codec] of html.matchAll(/<source[^>]*src="\.\/([^"]+)"[^>]*codecs="([^"]+)"/g)) { assert.equal(codec, codecs.get(`apps/frige/public/${src}`), src); sources += 1; }
+    assert.equal(sources, 6, name);
+    // Every local file the page names is served.
+    for (const [, reference] of html.matchAll(/(?:src|href|srcset)="\.\/([^"? ]+)/g)) {
+      const response = await fetch(`${base}/${reference}`);
+      assert.equal(response.status, 200, `${name}: ${reference}`); await response.arrayBuffer();
+    }
+  }
+  const motion = await readFile(path.join(appDirectory, 'public', 'masthead.js'), 'utf8');
+  assert.match(motion, /'stex\.pantheon\.motion'/); assert.match(motion, /prefers-reduced-motion: reduce/); assert.match(motion, /saveData/); assert.match(motion, /IntersectionObserver/); assert.match(motion, /visibilitychange/);
 });
 
 test('offers a mount-aware Frige project selector and creates an isolated book project', async (context) => {

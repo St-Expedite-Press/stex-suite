@@ -22,6 +22,7 @@
     "verify:splash": "node scripts/verify-splash.mjs",
     "verify:home": "node scripts/verify-home.mjs",
     "verify:igor": "node scripts/verify-igor.mjs",
+    "verify:frige": "node scripts/verify-frige.mjs",
     "check:hermes-runtime": "node stex-igor/hermes/src/reconcile-runtime-profiles.mjs",
     "test": "corepack pnpm run test:assets && corepack pnpm run test:design-system && corepack pnpm run test:pantheon && corepack pnpm run test:igor && corepack pnpm run test:frige && corepack pnpm run test:inference && corepack pnpm run test:seaxneat && corepack pnpm run test:hermes && corepack pnpm run test:knowledge && corepack pnpm run test:stex-igor-sync",
     "test:assets": "node --test scripts/assets/verify-assets.test.mjs",

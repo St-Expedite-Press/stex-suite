@@ -1,10 +1,7 @@
-import { startFrigePalette } from './palette.js';
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
 import { createModelSettings } from './model-settings.js';
 import { appUrl } from './base-path.js';
-
-startFrigePalette();
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
@@ -251,7 +248,9 @@ function renderPreflight() {
   $('#preflight-state').textContent = `${counts.pass} pass · ${counts.warn} warn · ${counts.fail} fail${counts.unavailable ? ` · ${counts.unavailable} not checked` : ''}`;
   $('#preflight-list').replaceChildren(...state.preflight.checks.map((entry) => {
     const item = element('li', `preflight-${entry.status}`);
-    item.append(element('strong', '', entry.title), element('span', '', entry.detail));
+    // The outcome is written out, not only coloured.
+    const outcome = element('strong', 'preflight-title'); outcome.append(element('span', 'preflight-badge', { pass: 'Pass', warn: 'Warning', fail: 'Fail', unavailable: 'Not checked' }[entry.status] || entry.status), ` ${entry.title}`);
+    item.append(outcome, element('span', 'preflight-detail', entry.detail));
     if (entry.items?.length) { const list = element('ul'); list.append(...entry.items.slice(0, 12).map((text) => element('li', '', text))); item.append(list); }
     return item;
   }));

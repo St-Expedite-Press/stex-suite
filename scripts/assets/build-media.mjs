@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileRecord, readManifest, repositoryRoot, writeManifest } from './manifest.mjs';
@@ -52,6 +52,14 @@ const emblems = [
 ];
 const emblemOutput = 'apps/pantheon/public/media/studios';
 const emblemBudget = 60_000;
+
+// Applications serve brand media from their own origin and never read each
+// other's files, so other applications get byte-identical copies, recorded with
+// `copyOf` (verify-assets.mjs fails if a copy drifts). Prefix -> copy folder.
+const copies = {
+  'apps/pantheon/public/media/masthead/': 'apps/frige/public/media/masthead/',
+  'apps/pantheon/public/media/studios/frige-': 'apps/frige/public/media/studios/frige-',
+};
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
@@ -157,6 +165,15 @@ async function main() {
       asset.derivatives.push(record);
       if (record.bytes > budget) overBudget = true;
       console.log(`${record.bytes > budget ? 'OVER' : 'ok  '}  ${String(record.bytes).padStart(9)} / ${String(budget).padStart(9)}  ${target}`);
+    }
+    for (const record of [...asset.derivatives]) {
+      const prefix = Object.keys(copies).find((key) => record.path.startsWith(key));
+      if (!prefix) continue;
+      const copy = `${copies[prefix]}${record.path.slice(prefix.length)}`;
+      await mkdir(path.dirname(path.join(repositoryRoot, copy)), { recursive: true });
+      await copyFile(path.join(repositoryRoot, record.path), path.join(repositoryRoot, copy));
+      asset.derivatives.push({ ...record, path: copy, recipe: `Byte-identical copy of ${record.path} (${record.recipe}), served from the application's own origin`, copyOf: record.path });
+      console.log(`copy  ${copy}`);
     }
   }
   await writeManifest(manifest);

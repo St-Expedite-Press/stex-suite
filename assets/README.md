@@ -172,7 +172,8 @@ ID: `title`, `owner`, `kind`, `revision`; `master` (`path`, `sourceName`,
 `sha256`, `bytes`, dimensions); optional `variants`; `provenance` (`author`,
 `rights`, `notes`); `usage`; `alt` guidance; `focal` regions for
 illustrations; and `derivatives` (`path`, `sha256`, `bytes`, dimensions,
-`budgetBytes`, `recipe`).
+`budgetBytes`, `recipe`, and `copyOf` for a byte-identical copy that another
+application serves from its own origin — Frige's copies of P02, P11, and F04).
 
 Focal regions are fractions of the frame, `[x0, y0, x1, y1]` (or a point, or
 a segment for `gaze`). For P01/P10, `panelLimit` is the hard boundary for
@@ -187,7 +188,8 @@ corepack pnpm test:assets
 The check fails on a misnamed file, a checksum or size mismatch, a derivative
 over its byte budget, an unresolved LFS pointer, a file under a managed folder
 that is not in the manifest, a duplicate ID, or missing provenance or alt
-guidance.
+guidance, or a `copyOf` record whose hash, size, codecs, or file name differ
+from the derivative it copies.
 
 ## Pipeline
 
@@ -198,7 +200,9 @@ corepack pnpm assets:build masthead emblems    # or named jobs: splash, masthead
 
 `scripts/assets/build-media.mjs` regenerates every derivative from its master
 and records it in the manifest, including the exact RFC 6381 codec string of
-each video (read from the encoded profile and level). Pages must declare that
+each video (read from the encoded profile and level). It then copies the
+P02/P11 masthead media and F04 emblem into `apps/frige/public/media/` and
+records those copies with `copyOf`, so Frige never reads Pantheon's files. Pages must declare that
 string; a Pantheon test compares them. With the same FFmpeg build, output is
 bit-exact: unchanged masters reproduce every hash (verified across rebuilds
 with FFmpeg 8.1.2, including after the refactor from the earlier splash-only

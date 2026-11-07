@@ -1,4 +1,5 @@
 import { createReadStream, existsSync } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import http from 'node:http';
@@ -45,7 +46,21 @@ function basePath(value) {
 const mountedAt = basePath(configuration('STEX_FRIGE_BASE_PATH', 'TEXGRAPH_BASE_PATH', ''));
 const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/home/' : '')).trim() || '/';
 
-const mimeTypes = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf' };
+const mimeTypes = {
+  '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
+};
+// The shared design system (@stex/design-system) is served read-only from this
+// origin under /design-system/; only its public folders are reachable.
+const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
+const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons']);
+function designSystemFile(pathname) {
+  // No ':' anywhere: on Windows it would reach NTFS stream aliases such as `::$DATA`.
+  if (pathname.includes(':')) return null;
+  const file = path.resolve(designSystemDirectory, pathname.slice('/design-system/'.length));
+  const folder = path.relative(designSystemDirectory, file).split(path.sep)[0];
+  return file.startsWith(`${designSystemDirectory}${path.sep}`) && designSystemFolders.has(folder) ? file : null;
+}
 // The proof viewer's PDF.js browser build; only these two files are exposed.
 const pdfjsFiles = new Set(['pdf.min.mjs', 'pdf.worker.min.mjs']);
 function pdfjsFile(name) {
@@ -64,6 +79,31 @@ async function body(request) {
     if (raw.length > 12_000_000) throw new Error('Request is too large.');
   }
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); }
+}
+
+// Interface files (pages, scripts, styles, design system, masthead media).
+// They revalidate by ETag and honour a single byte range, which browsers
+// (Safari in particular) require before they will play <video>.
+async function staticFile(request, response, file) {
+  let info;
+  try { info = await stat(file); } catch { return json(response, 404, { error: 'Not found.' }); }
+  if (!info.isFile()) return json(response, 404, { error: 'Not found.' });
+  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  const headers = { 'content-type': mimeTypes[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache', etag, 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff' };
+  if (request.headers['if-none-match'] === etag) { response.writeHead(304, headers); response.end(); return; }
+  let start = 0; let end = info.size - 1; let status = 200;
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range || '');
+  // An invalid range (last before first) is ignored and the whole file is sent.
+  if (range && (range[1] || range[2]) && !(range[1] && range[2] && Number(range[2]) < Number(range[1]))) {
+    if (range[1]) { start = Number(range[1]); end = range[2] ? Math.min(Number(range[2]), info.size - 1) : info.size - 1; }
+    else { start = Math.max(0, info.size - Number(range[2])); }
+    if (start >= info.size || start > end) { response.writeHead(416, { ...headers, 'content-range': `bytes */${info.size}` }); response.end(); return; }
+    status = 206; headers['content-range'] = `bytes ${start}-${end}/${info.size}`;
+  }
+  response.writeHead(status, { ...headers, 'content-length': info.size ? end - start + 1 : 0 });
+  if (request.method === 'HEAD' || !info.size) { response.end(); return; }
+  // pipeline closes the file when a browser aborts a range request.
+  pipeline(createReadStream(file, { start, end }), response, () => {});
 }
 
 function pageId(url) {
@@ -362,12 +402,16 @@ http.createServer(async (request, response) => {
       response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
       response.end(`globalThis.STEX_SHELL_URL=${JSON.stringify(shellUrl)};`); return;
     }
+    if (url.pathname.startsWith('/design-system/')) {
+      const file = designSystemFile(url.pathname);
+      return file ? staticFile(request, response, file) : json(response, 404, { error: 'Not found.' });
+    }
     const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
     if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
     const requested = url.pathname === '/' && !url.searchParams.get('book') && !url.searchParams.get('project') ? '/lobby.html' : url.pathname === '/' ? '/index.html' : url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
-    await serveFile(response, file);
+    await staticFile(request, response, file);
   } catch (error) {
     json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400, { error: error.message || 'Unexpected server error.' });
   }

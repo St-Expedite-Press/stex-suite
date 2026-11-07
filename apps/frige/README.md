@@ -150,13 +150,37 @@ inference calls.
 
 The single-page local book (`book.json`) still uses `page-turn` v1.
 
+## Interface
+
+Frige uses the shared design system (`@stex/design-system`, a workspace
+dependency) with `data-stex-app="frige"` and the Dusty Garnet accent. The
+server exposes only the package's `src`, `fonts`, `brand`, and `icons`
+folders under `/design-system/`, and serves its own byte-identical copies of
+the masthead media and emblem from `public/media/` (recorded in
+`assets/manifest.json` with `copyOf`); it never reads Pantheon's files.
+
+- The project library has the full masthead; the workstation a compact
+  88 px one. Both follow Pantheon's motion policy: the
+  `stex.pantheon.motion` preference, reduced motion, and Save-Data keep the
+  still, and the pause/play control is always present. Mounted under
+  Pantheon, a "‹ Pantheon" link returns to `/home/`.
+- The workstation keeps three columns at 1024 px and wider. From 640 to
+  1023 px the contents tree becomes a drawer (Escape closes it); below 640 px
+  one view shows at a time (Contents, Editor, Proof). Layout state is
+  presentation only and never changes a book.
+- Interface fonts and colours never reach book output: proof pages stay white
+  and the LuaLaTeX preamble comes only from the publication profile.
+
 ## Checks
 
 ```powershell
 Push-Location apps/frige
 corepack pnpm test
 Pop-Location
+corepack pnpm verify:frige   # Chrome: library and workstation at 5 widths, standalone and mounted
 ```
 
 The proof test compiles a synthetic book with LuaLaTeX and is skipped when
-`lualatex` is not on `PATH`.
+`lualatex` is not on `PATH`. `verify:frige` starts its own servers on spare
+ports with a disposable synthetic book and an inference address nothing
+listens on, and saves screenshots (`--out <directory>`).

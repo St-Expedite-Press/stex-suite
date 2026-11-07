@@ -12,6 +12,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@stex/design-system": "workspace:*",
     "pdfjs-dist": "6.4.299"
   }
 }

@@ -10,6 +10,9 @@ importers:
 
   apps/frige:
     dependencies:
+      '@stex/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       pdfjs-dist:
         specifier: 6.4.299
         version: 6.4.299

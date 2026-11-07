@@ -32,6 +32,20 @@ test('accepts a well-formed master and derivative', async (context) => {
   assert.deepEqual(await verifyAssets(root), []);
 });
 
+test('requires a copy served by another application to stay byte-identical to its source', async (context) => {
+  const source = 'apps/pantheon/public/media/pantheon-still-960w.webp';
+  const copy = 'apps/frige/public/media/pantheon-still-960w.webp';
+  const master = record('assets/masters/pantheon/pantheon-still.png', 'master');
+  const derivatives = (copyContent) => [record(source, 'small', { width: 960 }), record(copy, copyContent, { width: 960, copyOf: source })];
+  const matching = await fixture(context, { 'assets/masters/pantheon/pantheon-still.png': 'master', [source]: 'small', [copy]: 'small' }, [asset(master, derivatives('small'))]);
+  assert.deepEqual(await verifyAssets(matching), []);
+  // The copy matches its own (updated) record but no longer matches the source.
+  const drifted = await fixture(context, { 'assets/masters/pantheon/pantheon-still.png': 'master', [source]: 'small', [copy]: 'edited' }, [asset(master, derivatives('edited'))]);
+  assert.match((await verifyAssets(drifted)).join('\n'), /pantheon-still-960w\.webp differs from apps\/pantheon/);
+  const orphan = await fixture(context, { 'assets/masters/pantheon/pantheon-still.png': 'master', [copy]: 'small' }, [asset(master, [record(copy, 'small', { width: 960, copyOf: source })])]);
+  assert.match((await verifyAssets(orphan)).join('\n'), /which is not a built derivative/);
+});
+
 test('rejects bad names, checksums, budgets, LFS pointers, orphans, and duplicate IDs', async (context) => {
   const pointer = 'version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1\n';
   const root = await fixture(context, {

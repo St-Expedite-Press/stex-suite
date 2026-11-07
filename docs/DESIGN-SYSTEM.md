@@ -17,8 +17,10 @@ a luxury-brand website, or a GPT wrapper.
 Pantheon splash (`/`), and the command center (`/home/`, `/projects/`,
 `/studios/`, with honest Graph and Activity placeholders). Motion
 preferences are honoured per component; the design system applies no global
-motion override, so proof viewers, editors, and canvases keep their own. Not yet
-adopted: Frige and Seaxneat still carry pre-doctrine styles (see
+motion override, so proof viewers, editors, and canvases keep their own. Frige
+adopted the system in D4 (tokens, Dusty Garnet accent, masthead, responsive
+workstation; see the [D4 report](verification/frige-d4-design-system.md)). Not
+yet adopted: Seaxneat still carries its pre-doctrine light theme (see
 [STATUS](STATUS.md)); Ēostre and Woden are deferred.
 
 ---

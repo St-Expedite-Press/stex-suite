@@ -69,6 +69,14 @@ export async function verifyAssets(root = repositoryRoot) {
       const expected = new RegExp(`^${stem}-${derivative.width}w\\.[a-z0-9]+$`);
       if (!expected.test(path.posix.basename(derivative.path))) errors.push(`${label}: derivative ${derivative.path} must be named ${stem}-${derivative.width}w.<ext>.`);
       await checkFile(root, derivative, label, errors);
+      // A copy serves another application's derivative from its own origin
+      // (applications never read each other's files). Its record must equal the
+      // source's, and each file must match its record, so the bytes are identical.
+      if (derivative.copyOf) {
+        const source = (asset.derivatives || []).find((entry) => entry.path === derivative.copyOf && !entry.copyOf);
+        if (!source) errors.push(`${label}: ${derivative.path} copies ${derivative.copyOf}, which is not a built derivative of this asset.`);
+        else if (source.sha256 !== derivative.sha256 || source.bytes !== derivative.bytes || source.codecs !== derivative.codecs || path.posix.basename(source.path) !== path.posix.basename(derivative.path)) errors.push(`${label}: ${derivative.path} differs from ${derivative.copyOf}; copy it again from the source.`);
+      }
     }
   }
 

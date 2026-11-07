@@ -58,7 +58,7 @@
         "rights": "Owned by St. Expedite Press; all rights reserved.",
         "notes": "Carved from R02 (assets/reference/pantheon-command-center-comp.png), box 128,484,342,562 (x0,y0,x1,y1), at the comp's native resolution. Background estimated from the crop border; alpha from luminance above it (linear ramp +10 to +70); colour un-blended from the background; trimmed to content. Dark shading becomes transparent, so use on dark surfaces only. A higher-resolution source would sharpen the 2x derivative."
       },
-      "usage": "Studio identity on Pantheon studio entries (dark surfaces). Decorative beside the studio name.",
+      "usage": "Studio identity on Pantheon studio entries and in the Frige masthead brand (dark surfaces). Decorative beside the studio name.",
       "alt": "Decorative beside the studio name (empty alt). Standalone: An open book, engraved in fine lines.",
       "derivatives": [
         {
@@ -78,6 +78,26 @@
           "height": 130,
           "budgetBytes": 60000,
           "recipe": "scripts/assets/build-media.mjs emblems"
+        },
+        {
+          "path": "apps/frige/public/media/studios/frige-emblem-194w.webp",
+          "sha256": "da21b4bfefd247c08c2002e00e02c19438879c44a506f978b0a1d7faca04404d",
+          "bytes": 10794,
+          "width": 194,
+          "height": 65,
+          "budgetBytes": 60000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/studios/frige-emblem-194w.webp (scripts/assets/build-media.mjs emblems), served from the application's own origin",
+          "copyOf": "apps/pantheon/public/media/studios/frige-emblem-194w.webp"
+        },
+        {
+          "path": "apps/frige/public/media/studios/frige-emblem-388w.webp",
+          "sha256": "3e0b1ad374da29afb3dae7bf1ed8e679891372141dc11526f68f6674dcb472d3",
+          "bytes": 42422,
+          "width": 388,
+          "height": 130,
+          "budgetBytes": 60000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/studios/frige-emblem-388w.webp (scripts/assets/build-media.mjs emblems), served from the application's own origin",
+          "copyOf": "apps/pantheon/public/media/studios/frige-emblem-388w.webp"
         }
       ]
     },
@@ -207,7 +227,7 @@
         "rights": "Owned by St. Expedite Press; all rights reserved.",
         "notes": "Lossless extraction of frame 24 of the P11 master, the first frame of a loop built with a 24-frame crossfade. Approved exception: the doctrine asks for the masthead to be a crop of P01; the owner chose this separate panoramic master instead (2026-11-05)."
       },
-      "usage": "Command-center masthead before and instead of motion (reduced motion, data saver, no JavaScript).",
+      "usage": "Command-center masthead, and the Frige project-library and workstation mastheads, before and instead of motion (reduced motion, data saver, no JavaScript).",
       "alt": "Decorative (empty alt). Where it is content: a radiant figure with streaming hair flies through engraved clouds, arm outstretched toward a blazing sun.",
       "focal": {
         "artBand": [
@@ -287,6 +307,39 @@
           "budgetBytes": 110000,
           "recipe": "scripts/assets/build-media.mjs masthead",
           "crop": "1920:480:0:220"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-still-1920w.webp",
+          "sha256": "32fd6dea87a7ab9a6539ff1dfa65e310b80a2e56f4fa705fe2658217687efd57",
+          "bytes": 196364,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 230000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-1920w.webp (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-still-1920w.webp"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-still-1280w.webp",
+          "sha256": "68f2ac6a937db9fa622004f3aa22ffb6ed75b713ab844f6d01525445802221d8",
+          "bytes": 93028,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 115000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-1280w.webp (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-still-1280w.webp"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-still-960w.webp",
+          "sha256": "dc65b46be9bd57588ef06ab5168287d81c268b705179b6b848dd5f82e060ba3a",
+          "bytes": 86522,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 110000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-still-960w.webp (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:480:0:220",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-still-960w.webp"
         }
       ]
     },
@@ -503,7 +556,7 @@
         "rights": "Owned by St. Expedite Press; all rights reserved.",
         "notes": "Original 8.00 s render, 14.9 Mbit/s, no audio. The art occupies a 3.18:1 band (rows 220-822) between near-black bars (#09161C). Last-to-first SSIM 0.787 against a normal step of 0.986: needs the crossfade loop. Motion concentrates in the hair, drapery, and low clouds; face, arm, and sun are steadier. Parchment text over the stripe fails contrast except at x < 0.10 and x > 0.90."
       },
-      "usage": "Command-center masthead loop. Derivatives to be cropped to the art band.",
+      "usage": "Command-center masthead loop; also the Frige mastheads (byte-identical copies under apps/frige/public/media/masthead). Derivatives to be cropped to the art band.",
       "alt": "Decorative; hidden from assistive technology. See P02 for a description.",
       "focal": {
         "artBand": [
@@ -619,6 +672,78 @@
           "recipe": "scripts/assets/build-media.mjs masthead",
           "crop": "1920:480:0:220",
           "codecs": "avc1.64001E"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-1920w.webm",
+          "sha256": "442c810e56fc2279892f47c22032a0b98bd24cc272efd7a4e6f62a78bae88067",
+          "bytes": 1342195,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 1800000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.webm (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "codecs": "av01.0.04M.10",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.webm"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-1920w.mp4",
+          "sha256": "6c71e0b65f63aa870aa54a8518307752f294e283b35a1705efd31fc46d91281a",
+          "bytes": 1560921,
+          "width": 1920,
+          "height": 288,
+          "budgetBytes": 2000000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.mp4 (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "codecs": "avc1.64001F",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1920w.mp4"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-1280w.webm",
+          "sha256": "462c10d896a86756b7ee634b856f223f2dedb5ebf86019abca1d4989e194e9e3",
+          "bytes": 584798,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 900000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.webm (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "codecs": "av01.0.01M.10",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.webm"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-1280w.mp4",
+          "sha256": "f4721a61e9741024747b213cb96c407cb5202911cb0cb57c9af3a5d9a687d842",
+          "bytes": 649240,
+          "width": 1280,
+          "height": 192,
+          "budgetBytes": 1000000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.mp4 (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:288:0:300",
+          "codecs": "avc1.64001E",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-1280w.mp4"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-960w.webm",
+          "sha256": "47565f5359c21be55499b042040be2f3ad5ce0569c8910a29c50f788d517416f",
+          "bytes": 471594,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 650000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.webm (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:480:0:220",
+          "codecs": "av01.0.01M.10",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.webm"
+        },
+        {
+          "path": "apps/frige/public/media/masthead/pantheon-masthead-loop-960w.mp4",
+          "sha256": "ba436b286c8021b417a211f09d87e1e71fc737966ba41e7ef65f41415683af8a",
+          "bytes": 530605,
+          "width": 960,
+          "height": 240,
+          "budgetBytes": 750000,
+          "recipe": "Byte-identical copy of apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.mp4 (scripts/assets/build-media.mjs masthead), served from the application's own origin",
+          "crop": "1920:480:0:220",
+          "codecs": "avc1.64001E",
+          "copyOf": "apps/pantheon/public/media/masthead/pantheon-masthead-loop-960w.mp4"
         }
       ]
     },
