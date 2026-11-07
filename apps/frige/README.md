@@ -2,6 +2,10 @@
 
 Frige is STEX Pantheon's local publishing and typesetting application. It is
 available at `/frige/`; `/texgraph/` remains a route compatibility redirect.
+Frige is the publishing capability engine in the
+[platform transition](../../docs/PLATFORM-TRANSITION.md). Its current frontend
+remains transitional until the P2 publishing presentation gate is accepted;
+manuscript and proof authority stays in Frige throughout.
 Never use a real manuscript as a test fixture or alter
 `books/*/manuscript/` for layout convenience.
 
@@ -112,7 +116,22 @@ book in table-of-contents order through the selected scope.
   node, and the selected node's pages are outlined.
 - The status bar compares the displayed proof's source hashes with the
   current graph. A current, compiler-mapped proof is not press-ready: no
-  preflight exists yet.
+  printer-profile or PDF/X validation exists yet; diagnostic preflight is
+  described above.
+
+## Platform compatibility boundary
+
+Frige now owns the historical interview-ticket and source-document operations
+at [`/api/stex/legacy-books/v1`](../../protocol/frige/README.md). Pantheon's
+`/api/books…` routes only proxy them; they never open a book directory.
+These compatibility operations retain their historical response shapes and
+are separate from the existing simple `POST /api/books` scaffold API.
+Books-directory precedence is `STEX_FRIGE_BOOKS_DIR`, `TEXGRAPH_BOOKS_DIR`,
+`STEX_BOOKS_DIR`, then the default. The legacy fallback belongs to Frige now.
+Set `STEX_PANTHEON_URL` for a non-default loopback platform origin; the server
+rejects non-loopback Host values and foreign/opaque browser origins, while
+continuing to admit local CLI calls without Origin. `dev:alpha` sets the
+platform origin. This is browser request protection, not multi-user identity.
 
 ## Conversation boundary
 

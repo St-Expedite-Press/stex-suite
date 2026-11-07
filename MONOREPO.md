@@ -15,8 +15,11 @@ is what releases to production. The full ownership matrix is in
 [the D1 report](docs/verification/stex-deployment-d1.md#3-ownership).
 
 
-Pantheon routes local HTTP and reads the versioned application registry. Each
-application owns its UI, canonical data, and workflow state. No product
+Pantheon owns shared presentation, composes Seaxneat's website workspace, routes
+local HTTP, and reads the versioned application registry. Each engine owns its
+canonical data and workflow state. Frige and Igor retain transitional
+frontends; [the transition plan](docs/PLATFORM-TRANSITION.md) defines their
+migration gates. No product
 imports another product's private storage as an integration shortcut.
 
 `stex-igor/services/inference` is the only application-facing Hermes boundary.
@@ -30,9 +33,9 @@ read-only adapter; applications continue to work without it.
 ## Layout
 
 ```
-apps/pantheon   loopback shell
+apps/pantheon   common web environment and workspace presentation
 apps/frige      publishing and typesetting
-apps/seaxneat   website workspaces
+apps/seaxneat   website engine; UI in apps/pantheon/workspaces/seaxneat
 apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain
 vault           optional portable User Graph
@@ -48,7 +51,7 @@ their respective boundaries. New code uses Frige and Pantheon identifiers.
 Existing ignored data at legacy source paths is not moved automatically:
 configure the canonical Frige data variables if a user chooses a new location.
 
-Hermes and the User Graph can be extracted later because neither owns product
-state, credentials, or application modules. A future extraction needs a
+Hermes and the User Graph can be extracted later without moving engine state.
+The Hermes runtime owns its provider credentials; the User Graph never does. A future extraction needs a
 versioned integration contract and authorization; physical colocation alone
 does not grant cross-subsystem authority.

@@ -46,12 +46,14 @@ const children = [
     STEX_FRIGE_PORT: frigePort,
     STEX_FRIGE_BASE_PATH: '/frige',
     STEX_FRIGE_SHELL_URL: '/home/',
+    STEX_PANTHEON_URL: `http://127.0.0.1:${shellPort}`,
     STEX_FRIGE_INFERENCE_MODE: 'fake',
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,
   }),
   run(['pnpm', '--dir', 'apps/seaxneat', 'dev'], {
     SEAXNEAT_PORT: seaxneatPort,
+    STEX_PANTHEON_URL: 'http://127.0.0.1:' + shellPort,
   }),
   // Igor holds the inference secret; Pantheon only proxies to it.
   run(['pnpm', '--dir', 'stex-igor/apps/igor', 'dev'], {

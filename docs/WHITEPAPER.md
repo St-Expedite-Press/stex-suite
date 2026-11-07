@@ -1,52 +1,94 @@
-# STEX Pantheon — A0 baseline with H1 Hermes preparation
+# STEX Pantheon — platform architecture
 
-STEX is a local-first suite of independently owned creative applications. A0 implements Frige and Seaxneat under one loopback shell; Eostre and Woden are registered deferred products, not partial implementations.
+STEX Pantheon is a unified, extensible creative computing platform. Its common
+web environment composes specialized capability engines. Igor is the
+Hermes-derived intelligence layer; its Director coordinates reasoning and,
+when authorized and technically isolated, tools. The knowledge architecture
+is intended to join source/artifact retrieval with a persistent User Graph
+functioning as a digital twin and second brain.
 
-```mermaid
-flowchart LR
-  Shell[Pantheon shell] --> Frige[Frige /frige]
-  Shell --> Seaxneat[Seaxneat /seaxneat]
-  Frige -->|versioned server request| Gateway[stex-igor/services/inference]
-  Seaxneat -->|optional server request| Gateway
-  Gateway -->|stex.hermes.turn.v1 adapter| Hermes[loopback upstream Hermes API]
-  Hermes -->|selected model| OpenRouter[OpenRouter]
-```
+This definition describes the destination. The [transition plan](PLATFORM-TRANSITION.md)
+sets delivery order and acceptance gates; [STATUS.md](STATUS.md) distinguishes
+implemented and tested behavior from specified or planned work.
 
-Each application owns its own state. Pantheon routes HTTP but stores no
-projects. Frige owns manuscript/proof state; Seaxneat owns ignored local
-workspaces and Git history. `vault/` is an optional User Graph, never a shared
-database. `services/knowledge` exposes only a replaceable read-only adapter.
-`stex-igor/runtime/hermes-agent` pins the upstream source as a suite unit;
-`stex-igor/hermes/` holds STEX's declarative roles and profiles. `stex-igor/services/inference`
-remains the authenticated, bounded application-facing inference contract and
-is the only STEX process allowed to call the upstream loopback API. Upstream
-Hermes owns `OPENROUTER_API_KEY` and its model selection; STEX holds only its
-separate local API credential. Igor is the user-facing identity, Hermes is the
-runtime and protocol name.
+## One platform, modular engines
 
-The checked-in runtime-profile manifest maps one active `igor` runtime profile
-to the Pantheon Director and seven inactive specialist profiles to the remaining
-STEX roles. The local Igor gateway is loopback-only and tool-free; a read-only
-reconciliation command checks the profile catalog, OpenRouter provider
-selection, and empty CLI/API-server toolsets. This does not make the
-specialists autonomous workers or grant them state, credentials, or authority.
+Pantheon owns common presentation, navigation, workspace composition, and the
+display of engine results. The first composed workspace is Seaxneat's website
+development surface, implemented in Pantheon and backed by a versioned engine
+API. Frige and Igor retain their existing frontends during incremental
+migration. They have not yet become fully composed platform workspaces.
 
-The H1 adapter translates the stable STEX turn envelope to authenticated
-OpenAI-compatible Chat Completions by default, with an evaluated Responses
-mode for persisted runtime sessions. Pantheon persists an opaque conversation
-identity in local browser storage; Frige retains its own book/section/piece
-threads and transmits only the selected scope. The adapter derives opaque,
-product-scoped upstream session identifiers to avoid cross-product collisions.
+Frige owns manuscripts, source revisions, editorial acceptance, typography,
+LuaLaTeX proofs, and preflight. Seaxneat owns website workspaces, Git history,
+bounded proposals, validated revisions, builds, and preview lifecycle. A
+failed build cannot advance the last validated revision. Pantheon owns no
+second project store and never reads an engine's files; even its historical
+book API now proxies a Frige-owned compatibility boundary.
 
-Upstream Hermes has terminal, filesystem, web, delegation, and scheduling
-capabilities. H1 therefore remains conversational-only and refuses remote
-turns until an operator explicitly acknowledges a verified OS/container
-boundary and declares that policy. The acknowledgement is not a technical
-proof of isolation. `tools: []` on the adapter request is defense in depth, not the
-security boundary. The local fake enables deterministic workflows. One bounded,
-provider-backed Hermes exchange has been verified directly through the local
-Igor gateway; the Igor application and Frige still use the fake transport, and
-their remote workflows remain unverified. Any additional provider call requires explicit
-authorization and a bounded budget.
+The engines need not become separate deployed microservices. Process and
+deployment boundaries follow dependency, security, or scaling requirements.
+Deterministic operations run directly through engine APIs without Igor.
+Application capabilities are operations; agent skills describe how reasoning
+can use those operations. Their contracts and authorities remain distinct.
 
-See [STATUS.md](STATUS.md) and [protocol documentation](../protocol/README.md).
+## Igor: runtime, Director, conversation surface
+
+Igor has three meanings that must stay explicit: the Hermes-derived runtime,
+the existing Pantheon Director role/profile, and the conversation surface.
+The implementation adapts a pinned upstream Hermes checkout with STEX
+configuration; it does not maintain a separately verified source fork.
+Internal Hermes identifiers and the stable turn contract retain their names.
+
+The Igor application owns conversation records and pending/failure state.
+Pantheon's home composer hands off to that service and stores no conversation
+identity or inference secret. Frige retains its scoped editorial threads.
+Shared project context across those surfaces is planned, not implemented.
+
+The only application-facing runtime path is server → inference → Hermes.
+Provider keys stay in the runtime environment. Request/reply validation,
+context bounds, time/output limits, cancellation and failure classification
+remain enforced at their owning boundaries. The normal local stack uses fake
+inference. Earlier I1/I2 evidence records provider-backed Igor verification
+and hosting; it does not prove Frige remote exchanges or general tool safety.
+An operator acknowledgement or empty tool request is not OS isolation.
+
+Local Pantheon entry creates no authenticated session. Hosted Igor has its own
+password sign-in; its deployment is distinct from the local platform.
+Platform-wide identity and permissions remain future work.
+
+## Knowledge: coordinated projections
+
+The Pantheon knowledge base organizes sources, artifacts, extracted content,
+retrieval representations and evidence. The User Graph organizes the user's
+explicit concepts, preferences, commitments, projects, relationships and
+revisable inferred context. Both reference canonical entities and revisions;
+neither duplicates or overrides engine state.
+
+They are **co-extensional** in relevant scope without requiring duplicate
+assets, **interoperable** through compatible identities and provenance, and
+**co-evolutionary** through deliberate accepted changes and derived context.
+Every inference needs supporting evidence, confidence, and correction or
+rejection. An agent's suggestion is not a fact or permission grant.
+
+Today only an optional read-only local Markdown adapter exists. There is no
+implemented graph service, accepted-revision event pipeline, embeddings,
+multimodal retrieval, or twin synchronization. The portable Obsidian vault
+remains optional knowledge, never an execution queue, credential store, or
+second canonical application database. P4 defines the first projection gate.
+
+## Extensibility and limits
+
+Versioned contracts express ownership, validation, authority, errors, bounds,
+and migration. The registry supplies navigation identities only. Existing
+projects, conversations, and inference contracts keep their meanings;
+new engine APIs are additive. References never bypass engine authorization.
+Generated previews are sandboxed and engine APIs refuse foreign/opaque browser
+origins. Read-only generated resources remain available to their opaque
+preview frame; authored content stays outside trusted platform presentation.
+
+Development concentrates on Frige, Seaxneat, and Igor. Eostre and Woden remain
+honestly deferred. No speculative scheduler, universal database, agent swarm,
+or third-party plug-in runtime is needed to make the existing tools coherent.
+See the [protocol overview](../protocol/README.md) and
+[acceptance report](verification/platform-transition-p1.md).

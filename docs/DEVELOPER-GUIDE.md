@@ -8,6 +8,8 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm sync:stex-igor` | Copy `packages/design-system`, the masthead and splash media, and Pantheon's `splash.css` and `motion.js` into the `stex-igor` submodule after changing them; then commit inside `stex-igor` |
 | `corepack pnpm dev:alpha` | Shell plus active application processes |
 | `corepack pnpm --dir apps/seaxneat build` | React production build |
+| `corepack pnpm build:pantheon` | TypeScript check and build of the platform-owned Seaxneat workspace (`build:seaxneat` is a compatibility alias) |
+| `corepack pnpm verify:platform` | Real `dev:alpha`, disposable Seaxneat create/edit/diff/restore and Next preview, sandbox checks, five viewports |
 | `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
 | `corepack pnpm run test:hermes` | Validate the role/profile catalog |
 | `corepack pnpm run test:knowledge` | Validate the optional User Graph adapter |
@@ -27,6 +29,29 @@ the fake transport by default. Interface work uses `@stex/design-system`
 [the doctrine](DESIGN-SYSTEM.md); binary media go through Git LFS and
 [the asset manifest](../assets/README.md). See [MONOREPO.md](../MONOREPO.md),
 application READMEs, and [verification reports](verification/).
+
+## Platform transition
+
+Follow [the ordered plan](PLATFORM-TRANSITION.md). Pantheon owns the common
+shell and `apps/pantheon/workspaces/seaxneat` presentation; Seaxneat owns
+workspace state and operations through
+[`stex.seaxneat.workspace.v1`](../protocol/seaxneat/README.md). Frige and Igor
+retain transitional frontends. Do not relocate canonical state to Pantheon.
+The legacy `/api/books` API now proxies a
+[Frige-owned boundary](../protocol/frige/README.md).
+
+`dev:alpha` builds the platform workspace and Igor, uses fake inference, and
+sets each engine's `STEX_PANTHEON_URL` to the selected shell port. When
+launching engines independently with a non-default platform port, set this
+loopback origin explicitly so same-origin browser requests are admitted.
+`STEX_BOOKS_DIR` remains a Frige compatibility fallback; Pantheon ignores
+filesystem settings. Generated preview responses and frames are sandboxed;
+opaque browser origins cannot mutate engine APIs. OS isolation for arbitrary
+build code remains outside this local alpha's verified guarantees.
+
+The User Graph/twin and source/artifact knowledge projections are specified
+future architecture, not an implemented event system. No shared store,
+embeddings, agent tools, identity backend or scheduler is implied by P1.
 
 ## Hermes / Igor runtime (H1)
 
@@ -61,8 +86,10 @@ the default multiplexer from serving specialists.
 
 Before starting a live gateway, pre-pull and locally verify the sandbox image
 without calling a provider; see the exact commands in
-[`runtime/README.md`](../stex-igor/runtime/README.md). One direct no-tool OpenRouter turn
-has succeeded, but that is not Pantheon or Frige remote-workflow evidence.
+[`runtime/README.md`](../stex-igor/runtime/README.md). Earlier verification includes a direct no-tool turn, I1 provider-backed Igor
+turns through Pantheon, and I2 hosted Igor turns; see [STATUS.md](STATUS.md).
+Those bounded runs do not establish Frige remote behavior or authorize further
+paid calls.
 
 For an authorized provider-backed STEX integration activation, set only these STEX values in ignored
 `.env`: `STEX_HERMES_TRANSPORT=remote`,

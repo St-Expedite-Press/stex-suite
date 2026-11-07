@@ -1,7 +1,10 @@
 # Pantheon
 
-The STEX loopback shell: the public splash, the command center, and a
-same-origin proxy to the studios. Pantheon owns no product state.
+The common STEX web environment: public splash, command center, workspace
+presentation, and same-origin engine proxies. Pantheon owns no engine state.
+The [transition plan](../../docs/PLATFORM-TRANSITION.md) defines the staged
+destination; Seaxneat is the first composed workspace, while Frige and Igor
+retain transitional frontends.
 
 | Route | Behaviour |
 | --- | --- |
@@ -11,7 +14,9 @@ same-origin proxy to the studios. Pantheon owns no product state.
 | `/studios/` | The four studios with their registered state and project counts |
 | `/graph/`, `/activity/` | Honest "not built yet" pages |
 | `/home`, `/projects`, … | `308` to the trailing-slash route |
-| `/frige/`, `/seaxneat/` | Proxied to the active studios on loopback |
+| `/frige/` | Proxied to the existing Frige frontend and engine on loopback |
+| `/workspaces/seaxneat/` | Pantheon-owned website workspace, using the versioned Seaxneat API |
+| `/seaxneat/` | `308` to `/workspaces/seaxneat/`; query preserved; `/seaxneat/api/…` remains the engine proxy |
 | `/igor/` | Proxied to the Igor application ([apps/igor](../../stex-igor/apps/igor/README.md)) on loopback |
 | `/eostre/`, `/woden/` | Deferred studio pages in the same shell |
 | `/texgraph/`, `/screenlab/`, `/novelgraph/` | `308` compatibility redirects |
@@ -19,11 +24,13 @@ same-origin proxy to the studios. Pantheon owns no product state.
 | `/media/…` | Splash, masthead, and studio-emblem derivatives (Git LFS); byte ranges supported |
 | `POST /api/igor/turn` | Retired: `404`. Igor turns belong to `stex-igor/apps/igor` |
 | `/api/applications` | The versioned application registry |
-| `/api/books…` | Legacy routes; do not extend (see root `AGENTS.md`) |
+| `/api/books…` | Compatibility proxy to Frige's `/api/stex/legacy-books/v1…`; no local storage access |
 
 ```powershell
 corepack pnpm dev:pantheon          # http://127.0.0.1:4300/ (STEX_PANTHEON_PORT)
 corepack pnpm run test:pantheon
+corepack pnpm build:pantheon        # TypeScript + workspace production bundle
+corepack pnpm verify:platform       # real dev:alpha and disposable Next.js workflow
 corepack pnpm verify:splash         # browser checks; need Chrome or Edge
 corepack pnpm verify:home
 corepack pnpm verify:igor           # handoff into Igor; needs `corepack pnpm build:igor`
@@ -123,7 +130,20 @@ and `report.json` to the system temp folder, or to `--out <dir>`.
 | --- | --- |
 | `STEX_PANTHEON_PORT` | Port (default 4300) |
 | `STEX_FRIGE_URL`, `STEX_SEAXNEAT_URL`, `STEX_IGOR_URL` | Application origins to proxy (loopback HTTP only; Igor defaults to `http://127.0.0.1:4330`) |
-| `STEX_FRIGE_BOOKS_DIR` | Books for the legacy `/api/books` routes |
 
-The legacy aliases `STEX_LAB_PORT` and `STEX_BOOKS_DIR` are fallbacks.
+`STEX_LAB_PORT` is the legacy port fallback. Books-directory configuration
+belongs to Frige, including its `STEX_BOOKS_DIR` compatibility fallback;
+Pantheon ignores these filesystem settings.
 `corepack pnpm dev:alpha` sets all of these for the local stack.
+
+## Website workspace
+
+Presentation lives in `workspaces/seaxneat`; `build:pantheon` produces the
+ignored `dist/workspaces/seaxneat.js` and `.css`, served through the explicit
+`/workspace-assets/` allowlist. The common shell retains navigation and motion
+controls. The client holds transient selection and display state only. It
+calls [`stex.seaxneat.workspace.v1`](../../protocol/seaxneat/README.md) through
+`/seaxneat/api/stex/workspace/v1`, never imports the engine store, and handles
+failed initial builds with no validated revision. Pending proposals survive
+reload and dismissal is saved by the engine. Generated preview frames allow
+scripts but have opaque origins; their HTTP responses also carry sandbox CSP.

@@ -27,3 +27,14 @@ authority to bypass product authorization or validation.
 The initial implementation reads a user-selected local vault directory. Cloud
 sync and a browser vault editor are later adapters. They must preserve this
 format and cannot become a second canonical knowledge store.
+
+## Platform direction (specified, not v0 behavior)
+
+The [P4 plan](../../docs/PLATFORM-TRANSITION.md#p4--knowledge-projections)
+distinguishes a source/artifact knowledge projection from the User Graph's
+user-context projection. Shared scope, canonical references, compatible
+provenance and accepted revision events provide co-extensionality,
+interoperability and co-evolution. They do not require identical records or
+automatic bidirectional overwrite. Assertion/inference, consent, correction,
+retention/export/deletion and replay semantics require new versioned
+contracts before implementation. This v0 read-only vault boundary is unchanged.

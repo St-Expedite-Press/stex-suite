@@ -59,4 +59,5 @@ jobs:
           package-manager-cache: false
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm build:pantheon
       - run: corepack pnpm test

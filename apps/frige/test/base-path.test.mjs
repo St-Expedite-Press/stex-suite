@@ -46,6 +46,22 @@ test('returns to the Pantheon command center by default when mounted', async (co
   assert.match(await runtime.text(), /STEX_SHELL_URL="\/home\/"/);
 });
 
+test('preserves the legacy books directory alias and refuses opaque/foreign browser mutations', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-legacy-'));
+  const books = path.join(root, 'selected-books');
+  await mkdir(path.join(books, 'existing', 'manuscript'), { recursive: true });
+  await writeFile(path.join(books, 'existing', 'manuscript', 'Programme.md'), '# Programme\n');
+  await startFrige(root, 4420, context, { STEX_FRIGE_BOOKS_DIR: '', TEXGRAPH_BOOKS_DIR: '', STEX_BOOKS_DIR: books, STEX_PANTHEON_URL: 'http://127.0.0.1:4300' });
+  const route = 'http://127.0.0.1:4420/frige/api/stex/legacy-books/v1';
+  assert.equal((await (await fetch(route)).json())[0].id, 'existing');
+  for (const origin of ['null', 'https://foreign.invalid', 'http://127.0.0.1:9999']) {
+    const response = await fetch(route, { method: 'POST', headers: { origin, 'x-forwarded-host': origin.replace('http://', ''), 'content-type': 'text/plain' }, body: JSON.stringify({ ticket: { title: 'Forbidden' } }) });
+    assert.equal(response.status, 403);
+  }
+  const allowed = await fetch(route, { method: 'POST', headers: { origin: 'http://127.0.0.1:4300', 'content-type': 'application/json' }, body: JSON.stringify({ ticket: { title: 'Allowed' } }) });
+  assert.equal(allowed.status, 201);
+});
+
 test('serves stex.projects.summary.v1 from file times without touching the manuscript', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-summary-'));
   const book = path.join(root, 'books', 'field-notes');

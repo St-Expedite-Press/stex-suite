@@ -149,7 +149,7 @@ export class SeaxneatStore {
     const current = await readFile(this.pagePath(project.id), 'utf8'); if (digest(current) !== proposal.baseHash) throw new Error('The draft changed after this proposal was created. Request a new edit.');
     project.operation = { state: 'running', kind: 'apply', proposalId, startedAt: this.clock(), updatedAt: this.clock() }; await this.save(); await atomic(this.pagePath(project.id), proposal.source);
     const result = await this.build(project);
-    if (!result.ok) { await this.git(['checkout', '--', 'app/page.tsx'], this.workspace(project.id)); project.operation = { state: 'failed', kind: 'apply', detail: 'Build failed; the draft was restored to its last committed source.', updatedAt: this.clock() }; await this.save(); throw Object.assign(new Error(project.operation.detail), { code: 'BUILD_FAILED', output: result }); }
+    if (!result.ok) { await atomic(this.pagePath(project.id), current); project.operation = { state: 'failed', kind: 'apply', detail: 'Build failed; the draft was restored to its source before this edit.', updatedAt: this.clock() }; await this.save(); throw Object.assign(new Error(project.operation.detail), { code: 'BUILD_FAILED', output: result }); }
     await this.commitRevision(project, `Apply simulated edit: ${proposal.request.slice(0, 72)}`, 'edit'); project.pendingProposal = null; project.updatedAt = this.clock(); await this.save(); return this.summary(project);
   }
 

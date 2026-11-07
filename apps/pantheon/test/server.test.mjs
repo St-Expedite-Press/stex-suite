@@ -20,6 +20,14 @@ async function startPantheon(root, port, context, environment = {}) {
   });
 }
 
+async function startFrige(root, port, context) {
+  const local = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-compat-'));
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve(appDirectory, '../frige'), env: { ...process.env, STEX_FRIGE_PORT: String(port), STEX_FRIGE_BOOKS_DIR: root, STEX_FRIGE_PROJECT_DIR: local, STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_INFERENCE_MODE: 'fake' } });
+  context.after(async () => { const exited = new Promise((resolve) => child.once('exit', resolve)); child.kill(); await exited; await rm(local, { recursive: true, force: true }); });
+  await new Promise((resolve, reject) => { child.stdout.on('data', (data) => { if (data.toString().includes('ready')) resolve(); }); child.on('error', reject); child.on('exit', (code) => { if (code) reject(new Error('Frige startup failed.')); }); });
+  return { STEX_FRIGE_URL: `http://127.0.0.1:${port}` };
+}
+
 test('defines stable shell routes and rejects non-loopback proxy targets', () => {
   assert.equal(mountedApplication('/frige/api/health')?.id, 'frige');
   assert.equal(mountedApplication('/woden/')?.state, 'deferred');
@@ -58,6 +66,13 @@ test('routes compatibility aliases, deferred applications, and mounted loopback 
   assert.equal(deferred.status, 200); assert.match(await deferred.text(), /registered in the STEX alpha/);
   const proxied = await fetch('http://127.0.0.1:4400/frige/api/health?book=fixture');
   assert.deepEqual(await proxied.json(), { path: '/frige/api/health?book=fixture', prefix: '/frige' });
+  const legacy = await fetch('http://127.0.0.1:4400/api/books');
+  assert.deepEqual(await legacy.json(), { path: '/frige/api/stex/legacy-books/v1', prefix: '/frige' });
+  const workspace = await fetch('http://127.0.0.1:4400/seaxneat/?project=fixture', { redirect: 'manual' });
+  assert.equal(workspace.status, 308); assert.equal(workspace.headers.get('location'), '/workspaces/seaxneat/?project=fixture');
+  const composed = await (await fetch('http://127.0.0.1:4400/workspaces/seaxneat/')).text();
+  assert.match(composed, /id="development-workspace"/); assert.match(composed, /aria-label="Pantheon"/);
+  assert.match(composed, /workspace-assets\/seaxneat.js/);
   const unsafe = await fetch('http://127.0.0.1:4400/frige/%2e%2e/secret');
   assert.equal(unsafe.status, 404);
 });
@@ -234,7 +249,7 @@ test('discovers a manuscript graph without changing it', async (context) => {
   await writeFile(path.join(root, 'existing-book', 'README.md'), '# Existing Book\n\nA preserved manuscript.\n');
   await writeFile(path.join(manuscript, 'Programme.md'), '# Programme\n');
   await writeFile(path.join(manuscript, 'Poem.md'), '# A poem\n');
-  await startPantheon(root, 4397, context);
+  await startPantheon(root, 4397, context, await startFrige(root, 4497, context));
   const response = await fetch('http://127.0.0.1:4397/api/books');
   const [book] = await response.json();
   assert.equal(response.status, 200);
@@ -246,11 +261,13 @@ test('discovers a manuscript graph without changing it', async (context) => {
 
 test('accepts an interview ticket and creates a structured project vault', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-books-'));
-  await startPantheon(root, 4398, context);
+  await startPantheon(root, 4398, context, await startFrige(root, 4498, context));
   const ticket = { title: 'Field Notes', author: 'A. Poet', editorialIntent: 'A book of observant lyric poems.', sourceMode: 'existing-markdown', bookType: 'poetry-collection', podProfile: 'cross-pod', trimSize: '6 × 9 in', interiorInk: 'black-white', paperStock: 'white', bleed: 'no-bleed', margins: '0.5 in', isbnPlan: 'own-isbn', proofPlan: 'order-proof', coverFinish: 'matte' };
   const response = await fetch('http://127.0.0.1:4398/api/books', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket, transcript: [{ role: 'assistant', message: 'What is the title?' }, { role: 'user', message: 'Field Notes' }] }) });
   assert.equal(response.status, 201);
   const book = await response.json();
+  const denied = await fetch('http://127.0.0.1:4398/api/books', { method: 'POST', headers: { origin: 'null', 'content-type': 'text/plain' }, body: JSON.stringify({ ticket: { title: 'Forbidden preview write' } }) });
+  assert.equal(denied.status, 403);
   const rootPath = path.join(root, book.id);
   const settings = JSON.parse(await readFile(path.join(rootPath, 'frige', 'settings.json'), 'utf8'));
   const markdown = await readFile(path.join(rootPath, 'frige', 'Global Settings Ticket.md'), 'utf8');

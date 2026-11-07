@@ -19,9 +19,15 @@ Pantheon splash (`/`), and the command center (`/home/`, `/projects/`,
 preferences are honoured per component; the design system applies no global
 motion override, so proof viewers, editors, and canvases keep their own. Frige
 adopted the system in D4 (tokens, Dusty Garnet accent, masthead, responsive
-workstation; see the [D4 report](verification/frige-d4-design-system.md)). Not
-yet adopted: Seaxneat still carries its pre-doctrine light theme (see
-[STATUS](STATUS.md)); Ēostre and Woden are deferred.
+workstation; see the [D4 report](verification/frige-d4-design-system.md)).
+Seaxneat's presentation now lives in Pantheon and uses shared role tokens,
+Azurite, and the common shell at `/workspaces/seaxneat/`; its former light
+frontend is removed. See [P1 evidence](verification/platform-transition-p1.md)
+and [STATUS](STATUS.md). Ēostre and Woden remain deferred.
+
+The [platform transition](PLATFORM-TRANSITION.md) moves presentation upward
+incrementally while keeping deterministic engine state and operations in
+their owners. Unified navigation does not confer shared identity or state.
 
 ---
 

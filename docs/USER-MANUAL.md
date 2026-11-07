@@ -26,6 +26,35 @@ Choose **Frige** on the command center, or open a book from its project lists. S
 
 ## Seaxneat
 
-Choose **Seaxneat**, create a local project, wait for its validated Next.js build, then start the preview. Request a bounded heading edit, inspect it, apply it explicitly, view a revision diff, and restore a validated revision when needed. State is local and the vault is disabled by default.
+Choose **Seaxneat** to open the website workspace inside Pantheon's common
+navigation. The old `/seaxneat/` link leads to `/workspaces/seaxneat/`.
+Create a local project and wait for its validated Next.js build, then start
+the preview. Request a bounded simulated heading edit, inspect its proposed
+source, and choose **Apply and validate** explicitly. A pending proposal
+survives reload; **Dismiss proposal** saves that decision. Inspect a revision
+diff or restore a revision after confirmation. A restore creates a new
+revision rather than erasing history.
+
+If initial setup fails, the workspace shows **None** for the last validated
+revision and displays the failure. A failed edit keeps the previous validated
+revision and restores its pre-edit draft. **Refresh projects** inspects state;
+a timeout does not automatically retry work. **Reload preview** is useful
+while a preview server starts. Previews are sandboxed from the platform.
+State remains local in the Seaxneat engine; the vault is disabled by default.
 
 Ēostre and Woden deliberately show deferred views in A0.
+
+## What is still planned
+
+The [platform transition](PLATFORM-TRANSITION.md) concentrates on Frige,
+Seaxneat, and Igor. Frige's workstation and Igor's conversations still use
+their current interfaces; shared project-aware assistance is planned.
+The User Graph is intended as a persistent second brain and digital twin
+linked to a source/artifact knowledge base, with explicit provenance and
+correctable inferences. Today Graph and Activity remain unbuilt, and the
+optional local knowledge adapter only reads selected Markdown. There is no
+automatic knowledge synchronization or multimodal retrieval.
+
+Hosted Igor at `https://igor.stexpedite.press` has its own password sign-in.
+That is separate from the credential-free local Pantheon entrance described
+above. The local development command never enables paid inference.

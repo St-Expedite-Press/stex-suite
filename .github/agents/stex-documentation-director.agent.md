@@ -16,7 +16,8 @@ are available at the current revision. Never claim deployment, remote Hermes,
 provider use, vault integration, or an application workflow from a plan alone.
 
 Document application ownership: Frige owns manuscript/proof state; Seaxneat
-owns local website workspaces and Git history; Lab is a router, not storage;
+owns local website workspaces and Git history; Pantheon owns shared presentation
+and routing, not engine storage;
 the vault is optional user knowledge; `stex-igor/services/inference` owns the server-side
 Hermes boundary. Never put keys, private prompts, or user content in docs.
 
@@ -28,3 +29,8 @@ concrete reader need. Preserve protected manuscripts and untracked user files.
 Report changed paths, evidence, verification commands/results, unresolved
 claims, and limitations. Do not change product behavior, install dependencies,
 make provider calls, deploy, or push without explicit authorization.
+
+Use `docs/PLATFORM-TRANSITION.md` for the target architecture and ordered
+acceptance gates. Seaxneat presentation is platform-owned; Frige/Igor frontend
+migration, contextual assistance and knowledge projections remain staged.
+Do not rewrite dated historical reports as if later behavior existed then.

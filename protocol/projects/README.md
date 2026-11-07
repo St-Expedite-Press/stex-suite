@@ -51,6 +51,9 @@ reads file times only; protected manuscripts are never opened for writing).
   relative to the studio's mount; Pantheon prefixes the registry route
   (`/frige/` + `?book=…`) and drops entries that break these rules.
 
+Seaxneat's stable `/seaxneat/?project=…` entry now redirects to the
+Pantheon-owned `/workspaces/seaxneat/?project=…`, preserving this contract.
+
 ### Studio mappings
 
 | Studio | `kind` | `updatedAt` | `status` |

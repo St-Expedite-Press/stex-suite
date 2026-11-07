@@ -1,14 +1,21 @@
 # STEX Pantheon
 
-STEX Pantheon is a local-first creative development monorepo. Pantheon is the
-loopback shell; Frige and Seaxneat are active applications; Eostre and Woden
-are registered, honestly deferred domains.
+STEX Pantheon is a local-first creative computing platform with modular
+capability engines. Pantheon owns the common web environment; Frige owns
+publishing state, Seaxneat owns website workspaces, and Igor supplies the
+Hermes-derived intelligence layer. Ēostre and Woden remain deferred.
+
+The [platform transition plan](docs/PLATFORM-TRANSITION.md) distinguishes the
+destination from implementation. Its first composed workspace is Seaxneat;
+Frige and Igor retain their existing frontends during the staged migration.
+The evolving User Graph and multimodal knowledge base remain specified future
+work; the current knowledge adapter is optional and read-only.
 
 | Subsystem | Path | Status |
 | --- | --- | --- |
-| Pantheon | `apps/pantheon` | Active shell and local proxy |
+| Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
 | Frige | `apps/frige` | Active manuscripts, proofs, and preflight |
-| Seaxneat | `apps/seaxneat` | Active website workspaces and revisions |
+| Seaxneat | `apps/seaxneat`; UI in `apps/pantheon/workspaces/seaxneat` | Active engine and platform-owned website workspace |
 | Igor | `stex-igor/apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
@@ -58,7 +65,9 @@ corepack pnpm dev:alpha
 
 Open `http://127.0.0.1:4300/` for the splash; **Sign in** enters the command
 center at `/home/` (a local single-user entry, not authentication). Pantheon
-proxies Frige at `/frige/` and Seaxneat at `/seaxneat/`; `/texgraph/` remains
+proxies Frige at `/frige/`; `/seaxneat/` redirects to the platform-owned
+`/workspaces/seaxneat/`, whose API calls reach the Seaxneat engine through
+the proxy. `/texgraph/` remains
 an explicit Frige compatibility redirect. The fake Hermes transport is deterministic and makes no provider
 request.
 
@@ -102,6 +111,7 @@ Start here, then choose the reader path that fits:
 | --- | --- | --- |
 | Evaluator or prospective user | [User manual](docs/USER-MANUAL.md) | What the local shell and active studios do today |
 | Product or architecture reader | [Whitepaper](docs/WHITEPAPER.md) | Ownership, boundaries, and the local-first model |
+| Transition implementer | [Platform transition](docs/PLATFORM-TRANSITION.md) | Ordered scope, ownership changes, risks, and acceptance gates |
 | Contributor or operator | [Developer guide](docs/DEVELOPER-GUIDE.md) | Setup, commands, and guarded Hermes activation |
 | Status reviewer | [Status](docs/STATUS.md) | Implemented, tested, deferred, and unverified claims |
 | Evidence reviewer | [Verification index](docs/verification/README.md) | Current H1 evidence and dated historical reports |

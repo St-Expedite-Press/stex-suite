@@ -49,7 +49,7 @@ function navigation(active) {
   return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul><button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
-export function shell({ active, title, body, scripts = [], app = 'pantheon' }) {
+export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon' }) {
   const pageScripts = ['/shell.js', ...scripts].map((src) => `<script type="module" src="${src}"></script>`).join('');
   return `<!doctype html>
 <html lang="en" data-stex-app="${escape(app)}">
@@ -61,6 +61,7 @@ export function shell({ active, title, body, scripts = [], app = 'pantheon' }) {
   <link rel="icon" href="/design-system/brand/pantheon-favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system/src/stex.css">
   <link rel="stylesheet" href="/shell.css">
+  ${styles.map((href) => `<link rel="stylesheet" href="${escape(href)}">`).join('')}
   ${pageScripts}
 </head>
 <body class="shell">
@@ -72,6 +73,13 @@ ${body}
   </main>
 </body>
 </html>`;
+}
+
+export function developmentPage() {
+  return shell({ active: 'studios', title: 'Website workspace', app: 'seaxneat',
+    scripts: ['/workspace-assets/seaxneat.js'], styles: ['/workspace-assets/seaxneat.css'],
+    body: '<div id="development-workspace"></div><noscript><p>The website workspace needs JavaScript to operate the Seaxneat engine.</p></noscript>',
+  });
 }
 
 const emblemImage = (studio) => `<img class="studio-emblem" alt="" width="${studio.width}" height="64" loading="lazy" src="/media/studios/${studio.emblem}-${studio.width}w.webp" srcset="/media/studios/${studio.emblem}-${studio.width}w.webp 1x, /media/studios/${studio.emblem}-${studio.width * 2}w.webp 2x">`;
