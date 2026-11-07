@@ -10,6 +10,7 @@ then use a report here to inspect the command output and limits behind it.
 | --- | --- | --- |
 | Hermes / Igor H1 | [H1 preparation](hermes-h1-preparation.md) | One direct, tool-free OpenRouter turn is verified; product remote workflows are not |
 | Pantheon consolidation | [Consolidation report](pantheon-consolidation-report.md) | Fake inference and local workflows only |
+| Deployment hardening (D1) | [D1 summary](stex-deployment-d1.md) | Public summary only; the full report is private in stex-igor |
 | stex-igor split (I3) | [I3 report](stex-igor-split.md) | Automated deploy verified once; rollback path not yet exercised |
 | Hosted Igor (I2) | [I2 report](igor-i2-hosted.md) | Owner browser sign-in and egress lockdown outstanding |
 | Igor application (I1) | [Igor I1 report](igor-i1-application.md) | Browser evidence on stub inference; five live turns on a local Windows gateway |

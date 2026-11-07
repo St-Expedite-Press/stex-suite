@@ -24,9 +24,11 @@ holds acceptance evidence; update those, not this file, when status moves.
   adapter in `stex-igor/services/inference`.
 - **Registered but deferred:** Eostre (`apps/eostre`) and Woden
   (`apps/woden`) — shell entries with an honest deferred state only.
+- **Hosted:** Igor at `igor.stexpedite.press`, deployed from the stex-igor
+  submodule. Its operational hardening is milestone D1, in progress.
 - **Not done or unverified:** provider-backed Frige exchanges, an OS-level
-  runtime isolation boundary (the local gateway is Docker on Windows), vault integration, deployment, and
-  cross-application workflows.
+  runtime isolation boundary for the local Windows gateway, vault integration,
+  deployment of anything other than Igor, and cross-application workflows.
 
 The historical Agent Studio migration that produced A0 is closed. Agent Studio
 (`St-Expedite-Press/agent-studio`) remains a read-only behavioral reference;

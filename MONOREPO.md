@@ -2,6 +2,19 @@
 
 ## Ownership
 
+Two repositories:
+
+- **stex-suite (this repository, public)** owns the suite: Pantheon, Frige,
+  Seaxneat, the design system, brand assets, contracts, and cross-application
+  browser acceptance.
+- **stex-igor (private submodule at `stex-igor/`)** owns everything that runs
+  on the hosted VM, and deploys itself from its `main` branch.
+
+The suite records which stex-igor commit it was tested with. Pushing stex-igor
+is what releases to production. The full ownership matrix is in
+[the D1 report](docs/verification/stex-deployment-d1.md#3-ownership).
+
+
 Pantheon routes local HTTP and reads the versioned application registry. Each
 application owns its UI, canonical data, and workflow state. No product
 imports another product's private storage as an integration shortcut.

@@ -1,0 +1,62 @@
+name: CI
+
+# Runs the whole suite, including test:stex-igor-sync (the design-system and
+# masthead copies inside the private stex-igor submodule must match their
+# sources here). stex-igor is private, so fetching it needs the repository
+# secret STEX_IGOR_READ_TOKEN: a fine-grained token with read-only Contents
+# access to St-Expedite-Press/stex-igor. Without it, the gate reports why and
+# the test job is skipped, never failed. Secrets are not given to pull
+# requests from forks, so those are skipped the same way.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      has-token: ${{ steps.check.outputs.has-token }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.STEX_IGOR_READ_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "has-token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tests skipped: add the STEX_IGOR_READ_TOKEN secret (read-only access to St-Expedite-Press/stex-igor) to run them."
+          fi
+
+  test:
+    needs: gate
+    if: needs.gate.outputs.has-token == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          lfs: true
+          persist-credentials: false
+      - id: pin
+        run: echo "sha=$(git ls-tree HEAD stex-igor | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: St-Expedite-Press/stex-igor
+          ref: ${{ steps.pin.outputs.sha }}
+          path: stex-igor
+          token: ${{ secrets.STEX_IGOR_READ_TOKEN }}
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          # pnpm comes from corepack in the next step; v5 would otherwise try to cache it first.
+          package-manager-cache: false
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm test

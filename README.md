@@ -37,6 +37,18 @@ required tool is missing.
 
 ## Local development
 
+The hosted-VM stack (Igor, the inference service, Hermes configuration) is the
+private submodule `stex-igor/` (`St-Expedite-Press/stex-igor`). Cloning it needs
+read access to that repository and Git LFS:
+
+```powershell
+git clone --recurse-submodules https://github.com/St-Expedite-Press/stex-suite.git
+# On Windows, clone to a short path or run: git config --global core.longpaths true
+```
+
+Without access, the suite still clones, but Igor, inference, and Hermes are
+missing and `corepack pnpm install --frozen-lockfile` fails.
+
 ```powershell
 corepack pnpm check:prereqs
 corepack pnpm install --frozen-lockfile

@@ -73,6 +73,7 @@ to `user`, and automatic titling never overrides it.
 
 | Method and path | Body | Result |
 | --- | --- | --- |
+| `GET /api/ready` | — | Operational, not for clients: `{ ok, release, store, inference }` with counts only. In hosted mode it is served without an Access token **only** to loopback requests that no proxy forwarded; everyone else gets `403`. |
 | `GET /api/health` | — | `{ ok, transport }`, transport `fake`, `remote`, or `unavailable` (from the inference service's health) |
 | `GET /api/conversations` | — | `{ conversations: ConversationSummary[] }`, newest `updatedAt` first |
 | `POST /api/conversations` | `{ idempotencyKey, message? }` | `201` `{ conversation, route }` on creation; `200` with the same body when `idempotencyKey` was already used |

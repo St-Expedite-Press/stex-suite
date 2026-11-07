@@ -4,7 +4,8 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 
 | Command | Purpose |
 | --- | --- |
-| `corepack pnpm test` | All deterministic suites |
+| `corepack pnpm test` | All deterministic suites, including `test:stex-igor-sync` |
+| `corepack pnpm sync:stex-igor` | Copy `packages/design-system` and the masthead media into the `stex-igor` submodule after changing them; then commit inside `stex-igor` |
 | `corepack pnpm dev:alpha` | Shell plus active application processes |
 | `corepack pnpm --dir apps/seaxneat build` | React production build |
 | `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
