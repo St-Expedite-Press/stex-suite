@@ -84,10 +84,14 @@ Igor, Graph, and Activity. Instrumental workspaces use a compact header.
   height. Desktop widths show a 6.7:1 stripe around the face, arm, and sun;
   phones show a 4:1 window.
 - **Projects** come from each active studio's `stex.projects.summary.v1`
-  endpoint ([protocol/projects](../../protocol/projects/README.md)), read in the
-  browser through the proxy (`public/projects.js`). Pantheon stores nothing.
-  A studio that does not answer within 2 seconds is named as not responding;
-  the others still show. With no projects, the page offers to start one in
+  endpoint ([protocol/projects](../../protocol/projects/README.md)). The
+  browser (`public/projects.js`) first asks the Python platform API for the
+  merged list ([protocol/platform](../../protocol/platform/README.md)) through
+  Pantheon's read-only `/api/platform/v1/projects` route; if that fails or
+  answers anything unexpected, it polls each studio through the proxy as
+  before. `<html data-projects-source>` records which path rendered. Pantheon
+  stores nothing. A studio that does not answer within 2 seconds is named as
+  not responding; the others still show. With no projects, the page offers to start one in
   Frige or Seaxneat.
 - **Igor** is the user-facing name of the STEX assistant, the Pantheon
   Director (Hermes internally). Its conversations live in the Igor application
@@ -140,6 +144,7 @@ and `report.json` to the system temp folder, or to `--out <dir>`.
 | --- | --- |
 | `STEX_PANTHEON_PORT` | Port (default 4300) |
 | `STEX_FRIGE_URL`, `STEX_SEAXNEAT_URL`, `STEX_IGOR_URL` | Application origins to proxy (loopback HTTP only; Igor defaults to `http://127.0.0.1:4330`) |
+| `STEX_PLATFORM_URL` | Python platform API origin for `/api/platform/v1/projects` (loopback HTTP only; default `http://127.0.0.1:4340`). Only listed read-only paths are forwarded, with no browser headers. Only a `200` JSON answer is relayed; any other status, redirect, compressed or over-4 MB body, timeout (5 s) or connection failure answers `502` |
 | `STEX_KNOWLEDGE_DATA_DIR` | Opt-in knowledge metadata journal directory; unset means disabled. Use an ignored path such as `services/knowledge/.local-data` resolved from the repository root |
 
 `STEX_LAB_PORT` is the legacy port fallback. Books-directory configuration

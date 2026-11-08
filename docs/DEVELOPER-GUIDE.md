@@ -8,7 +8,8 @@ React/TypeScript remains the frontend stack. Future backend work follows the
 [approved migration plan](PLATFORM-TRANSITION.md#python-backend-migration).
 Milestone M1 adds the Python platform API in `backend/` (rules in
 [backend/AGENTS.md](../backend/AGENTS.md)) beside the unchanged Node services;
-it migrates no data and switches no route.
+it migrates no data. Since M2a, `dev:alpha` starts it and Pantheon's project
+pages read its merged list, falling back to per-studio loading.
 
 | Command | Purpose |
 | --- | --- |
@@ -29,7 +30,7 @@ it migrates no data and switches no route.
 | `corepack pnpm run test:assets` | Asset manifest, naming, checksums, budgets, LFS pointers |
 | `corepack pnpm assets:build [splash\|masthead\|emblems]` | Rebuild web media from masters, bit-exact (needs FFmpeg) |
 | `corepack pnpm verify:splash` | Browser check of the splash at 15 viewports (needs Chrome or Edge) |
-| `corepack pnpm verify:home` | Browser check of the command center with an isolated stack and disposable data (needs Chrome or Edge) |
+| `corepack pnpm verify:home` | Browser check of the command center with an isolated stack, disposable data and the platform API (must render from it; `STEX_VERIFY_PLATFORM=off` checks the browser fallback). Needs Chrome or Edge and uv |
 | `corepack pnpm verify:igor-login` | Browser check of hosted Igor's password sign-in page (the Pantheon splash with a form) at 15 viewports, plus a real sign-in, with a disposable user; needs `corepack pnpm build:igor` and Chrome or Edge |
 | `corepack pnpm verify:igor` | Browser check of the Igor handoff, conversation workflow, and layout at 5 viewports with a stub inference service (needs Chrome or Edge) |
 | `corepack pnpm verify:knowledge` | Disposable engine/knowledge workflow, revision acceptance, relationships, withdrawal, restart, export/deletion and four Chrome viewports |

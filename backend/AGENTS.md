@@ -9,8 +9,9 @@
 The Python/FastAPI platform API introduced by milestone M1 of the
 [Python backend migration](../docs/PLATFORM-TRANSITION.md#python-backend-migration).
 It runs **beside** the existing Node engines and currently serves
-`/health` and the read-only [`stex.platform.projects.v1`](../protocol/platform/README.md).
-No Pantheon route is switched to it yet. Do not claim more than that.
+`/health` and the read-only [`stex.platform.projects.v1`](../protocol/platform/README.md),
+which Pantheon's project pages read through `/api/platform/v1/projects` with a
+browser fallback (M2a). `dev:alpha` starts it. Do not claim more than that.
 
 ## Rules
 

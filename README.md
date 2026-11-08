@@ -16,7 +16,8 @@ runtime engine tools, and vault integration remain outside this implementation.
 Python/FastAPI with typed contracts is the required destination for STEX-owned
 application backends; existing Node servers remain transitional. Milestone M1
 adds the Python platform API in `backend/` beside them (health and a read-only
-merged project list); no Node route has moved yet. Obsidian is the required
+merged project list), which Pantheon's project pages now read with a browser
+fallback; no Node operation has moved yet. Obsidian is the required
 direct human-facing knowledge integration. Both continue under the
 [migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration) and
 [Obsidian gate](docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
@@ -24,7 +25,7 @@ direct human-facing knowledge integration. Both continue under the
 | Subsystem | Path | Status |
 | --- | --- | --- |
 | Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
-| Platform API | `backend/` (Python/FastAPI) | M1 foundation: `/health` and read-only `stex.platform.projects.v1`; not yet routed through Pantheon |
+| Platform API | `backend/` (Python/FastAPI) | `/health` and read-only `stex.platform.projects.v1`, read by Pantheon's project pages via `/api/platform/v1/projects` |
 | Frige | `apps/frige`; UI in `apps/pantheon/workspaces/frige` | Engine-owned manuscripts/proofs and platform-owned publishing workspace |
 | Seaxneat | `apps/seaxneat`; UI in `apps/pantheon/workspaces/seaxneat` | Active engine and platform-owned website workspace |
 | Igor | `stex-igor/apps/igor` | Composed Director conversations and approved project context; fake transport by default |
@@ -45,7 +46,7 @@ installed separately:
 | --- | --- | --- |
 | Node.js 22.13+ (22 or 24 LTS) | Required | Everything. Node 25+ no longer bundles Corepack, which the Windows launchers call directly. |
 | Corepack with pnpm 9.15.9 | Required | Bundled with Node 22–24; `packageManager` selects pnpm. |
-| uv 0.11+ | Required | Python platform API (`test:platform`, `dev:platform`); `uv sync --frozen` creates the ignored `.venv`. |
+| uv 0.11+ | Required | Python platform API (`test:platform`, `dev:platform`, `verify:home`; `dev:alpha` starts it when uv is available and otherwise runs without it). `uv sync --frozen` creates the ignored `.venv`. |
 | Git | Required | Seaxneat workspace revisions. |
 | Git LFS | Required | Brand masters and splash media (`git lfs install` once per machine). Without it the splash media are pointer files. |
 | LuaLaTeX with `fontspec`, `microtype`, `geometry` | Recommended | Frige proofs. Proof tests skip without it. TeX Live or MiKTeX. |

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage, directorPage, graphPage } from './src/pages.mjs';
-import { isLoopbackHost, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
+import { isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
 import { openKnowledge } from '../../services/knowledge/src/projections.mjs';
 import { knowledgeApi } from './src/knowledge-api.mjs';
 
@@ -28,6 +28,7 @@ const proxyTargets = {
   seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
   igor: localProxyTarget(process.env.STEX_IGOR_URL, 'http://127.0.0.1:4330'),
 };
+const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://127.0.0.1:4340');
 const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
@@ -85,6 +86,17 @@ http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
     if (url.pathname === '/api/knowledge/v1' || url.pathname.startsWith('/api/knowledge/v1/')) return await knowledgeRoute(request, response, url);
+    if (url.pathname === '/api/platform/v1' || url.pathname.startsWith('/api/platform/v1/')) {
+      const upstreamPath = platformPath(url.pathname);
+      if (!upstreamPath) return send(response, 404, { error: 'Not found.' });
+      if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: 'Method not allowed.' });
+      let reply;
+      try { reply = await requestPlatform(platformTarget, upstreamPath); }
+      catch { return send(response, 502, { error: 'The platform API is not available locally.' }); }
+      response.writeHead(reply.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      response.end(request.method === 'HEAD' ? undefined : reply.body);
+      return;
+    }
     if (url.pathname === '/igor') { response.writeHead(308, { location: `/igor/${url.search}` }); response.end(); return; }
     if (['/igor/', '/igor/new'].includes(url.pathname) || /^\/igor\/c\/[^/]+\/?$/.test(url.pathname)) {
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: 'Method not allowed.' });

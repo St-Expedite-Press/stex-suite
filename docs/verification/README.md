@@ -9,7 +9,8 @@ then use a report here to inspect the command output and limits behind it.
 | Area | Report | Current limit |
 | --- | --- | --- |
 | Platform release / instruction reconciliation | [Release audit and evidence](platform-release.md) | BLOCKED on permitted CI access; preparation verified, no main merge/deployment or post-merge acceptance claimed |
-| Python platform foundation M1 | [M1 report](platform-m1-python-foundation.md) | Additive FastAPI service beside Node; read-only project list; no Pantheon route switched; CI step unrun |
+| Pantheon consumes the platform API M2a | [M2a report](platform-m2a-pantheon-consumption.md) | Project pages only; browser fallback retained; Chrome only |
+| Python platform foundation M1 | [M1 report](platform-m1-python-foundation.md) | Additive FastAPI service beside Node; read-only project list; CI step unrun |
 | Platform transition P0/P1 | [P1 report](platform-transition-p1.md) | First composed workspace; subsequent stages have separate reports below |
 | Platform publishing P2 | [P2 report](platform-transition-p2.md) | Mature Frige UI composed in Pantheon; real PDF and stub inference, Chrome only |
 | Contextual Igor / knowledge foundation P3/P4 | [P3/P4 report](platform-transition-p3-p4.md) | Local composed interface, exact explicit context and metadata projections; fake/stub inference, Chrome only; no production release |

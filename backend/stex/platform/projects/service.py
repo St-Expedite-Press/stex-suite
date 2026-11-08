@@ -31,7 +31,8 @@ SUMMARY_SCHEMA = "stex.projects.summary.v1"
 SUMMARY_PATH = "api/stex/projects"
 _STATES = frozenset({"ready", "working", "attention", "failed"})
 _ROOTED_PATH = re.compile(r"^/(?!/)")
-_PARENT_SEGMENT = re.compile(r"(^|/)\.\.(/|\?|$)")
+# \Z, not $: Python's $ also matches before a trailing newline; the browser's JS $ does not.
+_PARENT_SEGMENT = re.compile(r"(^|/)\.\.(/|\?|\Z)")
 
 
 class InvalidSummaryError(ValueError):

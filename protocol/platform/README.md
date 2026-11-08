@@ -6,9 +6,10 @@
 The schema is [`projects.v1.schema.json`](projects.v1.schema.json); the
 generated OpenAPI document is [`openapi.v1.json`](openapi.v1.json).
 
-Status: introduced in milestone M1 alongside the existing Node services.
-Pantheon's browser still loads studio summaries itself; no route has been
-switched to this endpoint.
+Status: introduced in M1; consumed since M2a. Pantheon forwards
+`GET /api/platform/v1/projects` here (read-only, no browser headers), and its
+home, projects and studios pages render from this list, falling back to
+polling each studio from the browser when the platform is unavailable.
 
 ## Ownership
 

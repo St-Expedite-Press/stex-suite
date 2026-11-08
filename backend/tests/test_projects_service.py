@@ -218,3 +218,8 @@ def test_equal_and_missing_times_keep_studio_then_source_order() -> None:
     )
     result = asyncio.run(listing(studios))
     assert [project.id for project in result.projects] == ["f1", "f2", "s1", "f-none", "s-bad"]
+
+
+def test_a_parent_segment_followed_by_a_newline_is_kept_as_the_browser_keeps_it() -> None:
+    assert valid_entry(entry("x", openPath="/x/..\n"))
+    assert not valid_entry(entry("x", openPath="/x/.."))

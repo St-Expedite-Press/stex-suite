@@ -269,7 +269,9 @@ a destination, not a reorganization to perform in one step.
 | --- | --- | --- |
 | M0 | Merge both repositories with effective CI; record production state, backup and rollback | BLOCKED on owner-run CI access (see [release report](verification/platform-release.md)); local baseline committed |
 | M1 | Python foundation beside Node: `backend/stex` FastAPI app, typed settings, `/health`, read-only `stex.platform.projects.v1` over studio summaries; uv, Ruff, mypy, pytest in `corepack pnpm test` and CI | Implemented and tested locally ([evidence](verification/platform-m1-python-foundation.md)) |
-| M2 | Platform API consumed by Pantheon; identity boundary; first PostgreSQL schema and Alembic migrations for platform records | Planned |
+| M2a | Pantheon consumes the platform API: read-only `/api/platform/v1/projects` route, project pages render from it with the per-studio browser path as fallback, `dev:alpha` starts it | Implemented and tested locally ([evidence](verification/platform-m2a-pantheon-consumption.md)) |
+| M2b | Identity boundary | Awaiting owner decision: changes the splash's local single-user entry and needs an identity milestone under the charter |
+| — | First PostgreSQL schema and Alembic migrations | Moved to M3, where knowledge records give it a real caller; no empty database earlier |
 | M3 | Knowledge metadata, provenance, durable events and jobs in Python/PostgreSQL with migration, reconciliation and export parity | Planned |
 | M4 | Frige and Seaxneat operations moved one at a time with differential parity; LuaLaTeX, Git and Node build tools retained | Planned |
 | M5 | Igor's STEX-owned Node service layers (conversation service, inference boundary) moved with record compatibility | Planned; deploys need approval |

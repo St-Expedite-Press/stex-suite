@@ -107,7 +107,7 @@ and authorization.
 | `stex-igor/runtime/hermes-agent` | Pinned upstream Hermes source (submodule of stex-igor) | loopback API when explicitly activated | 8642 | upstream runtime checks |
 | `stex-igor/hermes` | Eight native profile specifications, reusable skill procedures and runtime policy | — | — | `test:hermes` |
 | `stex-igor` | **Submodule** `St-Expedite-Press/stex-igor`: everything that runs on the hosted VM; deploys on push to its `main` | — | — | `test:stex-igor-sync` |
-| `backend` | Python/FastAPI platform API (M1): health and the read-only `stex.platform.projects.v1`; owns no engine state | — (no Pantheon route yet) | 4340 | `test:platform`, `verify:platform-api` |
+| `backend` | Python/FastAPI platform API: health and the read-only `stex.platform.projects.v1`; owns no engine state | `/api/platform/v1/projects` via Pantheon | 4340 | `test:platform`, `verify:platform-api` |
 | `services/knowledge` | Optional metadata journal/projections and separate read-only vault adapter | `/graph/` via Pantheon | — | `test:knowledge`, `verify:knowledge` |
 | `vault` | Portable knowledge foundation; direct Obsidian integration remains required future work | — | — | adapter tests |
 | `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
@@ -116,9 +116,8 @@ and authorization.
 | `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
 
 Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
-`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`);
-the platform API uses `STEX_PLATFORM_PORT` and is started separately with
-`dev:platform`. Legacy `STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility
+`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`,
+`STEX_PLATFORM_PORT`); `dev:platform` starts the platform API alone. Legacy `STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility
 aliases. Supported target: local development on Node ≥ 22.13, pnpm 9.15 via
 Corepack, uv with the pinned Python 3.12, Git, and LuaLaTeX for Frige proof
 tests.

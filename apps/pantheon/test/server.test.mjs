@@ -328,3 +328,60 @@ test('reviews a proposed change as a line diff that collapses distant unchanged 
   ]);
   assert.deepEqual(lineDiff('same', 'same'), [{ type: 'skip', count: 1 }]);
 });
+
+test('forwards only the read-only platform routes, without browser headers, and fails closed', async (context) => {
+  const seen = [];
+  const merged = { schemaVersion: 'stex.platform.projects.v1', studios: [{ id: 'frige', state: 'available' }, { id: 'seaxneat', state: 'unavailable' }], projects: [] };
+  let reply = (response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(merged)); };
+  const platform = http.createServer((request, response) => { seen.push({ method: request.method, path: request.url, cookie: request.headers.cookie, origin: request.headers.origin }); reply(response); });
+  await new Promise((resolve) => platform.listen(4415, '127.0.0.1', resolve));
+  context.after(() => platform.close());
+  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4416, context, { STEX_PLATFORM_URL: 'http://127.0.0.1:4415' });
+  const base = 'http://127.0.0.1:4416';
+
+  const ok = await fetch(`${base}/api/platform/v1/projects?ignored=1`, { headers: { cookie: 'session=secret', origin: 'http://127.0.0.1:4416' } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await ok.json(), merged);
+  assert.deepEqual(seen, [{ method: 'GET', path: '/api/v1/projects', cookie: undefined, origin: undefined }]);
+
+  for (const [method, route, status] of [['POST', '/api/platform/v1/projects', 405], ['DELETE', '/api/platform/v1/projects', 405], ['GET', '/api/platform/v1/health', 404], ['GET', '/api/platform/v1', 404]]) {
+    const response = await fetch(base + route, { method });
+    assert.equal(response.status, status, `${method} ${route}`); await response.arrayBuffer();
+  }
+  assert.equal(seen.length, 1, 'refused requests never reach the platform');
+  // A raw (un-normalized) dot-segment path and a HEAD request.
+  const raw = await new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port: 4416, path: '/api/platform/v1/x/../projects' }, (response) => { response.resume(); resolve(response.statusCode); }).once('error', reject));
+  assert.equal(raw, 200, 'dot segments resolve to the listed path only');
+  const head = await fetch(`${base}/api/platform/v1/projects`, { method: 'HEAD' });
+  assert.equal(head.status, 200); assert.equal((await head.arrayBuffer()).byteLength, 0);
+  assert.deepEqual(seen.slice(1).map((entry) => [entry.method, entry.path]), [['GET', '/api/v1/projects'], ['GET', '/api/v1/projects']], 'HEAD is answered from a GET to the platform');
+  seen.length = 1;
+
+  reply = (response) => { response.writeHead(200, { 'content-type': 'text/html' }); response.end('<script>alert(1)</script>'); };
+  const html = await fetch(`${base}/api/platform/v1/projects`);
+  assert.equal(html.status, 502); assert.match((await html.json()).error, /not available/);
+  reply = (response) => { response.writeHead(302, { location: 'http://example.com/', 'content-type': 'application/json' }); response.end('{}'); };
+  const redirected = await fetch(`${base}/api/platform/v1/projects`, { redirect: 'manual' });
+  assert.equal(redirected.status, 502, 'a platform redirect is neither followed nor relayed');
+  assert.equal(redirected.headers.get('location'), null); await redirected.arrayBuffer();
+  assert.equal(seen.length, 3);
+
+  for (const [label, write] of [
+    ['non-200 status', (response) => { response.writeHead(422, { 'content-type': 'application/json' }); response.end('{"detail":[]}'); }],
+    ['compressed body', (response) => { response.writeHead(200, { 'content-type': 'application/json', 'content-encoding': 'gzip' }); response.end(Buffer.from([0x1f, 0x8b])); }],
+    ['oversized chunked body', (response) => { response.writeHead(200, { 'content-type': 'application/json' }); const chunk = Buffer.alloc(1 << 20, 32); let sent = 0; const pump = () => { while (sent < 6 && response.write(chunk)) sent += 1; if (sent < 6) response.once('drain', () => { sent += 1; pump(); }); else response.end('{}'); }; pump(); }],
+  ]) {
+    reply = write;
+    const refused = await fetch(`${base}/api/platform/v1/projects`);
+    assert.equal(refused.status, 502, label); assert.match((await refused.json()).error, /not available/, label);
+  }
+});
+
+test('reports an unreachable platform API as unavailable', async (context) => {
+  await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4418, context, { STEX_PLATFORM_URL: 'http://127.0.0.1:4417' });
+  const response = await fetch('http://127.0.0.1:4418/api/platform/v1/projects');
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: 'The platform API is not available locally.' });
+  assert.throws(() => localProxyTarget('http://10.0.0.2:4340'), /loopback/);
+});
