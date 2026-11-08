@@ -14,16 +14,17 @@ assertions, and reviewable inferences. Embeddings, multimodal retrieval,
 runtime engine tools, and vault integration remain outside this implementation.
 
 Python/FastAPI with typed contracts is the required destination for STEX-owned
-application backends; existing Node servers remain transitional during this
-release. Obsidian is the required direct human-facing knowledge integration.
-Both are required future milestones under the
+application backends; existing Node servers remain transitional. Milestone M1
+adds the Python platform API in `backend/` beside them (health and a read-only
+merged project list); no Node route has moved yet. Obsidian is the required
+direct human-facing knowledge integration. Both continue under the
 [migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration) and
-[Obsidian gate](docs/PLATFORM-TRANSITION.md#direct-obsidian-integration),
-not changes introduced by this merge.
+[Obsidian gate](docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
 
 | Subsystem | Path | Status |
 | --- | --- | --- |
 | Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
+| Platform API | `backend/` (Python/FastAPI) | M1 foundation: `/health` and read-only `stex.platform.projects.v1`; not yet routed through Pantheon |
 | Frige | `apps/frige`; UI in `apps/pantheon/workspaces/frige` | Engine-owned manuscripts/proofs and platform-owned publishing workspace |
 | Seaxneat | `apps/seaxneat`; UI in `apps/pantheon/workspaces/seaxneat` | Active engine and platform-owned website workspace |
 | Igor | `stex-igor/apps/igor` | Composed Director conversations and approved project context; fake transport by default |
@@ -34,16 +35,17 @@ not changes introduced by this merge.
 
 ## Prerequisites
 
-The current application stack uses Node; this release adds no Python
-application environment or `requirements.txt`. The approved backend target is
-Python/FastAPI, with migration gated by the plan above.
 JavaScript dependencies are declared in each workspace's `package.json` and
-pinned in `pnpm-lock.yaml`. System tools are installed separately:
+pinned in `pnpm-lock.yaml`. The Python platform API's dependencies are declared
+in `pyproject.toml` and pinned in `uv.lock`; uv installs the Python version
+named in `.python-version` (3.12) when it is missing. System tools are
+installed separately:
 
 | Tool | Need | Used by |
 | --- | --- | --- |
 | Node.js 22.13+ (22 or 24 LTS) | Required | Everything. Node 25+ no longer bundles Corepack, which the Windows launchers call directly. |
 | Corepack with pnpm 9.15.9 | Required | Bundled with Node 22–24; `packageManager` selects pnpm. |
+| uv 0.11+ | Required | Python platform API (`test:platform`, `dev:platform`); `uv sync --frozen` creates the ignored `.venv`. |
 | Git | Required | Seaxneat workspace revisions. |
 | Git LFS | Required | Brand masters and splash media (`git lfs install` once per machine). Without it the splash media are pointer files. |
 | LuaLaTeX with `fontspec`, `microtype`, `geometry` | Recommended | Frige proofs. Proof tests skip without it. TeX Live or MiKTeX. |

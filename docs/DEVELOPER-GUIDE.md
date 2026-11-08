@@ -1,16 +1,21 @@
 # STEX developer guide
 
-Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnpm 9.15 via Corepack, Git, LuaLaTeX for Frige proof tests, and optionally `pdffonts` for Frige preflight. Check the toolchain with `corepack pnpm check:prereqs` (see [Prerequisites](../README.md#prerequisites)), then install with `corepack pnpm install --frozen-lockfile`.
+Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnpm 9.15 via Corepack, uv (Python 3.12 from `.python-version`), Git, LuaLaTeX for Frige proof tests, and optionally `pdffonts` for Frige preflight. Check the toolchain with `corepack pnpm check:prereqs` (see [Prerequisites](../README.md#prerequisites)), then install with `corepack pnpm install --frozen-lockfile`.
 
 This is the current transitional implementation. Python/FastAPI with typed
 contracts is the required target for STEX-owned application backends;
 React/TypeScript remains the frontend stack. Future backend work follows the
 [approved migration plan](PLATFORM-TRANSITION.md#python-backend-migration).
-This release preserves the Node services and introduces no Python rewrite,
-dependency stack or data migration.
+Milestone M1 adds the Python platform API in `backend/` (rules in
+[backend/AGENTS.md](../backend/AGENTS.md)) beside the unchanged Node services;
+it migrates no data and switches no route.
 
 | Command | Purpose |
 | --- | --- |
+| `corepack pnpm test:platform` | Python platform API: Ruff lint and format check, mypy strict, pytest (part of `corepack pnpm test`) |
+| `corepack pnpm verify:platform-api` | Real Frige and Seaxneat on disposable data with the platform API beside them; checks the merged project list and the unavailable-studio path |
+| `corepack pnpm dev:platform` | Serve the platform API on `127.0.0.1:4340` (`STEX_PLATFORM_PORT`), reading engines at `STEX_FRIGE_URL` / `STEX_SEAXNEAT_URL` |
+| `corepack pnpm openapi:platform` | Regenerate `protocol/platform/openapi.v1.json` after an intended API change |
 | `corepack pnpm test` | All deterministic suites, including `test:stex-igor-sync` |
 | `corepack pnpm sync:stex-igor` | Copy `packages/design-system`, the masthead and splash media, and Pantheon's `splash.css` and `motion.js` into the `stex-igor` submodule after changing them; then commit inside `stex-igor` |
 | `corepack pnpm dev:alpha` | Shell plus active application processes |

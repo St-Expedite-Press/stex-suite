@@ -1,0 +1,222 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "STEX Platform API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "List Projects",
+        "description": "Merged projects of every active studio; unavailable studios are named, never guessed.",
+        "operationId": "list_projects_api_v1_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformProjects"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status",
+            "default": "ok"
+          },
+          "service": {
+            "type": "string",
+            "const": "stex-platform",
+            "title": "Service",
+            "default": "stex-platform"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "0.1.0"
+          }
+        },
+        "type": "object",
+        "title": "Health"
+      },
+      "PlatformProject": {
+        "properties": {
+          "studio": {
+            "type": "string",
+            "title": "Studio"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectStatus"
+          },
+          "openPath": {
+            "type": "string",
+            "title": "Openpath"
+          },
+          "href": {
+            "type": "string",
+            "title": "Href"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studio",
+          "reference",
+          "id",
+          "title",
+          "kind",
+          "updatedAt",
+          "status",
+          "openPath",
+          "href"
+        ],
+        "title": "PlatformProject",
+        "description": "One studio-published project, tagged with its studio and Pantheon link."
+      },
+      "PlatformProjects": {
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "stex.platform.projects.v1",
+            "title": "Schemaversion",
+            "default": "stex.platform.projects.v1"
+          },
+          "studios": {
+            "items": {
+              "$ref": "#/components/schemas/StudioAvailability"
+            },
+            "type": "array",
+            "title": "Studios"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformProject"
+            },
+            "type": "array",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "required": [
+          "studios",
+          "projects"
+        ],
+        "title": "PlatformProjects"
+      },
+      "ProjectStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "working",
+              "attention",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "label"
+        ],
+        "title": "ProjectStatus"
+      },
+      "StudioAvailability": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state"
+        ],
+        "title": "StudioAvailability"
+      }
+    }
+  }
+}

@@ -34,9 +34,10 @@ agents; their permissions, tools and budgets do not transfer.
 Python/FastAPI and typed contracts are the required destination for STEX-owned
 application backends. Current Node servers remain transitional; frontend
 React/TypeScript and necessary Node build/compatibility tooling remain valid.
-Future backend changes follow the
-[migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration), not a
-rewrite during this release.
+The M1 platform API (`backend/`, built from the root `pyproject.toml`) runs
+beside them; further slices follow the
+[migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration), never a
+wholesale rewrite.
 
 `vault/` currently supplies optional portable scaffolding. Obsidian is the
 required direct human-facing knowledge integration, with actual-vault

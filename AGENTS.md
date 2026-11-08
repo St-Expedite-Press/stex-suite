@@ -27,9 +27,9 @@ with canonical ownership, provenance and explicit user authority preserved.
 
 **Python is the approved target for STEX-owned backend application logic, with
 FastAPI and typed Python contracts.** Existing Node backends are transitional,
-working implementations. Preserve and verify their behavior during this
-release; do not port them now or copy the retired Agent Studio backend.
-Future backend migration follows the approved
+working implementations; preserve and verify their behavior, and never copy
+the retired Agent Studio backend. The M1 platform foundation (`backend/`)
+runs beside them and replaces no Node route. Each further slice follows the
 [Python migration gate](docs/PLATFORM-TRANSITION.md#python-backend-migration),
 including contract/data parity and rollback. TypeScript/React remain frontend
 tools; existing plain JavaScript interfaces and Node build/compatibility
@@ -107,6 +107,7 @@ and authorization.
 | `stex-igor/runtime/hermes-agent` | Pinned upstream Hermes source (submodule of stex-igor) | loopback API when explicitly activated | 8642 | upstream runtime checks |
 | `stex-igor/hermes` | Eight native profile specifications, reusable skill procedures and runtime policy | — | — | `test:hermes` |
 | `stex-igor` | **Submodule** `St-Expedite-Press/stex-igor`: everything that runs on the hosted VM; deploys on push to its `main` | — | — | `test:stex-igor-sync` |
+| `backend` | Python/FastAPI platform API (M1): health and the read-only `stex.platform.projects.v1`; owns no engine state | — (no Pantheon route yet) | 4340 | `test:platform`, `verify:platform-api` |
 | `services/knowledge` | Optional metadata journal/projections and separate read-only vault adapter | `/graph/` via Pantheon | — | `test:knowledge`, `verify:knowledge` |
 | `vault` | Portable knowledge foundation; direct Obsidian integration remains required future work | — | — | adapter tests |
 | `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
@@ -115,10 +116,12 @@ and authorization.
 | `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
 
 Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
-`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`). Legacy
-`STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility aliases. Supported target:
-local development on Node ≥ 22.13, pnpm 9.15 via Corepack, Git, and LuaLaTeX
-for Frige proof tests.
+`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`);
+the platform API uses `STEX_PLATFORM_PORT` and is started separately with
+`dev:platform`. Legacy `STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility
+aliases. Supported target: local development on Node ≥ 22.13, pnpm 9.15 via
+Corepack, uv with the pinned Python 3.12, Git, and LuaLaTeX for Frige proof
+tests.
 
 ```powershell
 corepack pnpm install --frozen-lockfile
@@ -159,6 +162,7 @@ and the `protocol/` contracts you will cross. Current nested charters:
 - `apps/frige/AGENTS.md` — Frige engineering rules.
 - `apps/pantheon/AGENTS.md` — platform presentation and visual preservation.
 - `apps/seaxneat/AGENTS.md` — website workspace and revision isolation.
+- `backend/AGENTS.md` — Python platform API layers, contracts and toolchain.
 - `services/knowledge/AGENTS.md` — knowledge, consent and Obsidian boundaries.
 - `stex-igor/AGENTS.md` — the hosted-VM repository's charter (submodule).
 - `stex-igor/apps/igor/AGENTS.md` — Igor application rules.

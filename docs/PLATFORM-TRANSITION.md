@@ -10,8 +10,10 @@ clear contracts and ownership, not implementing unused plug-in infrastructure.
 
 The release directive adds two binding destinations: Python/FastAPI with
 typed contracts for STEX-owned backend application logic, and Obsidian as the
-direct human-facing knowledge integration. The plans below govern future
-increments; neither migration is implemented during this merge/release.
+direct human-facing knowledge integration. The plans below govern the
+increments. The Python migration has begun with the additive M1 foundation
+(see below); no engine operation or route has moved. Obsidian integration is
+not implemented.
 
 Pantheon owns the common web environment and progressively composes working
 surfaces from engine APIs. Engines retain canonical state and deterministic
@@ -212,12 +214,18 @@ knowledge integration is disabled.
 
 ## Python backend migration
 
-**Approved architectural plan; implementation remains a required future
-milestone.** Python is the target for STEX-owned application-backend logic,
+**Approved architectural plan; M1 foundation implemented and tested locally.**
+On 2026-11-08 the owner authorized M1 and continuation into later milestones
+under the refactor directive, with local commits only; deployment, pushing,
+destructive data operations and paid calls still need separate approval (see
+the roadmap below and the
+[M1 evidence](verification/platform-m1-python-foundation.md)).
+Python is the target for STEX-owned application-backend logic,
 using FastAPI and typed Python contracts. React/TypeScript presentation stays
 in Pantheon; Node may remain for frontend builds, existing compatibility
 boundaries and specialized external tooling. The current Node backends are
-transitional implementations, not code to replace during this release.
+transitional implementations, replaced only slice by slice through the steps
+below.
 
 Future backend changes must be scoped against this plan. Bounded fixes for
 current compatibility, security, correctness and release parity may continue
@@ -228,9 +236,9 @@ establish a new general Node application-service architecture.
    storage, validation, authorization, failure behavior, cancellation and
    concurrency. Record the existing synthetic fixtures and acceptance checks.
 2. Obtain authorization for one bounded migration slice with its owning paths,
-   typed Python interface, storage strategy, dependencies and rollback. Select
-   the Python toolchain and dependency versions from verified requirements at
-   that milestone; this release introduces none.
+   typed Python interface, storage strategy, dependencies and rollback. M1
+   established the toolchain (uv, `pyproject.toml`/`uv.lock`, Python 3.12);
+   add dependencies only at the slice that first needs them.
 3. Implement a compatible Python/FastAPI slice behind the existing versioned
    boundary. Preserve request/reply shapes and errors, explicit acceptance,
    stale-write safeguards, byte fidelity, idempotency and isolation. A language
@@ -248,6 +256,24 @@ notes or validated workspace history. No application may import another
 engine's private implementation as a migration shortcut. Upstream Hermes
 source and its Python environment remain separately owned runtime tooling;
 this plan is not an upstream rewrite or runtime upgrade.
+
+### Milestone roadmap
+
+Each milestone keeps every existing workflow working, records evidence under
+`verification/`, and never deploys, pushes, migrates real data or calls a
+paid provider without separate approval. Directories move only when the
+module they hold is migrated and verified; the target tree in the directive is
+a destination, not a reorganization to perform in one step.
+
+| Milestone | Objective | Status |
+| --- | --- | --- |
+| M0 | Merge both repositories with effective CI; record production state, backup and rollback | BLOCKED on owner-run CI access (see [release report](verification/platform-release.md)); local baseline committed |
+| M1 | Python foundation beside Node: `backend/stex` FastAPI app, typed settings, `/health`, read-only `stex.platform.projects.v1` over studio summaries; uv, Ruff, mypy, pytest in `corepack pnpm test` and CI | Implemented and tested locally ([evidence](verification/platform-m1-python-foundation.md)) |
+| M2 | Platform API consumed by Pantheon; identity boundary; first PostgreSQL schema and Alembic migrations for platform records | Planned |
+| M3 | Knowledge metadata, provenance, durable events and jobs in Python/PostgreSQL with migration, reconciliation and export parity | Planned |
+| M4 | Frige and Seaxneat operations moved one at a time with differential parity; LuaLaTeX, Git and Node build tools retained | Planned |
+| M5 | Igor's STEX-owned Node service layers (conversation service, inference boundary) moved with record compatibility | Planned; deploys need approval |
+| M6 | Obsidian plugin and governed sync, read-only Hermes MCP capabilities, specialist delegation | Planned; new product functionality with its own gates |
 
 ## Direct Obsidian integration
 

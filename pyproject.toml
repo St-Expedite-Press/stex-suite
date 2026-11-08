@@ -1,0 +1,52 @@
+[project]
+name = "stex-platform"
+version = "0.1.0"
+description = "STEX Pantheon platform API: the Python/FastAPI backend, introduced alongside the existing Node engines."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "httpx2>=2.15,<3",
+  "uvicorn>=0.32",
+]
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.23",
+  "mypy>=1.13",
+  "pytest>=8.3",
+  "ruff>=0.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "stex"
+module-root = "backend"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF", "S", "N"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**" = ["S101", "S104", "S105", "S106"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["backend/stex", "backend/tests"]
+mypy_path = "backend,backend/tests"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
