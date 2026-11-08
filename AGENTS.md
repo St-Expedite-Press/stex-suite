@@ -45,7 +45,7 @@ sync service during this release; never use a vault as operational storage.
 Codex development subagents and the documentation agent are development-time
 roles, separate from Igor/Hermes runtime agents, skills, credentials, toolsets
 and budgets. Use only installed, supported development configuration; never
-copy development roles into the Hermes roster or invent model identifiers.
+copy development roles into Hermes profiles or invent model identifiers.
 Only the coordinating agent performs authorized merges, pushes and release
 decisions. Scope delegation by files, constraints, evidence and stop condition.
 
@@ -105,7 +105,7 @@ and authorization.
 | `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
 | `stex-igor/services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
 | `stex-igor/runtime/hermes-agent` | Pinned upstream Hermes source (submodule of stex-igor) | loopback API when explicitly activated | 8642 | upstream runtime checks |
-| `stex-igor/hermes` | Declarative STEX role, profile, skill, and policy configuration | — | — | `test:hermes` |
+| `stex-igor/hermes` | Eight native profile specifications, reusable skill procedures and runtime policy | — | — | `test:hermes` |
 | `stex-igor` | **Submodule** `St-Expedite-Press/stex-igor`: everything that runs on the hosted VM; deploys on push to its `main` | — | — | `test:stex-igor-sync` |
 | `services/knowledge` | Optional metadata journal/projections and separate read-only vault adapter | `/graph/` via Pantheon | — | `test:knowledge`, `verify:knowledge` |
 | `vault` | Portable knowledge foundation; direct Obsidian integration remains required future work | — | — | adapter tests |
@@ -132,7 +132,7 @@ corepack pnpm dev:alpha             # shell + apps + fake inference, loopback on
 
 `stex-igor/` is the separate repository `St-Expedite-Press/stex-igor`. It
 holds everything that runs on the hosted VM: Igor, the inference service, and
-the Hermes roster, profiles, and runtime pin.
+the Hermes profile specifications, skills, and runtime pin.
 
 - **Get it** with `git clone --recursive` or
   `git submodule update --init`. Git LFS is required for the masthead media.
@@ -216,10 +216,22 @@ workflow requires it.
 - **Igor** is the user-facing name of the assistant in interfaces and user
   docs; **Hermes** remains the internal layer (`stex-igor/hermes/`, `stex-igor/services/inference`,
   `stex.hermes.turn.v1`). Do not rename internal identifiers or contracts.
-- STEX-owned Hermes profiles, roster, skills, and policies live in `stex-igor/hermes/`.
+- STEX-owned Hermes profiles, reusable skill procedures, and policies live in `stex-igor/hermes/`.
   The upstream source is pinned as `stex-igor/runtime/hermes-agent`; never copy it into
   application code or its configuration subtree. Development and tests use the
   deterministic fake transport unless live verification is explicitly approved.
+- The persistent native profile IDs are exactly `igor`, `architect`,
+  `developer`, `designer`, `artist`, `editor`, `knowledge`, and `auditor`.
+  Igor is the sole default human-facing Director. Remove STEX role registries
+  and hidden profile mappings; skills and bounded temporary workers create no
+  persistent identities. Profiles hold discipline expertise and reference-only
+  working knowledge, never competing engine state or shared Knowledge Base.
+  Models are selectable independently of profile identity. Specialists and
+  temporary workers remain disabled; all CLI/API toolsets remain empty.
+  The pinned native delegation path can select profile configuration, but its
+  children start fresh and skip memory. Do not claim persistent-session
+  specialist orchestration is accepted or activate production from this
+  configuration change. Profile checks and CI/release proof are separate gates.
 - `stex-igor/services/inference` is the only path to remote Hermes. Browsers and product
   apps never receive provider keys or call OpenRouter or any provider directly.
   Browsers talk to their product server (Frige, or the Igor application),

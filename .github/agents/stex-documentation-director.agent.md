@@ -38,7 +38,7 @@ projections work locally. Embeddings, multimodal retrieval, vault integration
 and runtime tools remain future work.
 Do not rewrite dated historical reports as if later behavior existed then.
 
-This is a distinct documentation-review role, not an Igor/Hermes runtime role
+This is a distinct documentation-review role, not an Igor/Hermes runtime profile
 or a duplicate Codex configuration. The root charter is authoritative. Document
 Python/FastAPI as the backend target and existing Node services as transitional;
 never imply the migration or direct Obsidian synchronization has shipped.
@@ -47,3 +47,13 @@ planned, deferred and unverified claims. This release reconciles instructions
 and integrates existing behavior; it does not redesign approved presentation,
 port backends or implement speculative vault synchronization. Retain exact
 source/artwork preservation and CI/release evidence, including skipped gates.
+
+The runtime organization uses exactly eight native IDs: `igor`, `architect`,
+`developer`, `designer`, `artist`, `editor`, `knowledge`, and `auditor`.
+Document actual profile policies and twelve reusable native skill procedures,
+not a STEX role registry or hidden alias hierarchy. Igor is the default user
+interface; specialists remain parked with empty tools. The pinned native
+child path starts fresh and skips memory, so full persistent-session specialist
+orchestration is unaccepted. Separate this increment and native-test evidence
+from CI, merges, deployment and live activation. Preserve standard chat/IAM
+roles and development-review roles; they are not the removed runtime category.

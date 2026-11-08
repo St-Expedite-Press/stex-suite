@@ -62,10 +62,35 @@ rewriting the pinned upstream Hermes runtime.
 ## Igor: runtime, Director, conversation surface
 
 Igor has three meanings that must stay explicit: the Hermes-derived runtime,
-the existing Pantheon Director role/profile, and the conversation surface.
+the native `igor` Director profile, and the conversation surface.
 The implementation adapts a pinned upstream Hermes checkout with STEX
 configuration; it does not maintain a separately verified source fork.
 Internal Hermes identifiers and the stable turn contract retain their names.
+
+The persistent organization has exactly eight native profiles: `igor`,
+`architect`, `developer`, `designer`, `artist`, `editor`, `knowledge`, and
+`auditor`. Igor conducts ordinary human interaction, selects specialists and
+models within approved budgets, obtains consent and synthesizes results.
+Specialists own structure, software implementation, form/production design,
+visual creation, language, research/provenance and independent verification.
+Their expertise spans applications; no separate STEX role category or hidden
+mapping reproduces the former hierarchy. Explicit specialist consultation is
+a deliberate user choice, not default navigation.
+
+Each profile defines its mission, boundaries, private working-memory policy,
+model/budget selection, skills, tools and evidence-bearing output. Twelve
+native skill documents provide reusable procedures, not more agent identities.
+Shared provenance remains in the Knowledge Base/User Graph; engines retain
+canonical operations and artifacts. A profile is not a model, and private
+expertise does not authorize another copy of project truth.
+
+The current pin supports profile-targeted native configuration routing, but
+its delegated children are fresh runs that skip memory. Full persistent-session
+specialist orchestration is not accepted. Specialists and temporary workers
+remain parked, toolsets stay empty, and live execution needs separate runtime
+authorization and isolation evidence. An isolated integration test cannot
+establish persistent sessions or production permission. This profile increment
+is distinct from CI, merge and deployment verification.
 
 Codex development subagents are separate from Igor/Hermes runtime agents.
 Their instructions, tools, permissions, budgets, skills and execution

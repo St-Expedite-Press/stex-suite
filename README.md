@@ -29,7 +29,7 @@ not changes introduced by this merge.
 | Igor | `stex-igor/apps/igor` | Composed Director conversations and approved project context; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
-| Hermes | `stex-igor/runtime/hermes-agent`, `stex-igor/hermes`, `stex-igor/services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |
+| Hermes | `stex-igor/runtime/hermes-agent`, `stex-igor/hermes`, `stex-igor/services/inference` | Pinned upstream source, eight native profile specifications, 12 reusable skill procedures and fake/upstream API boundary |
 | User Graph | `services/knowledge`; optional `vault` | Opt-in metadata projections; separate read-only vault adapter remains unexposed |
 
 ## Prerequisites
@@ -123,11 +123,24 @@ The suite carries the upstream Hermes Agent source as the pinned
 keeps `stex.hermes.turn.v1` stable and translates it to Hermes's authenticated
 OpenAI-compatible API; the safe default remains the deterministic fake.
 
-The checked-in [runtime profile manifest](stex-igor/hermes/runtime-profiles.json) maps
-Igor and seven parked specialists to STEX's declarative roles. Run
+The checked-in [runtime profile manifest](stex-igor/hermes/runtime-profiles.json)
+defines exactly eight native identities: `igor`, `architect`, `developer`,
+`designer`, `artist`, `editor`, `knowledge`, and `auditor`. Igor handles the
+ordinary user relationship; the seven specialists own coherent disciplines,
+not application-specific roles. Twelve native `SKILL.md` files provide real
+reusable procedures. Models can change independently of profile identity;
+profile memory is expertise and references, not canonical project storage.
+Run
 `corepack pnpm run check:hermes-runtime` to read and reconcile the local
 upstream profile catalog, model-provider selections, and empty CLI/API-server
 tool policies; it changes nothing and never reads a credential.
+
+Only Igor is conversation-enabled; the specialists and temporary workers stay
+parked and toolsets stay empty. Native profile-targeted delegation can load
+configuration at the pin, but delegated children start fresh and skip memory.
+Full persistent-session specialist orchestration is not accepted. Skill source
+and static configuration checks are separate from native execution proof, CI
+release verification and production activation.
 
 Local gateway preparation is deliberately fail-closed. When manually started,
 the Igor-only loopback API has its provider credential scoped to Igor and no

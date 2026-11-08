@@ -58,7 +58,7 @@ apps/eostre     deferred visual production domain
 apps/woden      deferred narrative domain
 vault           optional portable User Graph
 services        knowledge boundary
-stex-igor       hosted-VM submodule: Igor, inference, Hermes roster and runtime pin
+stex-igor       hosted-VM submodule: Igor, inference, native profiles/skills and runtime pin
 protocol        versioned public contracts
 ```
 

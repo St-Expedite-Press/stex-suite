@@ -30,7 +30,7 @@
     "test:assets": "node --test scripts/assets/verify-assets.test.mjs",
     "test:design-system": "corepack pnpm --dir packages/design-system test",
     "test:inference": "corepack pnpm --dir stex-igor/services/inference test",
-    "test:hermes": "node --test stex-igor/hermes/test/roster.test.mjs stex-igor/hermes/test/runtime-profiles.test.mjs",
+    "test:hermes": "node --test stex-igor/hermes/test/runtime-profiles.test.mjs",
     "test:knowledge": "corepack pnpm --dir services/knowledge test",
     "test:pantheon": "corepack pnpm --dir apps/pantheon test",
     "test:igor": "corepack pnpm --dir stex-igor/apps/igor test",

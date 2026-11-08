@@ -20,6 +20,17 @@ by the normal local workflow.
 
 If a studio is not running, the command center says so ("Seaxneat is not responding") and still shows the other studio's projects.
 
+Igor remains the ordinary conversation interface. Its approved specialist
+organization uses seven persistent profiles: Architect for structure,
+Developer for software, Designer for form and production, Artist for imagery,
+Editor for language, Knowledge for research/provenance, and Auditor for
+independent verification. These are configured disciplines, not seven newly
+enabled chat agents. Specialists and runtime tools remain disabled; full
+persistent-session delegation is not an accepted feature. Profile memory
+does not replace your projects or shared knowledge, and changing a model does
+not create another identity. Direct specialist consultation would require an
+explicit choice rather than appearing automatically.
+
 ## Frige
 
 Choose **Frige** on the command center, or open a book from its project lists.

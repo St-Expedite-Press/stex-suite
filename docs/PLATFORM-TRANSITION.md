@@ -31,7 +31,7 @@ dated [verification reports](verification/README.md) record evidence.
 | Frige engine | Manuscripts, editorial revision authority, typography, builds, proofs, preflight | Platform identity or other engines' storage |
 | Seaxneat engine | Website workspaces, validated revisions, proposals, builds, preview lifecycle | Platform identity or conversation records |
 | Igor runtime | Hermes-derived reasoning and, when separately secured, authorized tools | Product canonical state, rendering, knowledge truth |
-| Igor Director | The existing `pantheon-director` role and `igor` runtime profile | A second runtime or a new platform database |
+| Igor Director | Native `igor` profile: user relationship, coordination, approvals and synthesis | A second runtime or a new platform database |
 | Igor conversation service | Conversation records, pending/failure state, inference boundary and hosted session checks | Manuscripts, website files, implicit authority to execute tools |
 | Knowledge architecture | Source/artifact and user-context projections with provenance | A second copy of canonical engine state, credentials, queues or locks |
 
@@ -42,9 +42,35 @@ and `stex.hermes.turn.v1` keep their names. The hosted chat is one working
 Igor surface. P3 now establishes explicit project context locally; hosted
 deployment and runtime tool execution remain separately gated.
 
-Codex development subagents do not belong to the Igor/Hermes runtime roster.
+Codex development subagents do not belong to Igor/Hermes runtime profiles.
 Development instructions, permissions, budgets, tools and skills remain
 separate from runtime policy and execution environments.
+
+## Profile-only intelligence organization
+
+The approved persistent IDs are exactly `igor`, `architect`, `developer`,
+`designer`, `artist`, `editor`, `knowledge`, and `auditor`. The v2 runtime
+manifest points directly to same-ID native profile definitions; no STEX role
+registry, hidden alias map or additional application director remains.
+Igor handles ordinary user conversations, objectives, approvals, model/budget
+selection and final synthesis. Seven specialists own structure,
+implementation, form, visual creation, language, research/provenance and
+independent review. They return to Igor; direct consultation is explicit.
+
+Twelve reusable native skill procedures retain publishing, typesetting,
+software, visual/print, narrative, research, knowledge, documentation,
+security and delegation expertise without creating persistent identities.
+Profile working memory is private disciplinary expertise and authorized
+references, not a canonical source copy or a second shared Knowledge Base.
+Models are independent of identity. Canonical operations remain in engines.
+
+This is a separate increment from the platform release and its CI gates.
+The pinned native path supports profile configuration routing; delegated
+children start fresh and skip memory. Full persistent-session orchestration
+is not accepted. All CLI/API toolsets remain empty, seven specialists stay
+parked and temporary workers remain disabled. Native test evidence, deployment
+and any later runtime activation must be reported separately; profile source
+presence and successful static checks do not prove those capabilities.
 
 ## Migration rules
 

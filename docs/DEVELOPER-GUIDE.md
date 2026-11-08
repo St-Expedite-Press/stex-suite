@@ -18,7 +18,7 @@ dependency stack or data migration.
 | `corepack pnpm build:pantheon` | TypeScript check and build of the platform-owned Seaxneat workspace (`build:seaxneat` is a compatibility alias) |
 | `corepack pnpm verify:platform` | Real `dev:alpha`, disposable Seaxneat create/edit/diff/restore and Next preview, sandbox checks, five viewports |
 | `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
-| `corepack pnpm run test:hermes` | Validate the role/profile catalog |
+| `corepack pnpm run test:hermes` | Validate the eight-profile catalog, policy, assignments and reusable skill sources |
 | `corepack pnpm run test:knowledge` | Metadata journal/projection, consent, replay, inference, durability and legacy vault-adapter tests |
 | `corepack pnpm run test:design-system` | Tokens, contrast, status colours, font coverage |
 | `corepack pnpm run test:assets` | Asset manifest, naming, checksums, budgets, LFS pointers |
@@ -50,7 +50,7 @@ The checked Codex CLI is 0.144.1. Project `.codex/agents/stex_explorer.toml`
 and `stex_reviewer.toml` provide two bounded read-only development roles;
 they inherit the parent model and permissions. The existing GitHub
 documentation agent retains its distinct purpose. These are never runtime
-Hermes roles. The [official custom-agent schema](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+Hermes profiles. The [official custom-agent schema](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 defines `name`, `description` and `developer_instructions`; no model or
 permission override is hardcoded here. Supported clients must trust the project
 before loading project configuration. No user-level trust or credentials are
@@ -69,9 +69,11 @@ pin and fails closed when it cannot be checked out. Fork code receives neither
 private source nor the credential. Earlier P1/P4 runs skipped the test job;
 those green summaries are not full-suite evidence. The release must demonstrate
 actual test execution, including real proof prerequisites. The current
-credential-policy blocker and the owner's authorized access choice are recorded
-in [release evidence](verification/platform-release.md); a workflow change alone
-does not establish access.
+credential-policy blocker has been resolved by the owner's organization-policy
+authorization and an installed read-only key. Remote workflows are being
+rerun; final required-test results belong in
+[release evidence](verification/platform-release.md). Resolution of access is
+not itself proof that the new profile increment or release passed CI.
 
 Follow [the ordered plan](PLATFORM-TRANSITION.md). Pantheon owns the common
 shell and `apps/pantheon/workspaces/seaxneat` presentation; Seaxneat owns
@@ -149,6 +151,22 @@ The pinned source is `stex-igor/runtime/hermes-agent` (H1 currently pins commit
 native-Windows installer is documented in that checkout. It installs outside
 the repository, under `%LOCALAPPDATA%\hermes`; do not copy session data,
 credentials, logs, caches, or virtual environments into the suite.
+
+The source organization uses `stex.hermes.runtime-profiles.v2` and direct
+`profiles/<id>/profile.json` definitions (`stex.hermes.profile.v1`) for exactly
+`igor`, `architect`, `developer`, `designer`, `artist`, `editor`, `knowledge`
+and `auditor`. There is no role registry or separate STEX-to-native identity
+map. Twelve native `skills/<id>/SKILL.md` documents contain bounded procedures;
+catalog names alone are not skill execution evidence. Profile policies keep
+private expertise/reference memory separate from engine canonical state and
+shared knowledge, and model choice separate from identity.
+
+The pinned native delegation implementation can select profile configuration,
+but delegated children start fresh and skip memory. Full persistent-session
+specialist orchestration remains unaccepted. Specialists/temporary workers
+stay disabled and all CLI/API toolsets remain empty. Native no-provider tests,
+source validation, live activation and CI/release checks are different gates.
+Do not create a second STEX orchestrator to conceal a native limitation.
 
 The H1 local runtime is provisioned as a profile-scoped, Igor-only gateway.
 The ignored `%LOCALAPPDATA%\hermes\profiles\igor\.env` contains
