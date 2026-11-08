@@ -170,7 +170,8 @@ test('serves the command-center pages with honest states and no mockup records',
   assert.match(await readFile(path.join(appDirectory, 'public', 'projects.js'), 'utf8'), /application\.kind === 'studio' && application\.state === 'active'/);
   assert.match(home, /data-projects="continue"/); assert.match(home, /data-projects="recent" data-limit="5"/);
   await assertReferences(home, base);
-  assert.match(await (await fetch(`${base}/graph/`)).text(), /not built yet/);
+  assert.match(await (await fetch(`${base}/graph/`)).text(), /User Graph and sources/);
+  assert.deepEqual(await (await fetch(`${base}/api/knowledge/v1`)).json(), { enabled: false });
   assert.match(await (await fetch(`${base}/activity/`)).text(), /activity history is not built yet/);
   const deferred = await (await fetch(`${base}/eostre/`)).text();
   assert.match(deferred, /<html lang="en" data-stex-app="eostre">/);
@@ -208,7 +209,10 @@ test('proxies Igor, publishes the v2 registry, and no longer relays turns itself
   context.after(() => igor.close());
   await startPantheon(await mkdtemp(path.join(os.tmpdir(), 'stex-books-')), 4410, context, { STEX_IGOR_URL: 'http://127.0.0.1:4409' });
   const base = 'http://127.0.0.1:4410';
-  assert.deepEqual(await (await fetch(`${base}/igor/c/abc123def456`)).json(), { path: '/igor/c/abc123def456', prefix: '/igor' });
+  const composed = await fetch(`${base}/igor/c/abc123def456`);
+  assert.match(await composed.text(), /data-stex-composed="true"/);
+  assert.match(composed.headers.get('content-security-policy'), /img-src 'self' data:/);
+  assert.deepEqual(await (await fetch(`${base}/igor/api/interface`)).json(), { path: '/igor/api/interface', prefix: '/igor' });
   const created = await fetch(`${base}/igor/api/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });
   assert.equal(created.status, 201); await created.arrayBuffer();
   assert.deepEqual(seen.at(-1), { method: 'POST', path: '/igor/api/conversations', host: '127.0.0.1:4409', forwardedHost: '127.0.0.1:4410', body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });

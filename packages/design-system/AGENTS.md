@@ -99,11 +99,12 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   add account creation or present the entry as authentication until an
   identity milestone is authorised.
 - `/home/` — command center: P11 masthead, tabs (Home, Projects, Studios,
-  Graph, Activity), Continue working, Igor, the four studios, and Recent
+  Igor, Graph, Activity), Continue working, Igor, the four studios, and Recent
   projects. Project data comes only from each studio's
   `stex.projects.summary.v1` endpoint (`protocol/projects`), with honest empty,
-  unavailable, and deferred states. Graph and Activity render "not built yet"
-  until real features exist; never fill them with sample data. No permanent
+  unavailable, and deferred states. Graph renders optional real knowledge
+  metadata and relationships; Activity remains "not built yet". Never fill
+  either with sample data. No permanent
   sidebar.
 - **Igor** is the user-facing name of the assistant; Hermes stays the internal
   name. Igor turns go browser → the Igor application (`stex-igor/apps/igor`, proxied at
@@ -118,7 +119,9 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   and uses the common shell at `/workspaces/seaxneat/`; its engine owns Git,
   proposals, builds and preview lifecycle. Frige's library/workstation now live
   in `apps/pantheon/workspaces/frige`, with the shared header and navigation;
-  the instrumental view uses a compact header. Igor's composition follows
+  the instrumental view uses a compact header. Igor's private renderer is
+  composed through a versioned HTTP descriptor with a compact toolbar and
+  explicit project-context consent. See
   [its migration gate](https://github.com/St-Expedite-Press/stex-suite/blob/feat/pantheon-platform-p1/docs/PLATFORM-TRANSITION.md).
   Generated preview documents remain sandboxed outside the trusted UI.
 

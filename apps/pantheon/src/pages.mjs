@@ -4,10 +4,15 @@
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
+export function graphPage() {
+  return shell({ active: 'graph', title: 'User Graph', scripts: ['/knowledge.js'], body: `<section class="knowledge-workspace"><p class="eyebrow">Knowledge</p><h1>User Graph and sources</h1><p>Keep explicit project knowledge with revision evidence. Source text stays with its engine; relationships never change manuscripts or website files.</p><p id="knowledge-notice" role="status">Loading knowledge…</p><div id="knowledge-content"></div></section>` });
+}
+
 export const tabs = Object.freeze([
   { id: 'home', label: 'Home', route: '/home/' },
   { id: 'projects', label: 'Projects', route: '/projects/' },
   { id: 'studios', label: 'Studios', route: '/studios/' },
+  { id: 'igor', label: 'Igor', route: '/igor/' },
   { id: 'graph', label: 'Graph', route: '/graph/' },
   { id: 'activity', label: 'Activity', route: '/activity/' },
 ]);
@@ -49,7 +54,7 @@ function navigation(active) {
   return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul><button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
-export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main' }) {
+export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main', contentTag = 'main' }) {
   const pageScripts = ['/shell.js', ...scripts].map((src) => `<script type="module" src="${src}"></script>`).join('');
   return `<!doctype html>
 <html lang="en" data-stex-app="${escape(app)}">
@@ -68,9 +73,9 @@ export function shell({ active, title, body, scripts = [], styles = [], app = 'p
   <a class="skip-link" href="#${escape(skipTarget)}">Skip to content</a>
   ${instrumental ? '<header class="masthead platform-compact"><a class="masthead-brand" href="/home/"><span class="stex-emblem" aria-hidden="true"></span><span>Pantheon</span></a></header>' : masthead}
   ${navigation(active)}
-  <main class="${escape(contentClass)}" id="main">
+  <${contentTag} class="${escape(contentClass)}" id="main">
 ${body}
-  </main>
+  </${contentTag}>
 </body>
 </html>`;
 }
@@ -87,6 +92,12 @@ export function publishingPage(fragment, workstation = false) {
     instrumental: workstation, contentClass: workstation ? 'platform-workspace frige-workstation' : 'page frige-lobby', skipTarget: workstation ? 'conversation' : 'main',
     scripts: workstation ? ['/frige/workspace.js', '/frige/app.js'] : ['/frige/lobby.js'],
     styles: [workstation ? '/frige/style.css' : '/frige/lobby.css'], body: fragment,
+  });
+}
+
+export function directorPage() {
+  return shell({ active: 'igor', title: 'Igor', instrumental: true, contentTag: 'div', contentClass: 'platform-workspace',
+    scripts: ['/igor-interface.js'], body: '<div id="root" data-stex-composed="true"><p class="page" role="status">Opening Igor…</p></div>',
   });
 }
 

@@ -35,6 +35,32 @@ The deterministic simulator is not a claim of real Hermes/model behavior.
 Builds and previews run loopback-only; a failed build never advances the last
 validated revision.
 
+## Approved project context and knowledge observations
+
+**Discuss this project with Igor** opens source selection in the common
+platform. The user previews exact source text/revisions and approves them
+before they are offered to Igor. This grants no engine tools or write access.
+**Project knowledge** opens Graph with this project selected; when knowledge
+is enabled, inspect source revisions and explicitly accept their references.
+Graph remains an honest disabled view when no data directory is selected.
+
+`GET /api/stex/context/v1/projects/<id>` exports metadata for the fixed source
+set (`app/page.tsx`, `app/layout.tsx`, `app/globals.css`).
+`GET /api/stex/context/v1/projects/<id>/sources/<source-id>?revision=<sha256>`
+returns the exact source through `stex.project.context.v1`. Exports read the
+last validated Git object, never an unvalidated working draft. Projects with
+no validated revision are unavailable; stale source hashes are refused and
+sources above 12,000 bytes cannot be offered.
+
+`POST /api/stex/context/v1/projects/<id>/observation` takes
+`{sources: [{id, revision}]}`, checks those validated revisions, and records an
+engine-owned monotonic `stex.knowledge.event.v1` metadata checkpoint in its
+ignored project state. Identical selections reuse the checkpoint. Changed
+valid selections advance it; failed builds do not advance the validated source
+revision. The optional Graph accepts this provenance through the
+[knowledge contract](../../protocol/knowledge/README.md), retaining metadata
+rather than source text. Seaxneat continues to operate with Graph disabled.
+
 The platform uses the versioned
 [`stex.seaxneat.workspace.v1`](../../protocol/seaxneat/README.md) HTTP facade;
 unversioned project routes remain compatibility inputs over the same store.

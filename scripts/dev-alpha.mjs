@@ -58,6 +58,8 @@ const children = [
   // Igor holds the inference secret; Pantheon only proxies to it.
   run(['pnpm', '--dir', 'stex-igor/apps/igor', 'dev'], {
     STEX_IGOR_PORT: igorPort,
+    STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`,
+    STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}`,
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,
   }),

@@ -10,16 +10,18 @@ Two repositories:
 - **stex-igor (private submodule at `stex-igor/`)** owns everything that runs
   on the hosted VM, and deploys itself from its `main` branch.
 
-The suite records which stex-igor commit it was tested with. Pushing stex-igor
-is what releases to production. The full ownership matrix is in
+The suite records which stex-igor commit it was tested with. Pushing to
+stex-igor's `main` releases to production; review-branch pushes do not deploy.
+The full ownership matrix is in
 [the D1 report](docs/verification/stex-deployment-d1.md#3-ownership).
 
 
 Pantheon owns shared presentation, composes publishing and website workspaces, routes
 local HTTP, and reads the versioned application registry. Each engine owns its
-canonical data and workflow state. Igor retains its transitional
-frontend; [the transition plan](docs/PLATFORM-TRANSITION.md) defines its
-migration gates. No product
+canonical data and workflow state. Igor's private renderer is composed through
+a versioned HTTP descriptor inside Pantheon's common shell; its standalone
+surface remains available. [The transition plan](docs/PLATFORM-TRANSITION.md)
+defines the acceptance gates. No product
 imports another product's private storage as an integration shortcut.
 
 `stex-igor/services/inference` is the only application-facing Hermes boundary.
@@ -27,8 +29,10 @@ imports another product's private storage as an integration shortcut.
 STEX-owned declarative configuration only. Activation remains separately
 authorized because the upstream runtime has powerful tools and owns provider
 credentials. `vault/` is an optional
-Obsidian-compatible User Graph. `services/knowledge` is a replaceable,
-read-only adapter; applications continue to work without it.
+Obsidian-compatible User Graph. `services/knowledge` provides an optional
+metadata journal with coordinated source/provenance and user-context views,
+plus a separate legacy read-only vault adapter. The platform integration never
+opens the vault. Applications continue to work with knowledge disabled.
 
 ## Layout
 

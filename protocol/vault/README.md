@@ -36,5 +36,7 @@ user-context projection. Shared scope, canonical references, compatible
 provenance and accepted revision events provide co-extensionality,
 interoperability and co-evolution. They do not require identical records or
 automatic bidirectional overwrite. Assertion/inference, consent, correction,
-retention/export/deletion and replay semantics require new versioned
-contracts before implementation. This v0 read-only vault boundary is unchanged.
+retention/export/deletion and replay semantics are now defined by the separate
+[knowledge v1 contract](../knowledge/README.md). Its local metadata service is
+implemented; this v0 read-only vault boundary remains unchanged and unexposed
+to browsers. No vault write-back or indexing is implied.

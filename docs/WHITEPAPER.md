@@ -18,7 +18,8 @@ display of engine results. The first composed workspace is Seaxneat's website
 development surface, implemented in Pantheon and backed by a versioned engine
 API. Frige's existing library and mature manuscript workstation also live in
 Pantheon and use an additive publishing v1 engine boundary. Igor's conversation
-surface remains the next composition stage.
+surface is composed in the common shell through a versioned descriptor served
+by the private Igor application; its renderer and records remain owned there.
 
 Frige owns manuscripts, source revisions, editorial acceptance, typography,
 LuaLaTeX proofs, and preflight. Seaxneat owns website workspaces, Git history,
@@ -44,7 +45,14 @@ Internal Hermes identifiers and the stable turn contract retain their names.
 The Igor application owns conversation records and pending/failure state.
 Pantheon's home composer hands off to that service and stores no conversation
 identity or inference secret. Frige retains its scoped editorial threads.
-Shared project context across those surfaces is planned, not implemented.
+Project links now open explicit source selection in Igor. Users preview exact
+source text, identities and revisions before approval. Igor retains the
+accepted snapshots as conversation consent/provenance, not canonical engine
+state. Each conversation is bound to one project. A selection change or
+withdrawal creates a fresh reasoning epoch and excludes earlier-epoch history
+from future turns; queued and retried turns retain their accepted snapshot,
+and retries after withdrawal are refused. Earlier transmitted records are
+not erased by withdrawal.
 
 The only application-facing runtime path is server → inference → Hermes.
 Provider keys stay in the runtime environment. Request/reply validation,
@@ -72,11 +80,21 @@ assets, **interoperable** through compatible identities and provenance, and
 Every inference needs supporting evidence, confidence, and correction or
 rejection. An agent's suggestion is not a fact or permission grant.
 
-Today only an optional read-only local Markdown adapter exists. There is no
-implemented graph service, accepted-revision event pipeline, embeddings,
-multimodal retrieval, or twin synchronization. The portable Obsidian vault
-remains optional knowledge, never an execution queue, credential store, or
-second canonical application database. P4 defines the first projection gate.
+The implemented P4 foundation is optional and local: accepted engine revision
+events update a metadata source/provenance view and a user-context view through
+one durable, reconstructible journal. Assertions stay distinct from inferred
+relationships, which require evidence and confidence and can be corrected or
+rejected. Replay, revision ordering, withdrawal, export and erasure have
+explicit semantics. Source text remains at the engine; current access and
+revision checks gate use of stored references. Accepted relationships can be
+previewed and deliberately sent to Igor as a new user message.
+
+This is a bounded knowledge foundation, not a complete digital twin. There
+are no embeddings, multimodal retrieval, automatic transcript mining, or
+implicit engine writes. The separate portable Obsidian vault remains
+optional and unexposed to the browser, never an execution queue, credential
+store, or second canonical application database. See the
+[knowledge contract](../protocol/knowledge/README.md).
 
 ## Extensibility and limits
 

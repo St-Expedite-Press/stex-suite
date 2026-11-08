@@ -34,7 +34,8 @@ Igor names the intelligence layer and its Director in product language. The
 current implementation adapts a **pinned upstream Hermes checkout**; it is
 not evidence of a separately maintained source fork. Internal Hermes paths
 and `stex.hermes.turn.v1` keep their names. The hosted chat is one working
-Igor surface. It does not establish shared project context or tool execution.
+Igor surface. P3 now establishes explicit project context locally; hosted
+deployment and runtime tool execution remain separately gated.
 
 ## Migration rules
 
@@ -110,6 +111,10 @@ desktop/tablet/phone and keyboard checks; protected manuscript hashes stable.
 
 ### P3 — contextual Igor surfaces
 
+Implemented and tested locally: [P3/P4 evidence](verification/platform-transition-p3-p4.md).
+The private renderer is composed over `stex.igor.interface.v1`; explicit
+source preview/approval/withdrawal uses [context v1](../protocol/context/README.md).
+
 Compose conversation presentation within the common environment while keeping
 the existing conversation service as record owner and inference client.
 Introduce explicit project/reference and bounded context selection in a new
@@ -123,6 +128,14 @@ regressions, and no browser inference secret. Runtime engine tools remain
 separately gated on executable isolation and authorization tests.
 
 ### P4 — knowledge projections
+
+The bounded metadata foundation is implemented and tested locally:
+[P3/P4 evidence](verification/platform-transition-p3-p4.md),
+[knowledge contract](../protocol/knowledge/README.md). It is opt-in, retains
+references rather than source text, and never mines transcripts. Engines
+emit monotonic accepted-source observations on explicit user selection;
+the host checks access on display and on an explicit knowledge-to-Igor handoff.
+Broader semantic/multimodal retrieval and vault integration remain future work.
 
 Implement one engine event and one reconstructible projection before adding
 semantic retrieval. Start from an explicitly accepted revision and reference

@@ -48,6 +48,32 @@ project lists. Its `updatedAt` is the newest file modification time in the
 book, excluding Frige's private `.texgraph` and `.obsidian` folders. It reads
 file metadata only and never opens a manuscript.
 
+## Approved project context and knowledge observations
+
+The workstation's **Discuss with Igor** link opens `/igor/new?project=…` in
+Pantheon. Igor presents source selection and exact text preview; nothing is
+offered until approval. Existing scoped Frige editorial threads and explicit
+proposal acceptance remain independent of that conversation.
+**Project knowledge** opens Graph with the current project selected. When
+knowledge is enabled, inspect its source revisions and accept the references
+explicitly; otherwise Graph explains that it is disabled.
+
+`GET /api/stex/context/v1/projects/<id>` exports a paged metadata catalog;
+`GET /api/stex/context/v1/projects/<id>/sources/<source-id>?revision=<sha256>`
+exports one exact UTF-8 source revision under `stex.project.context.v1`.
+Exports enforce manuscript containment and refuse symlink/junction escapes,
+invalid text, stale hashes and source text above 12,000 bytes. They never
+rewrite protected source. Source references grant no mutation authority.
+
+`POST /api/stex/context/v1/projects/<id>/observation` takes explicit
+`{sources: [{id, revision}]}` selections, revalidates them, and records an
+engine-owned monotonic `stex.knowledge.event.v1` metadata checkpoint in ignored
+Frige state. Identical selections reuse the checkpoint; changed valid
+selections advance it. No source text is retained in this checkpoint.
+Pantheon's optional Graph accepts this provenance under the
+[knowledge contract](../../protocol/knowledge/README.md); it never becomes
+Frige's canonical manuscript or workflow store. Frige works with Graph disabled.
+
 ## One-page compatibility contract
 
 The primary platform library opens Markdown manuscript books (below). The

@@ -3,8 +3,10 @@
 The common STEX web environment: public splash, command center, workspace
 presentation, and same-origin engine proxies. Pantheon owns no engine state.
 The [transition plan](../../docs/PLATFORM-TRANSITION.md) defines the staged
-destination. Seaxneat and Frige have platform-owned workspaces; Igor's
-conversation composition follows next.
+destination. Seaxneat and Frige have platform-owned workspaces. Igor's private
+renderer is composed in the same shell through a versioned HTTP descriptor;
+its conversation service remains the record owner. An optional local knowledge
+journal supplies the Graph view without taking ownership of engine state.
 
 | Route | Behaviour |
 | --- | --- |
@@ -12,12 +14,13 @@ conversation composition follows next.
 | `/home/` | Command center: Continue working, Igor, Studios, Recent projects |
 | `/projects/` | Every project in the active studios, newest first |
 | `/studios/` | The four studios with their registered state and project counts |
-| `/graph/`, `/activity/` | Honest "not built yet" pages |
+| `/graph/` | Optional source/provenance and user-context projections; honest disabled state by default |
+| `/activity/` | Honest "not built yet" page |
 | `/home`, `/projects`, … | `308` to the trailing-slash route |
 | `/frige/` | Platform-owned publishing library, or workstation for `?book=…`; `/frige/api/…` proxies the engine |
 | `/workspaces/seaxneat/` | Pantheon-owned website workspace, using the versioned Seaxneat API |
 | `/seaxneat/` | `308` to `/workspaces/seaxneat/`; query preserved; `/seaxneat/api/…` remains the engine proxy |
-| `/igor/` | Proxied to the Igor application ([apps/igor](../../stex-igor/apps/igor/README.md)) on loopback |
+| `/igor/`, `/igor/new`, `/igor/c/<id>` | Shared-shell Director view; private Igor renderer, API, assets and session remain served over the loopback proxy |
 | `/eostre/`, `/woden/` | Deferred studio pages in the same shell |
 | `/texgraph/`, `/screenlab/`, `/novelgraph/` | `308` compatibility redirects |
 | `/design-system/…` | `@stex/design-system` `src`, `fonts`, `brand`, `icons`, `specimen` folders only |
@@ -25,6 +28,7 @@ conversation composition follows next.
 | `POST /api/igor/turn` | Retired: `404`. Igor turns belong to `stex-igor/apps/igor` |
 | `/api/applications` | The versioned application registry |
 | `/api/books…` | Compatibility proxy to Frige's `/api/stex/legacy-books/v1…`; no local storage access |
+| `/api/knowledge/v1…` | Optional knowledge view, source acceptance, relationships, withdrawal, export and erasure |
 
 ```powershell
 corepack pnpm dev:pantheon          # http://127.0.0.1:4300/ (STEX_PANTHEON_PORT)
@@ -34,6 +38,7 @@ corepack pnpm verify:platform       # real dev:alpha and disposable Next.js work
 corepack pnpm verify:splash         # browser checks; need Chrome or Edge
 corepack pnpm verify:home
 corepack pnpm verify:igor           # handoff into Igor; needs `corepack pnpm build:igor`
+corepack pnpm verify:knowledge      # disposable knowledge lifecycle and four Chrome viewports
 ```
 
 Design rules are in [docs/DESIGN-SYSTEM.md](../../docs/DESIGN-SYSTEM.md);
@@ -66,7 +71,7 @@ tagline, **Sign in**).
 
 The editorial pages share one shell (`src/pages.mjs`, `public/shell.css`): a
 masthead playing P11 over the P02 still, then the tabs Home, Projects, Studios,
-Graph, and Activity.
+Igor, Graph, and Activity. Instrumental workspaces use a compact header.
 
 - **Masthead.** At 1100 px and wider, the art fades out under the brand, so
   the wordmark never sits on visible art. Light text over this art fails
@@ -82,7 +87,8 @@ Graph, and Activity.
   Frige or Seaxneat.
 - **Igor** is the user-facing name of the STEX assistant, the Pantheon
   Director (Hermes internally). Its conversations live in the Igor application
-  ([apps/igor](../../stex-igor/apps/igor/README.md)), which Pantheon proxies at `/igor/`. The
+  ([apps/igor](../../stex-igor/apps/igor/README.md)). Pantheon composes its
+  renderer at `/igor/` and proxies its API/assets/session. The
   home composer hands a message off: `public/igor.js` posts it to
   `/igor/api/conversations` with one idempotency key per message text, then
   navigates to the returned route at once, before Igor has answered. A
@@ -130,11 +136,47 @@ and `report.json` to the system temp folder, or to `--out <dir>`.
 | --- | --- |
 | `STEX_PANTHEON_PORT` | Port (default 4300) |
 | `STEX_FRIGE_URL`, `STEX_SEAXNEAT_URL`, `STEX_IGOR_URL` | Application origins to proxy (loopback HTTP only; Igor defaults to `http://127.0.0.1:4330`) |
+| `STEX_KNOWLEDGE_DATA_DIR` | Opt-in knowledge metadata journal directory; unset means disabled. Use an ignored path such as `services/knowledge/.local-data` resolved from the repository root |
 
 `STEX_LAB_PORT` is the legacy port fallback. Books-directory configuration
 belongs to Frige, including its `STEX_BOOKS_DIR` compatibility fallback;
 Pantheon ignores these filesystem settings.
-`corepack pnpm dev:alpha` sets all of these for the local stack.
+`corepack pnpm dev:alpha` sets the ports and application origins for the local
+stack and inherits an explicitly selected knowledge directory.
+
+Knowledge remains disabled unless `STEX_KNOWLEDGE_DATA_DIR` is explicitly set.
+For a portable PowerShell example, see the [developer guide](../../docs/DEVELOPER-GUIDE.md).
+
+## Composed Igor and project knowledge
+
+`public/igor-interface.js` reads `GET /igor/api/interface`
+(`stex.igor.interface.v1`), validates the descriptor and loads its same-origin
+JavaScript/CSS assets. No private renderer source is copied into the public
+suite. The shared shell supplies navigation; Igor supplies a compact toolbar,
+conversation UI and approved project-context selection. Page CSP preserves
+Igor's prohibition on remote Markdown images. A missing/malformed build shows
+an explicit unavailable state. Standalone Igor retains its own masthead and
+hosted sign-in behavior.
+
+Graph uses `services/knowledge` through `src/knowledge-api.mjs`. Explicitly
+accepted engine events update source metadata/provenance and user-context
+views in one durable journal. Assertions and inferred relationships remain
+distinct; inferences need evidence and confidence and can be corrected or
+rejected. Project choices come from real engine summaries, while relationship
+subjects are chosen from accepted projects. **Project knowledge** links in
+Frige and Seaxneat open `/graph/?project=<reference>` with that project selected.
+Owner access/revision checks run before sources are marked current:
+at most 40 checks, four concurrently, under a six-second deadline. Failed or
+unchecked references remain unavailable. The graph stores no source text,
+transcripts, credentials or engine operational state.
+
+Users can withdraw consent, renew it after fresh checks, export the journal,
+or erase it. Accepted relationships with current evidence can be previewed
+and explicitly sent to Igor as the exact normal user message shown. Source
+access is rechecked before that handoff. No automatic graph inference,
+transcript mining, engine writes or runtime tools are enabled. See the
+[knowledge contract](../../protocol/knowledge/README.md). These workflows are
+tested locally; production has not changed.
 
 ## Website workspace
 

@@ -7,8 +7,19 @@ is not a separate agent: every reply comes from the existing director through
 
 `stex-igor/apps/igor` owns conversation records (titles, messages, ordering, pending and
 failed state). It does not own Hermes profiles, models, credentials, sessions,
-or memory. Pantheon uses only the creation endpoint (the handoff); everything
-else is Igor's own frontend.
+or memory. Pantheon composes the private renderer through an additive HTTP
+descriptor, proxies its APIs/assets and creates conversations for explicit
+handoffs. Conversation records and the inference secret stay in Igor.
+
+`GET /igor/api/interface` returns `stex.igor.interface.v1` with `entrypoint`,
+`styles` and `policy: "igor-page.v1"`. All asset paths must match
+`/igor/assets/[A-Za-z0-9._-]+.js|css`; the server verifies Vite manifest files
+exist. Missing/malformed builds return 503. Existing sign-in protects this
+endpoint. Pantheon loads it into `#root[data-stex-composed="true"]`, supplies
+the common navigation and preserves `img-src 'self' data:; object-src 'none';
+base-uri 'self'` in its page CSP. Standalone Igor retains its masthead.
+See [explicit project context](../context/README.md) for the separate
+`stex.igor.context.v1` snapshot and epoch contract.
 
 ## Mount and security
 
@@ -21,7 +32,8 @@ Every mutating request (`POST`, `PATCH`, `DELETE`) must have
 no cross-site `Origin` or `Sec-Fetch-Site`; otherwise `415` or `403`. Bodies
 are limited to 64 KB. The inference shared secret never reaches a browser.
 
-**Hosted mode.** When `STEX_IGOR_PUBLIC_ORIGIN` is set (for example
+**Hosted Access mode.** When `STEX_IGOR_PUBLIC_ORIGIN` is set without password
+mode (for example
 `https://igor.stexpedite.press`), Igor runs behind Cloudflare Tunnel and
 Cloudflare Access:
 
@@ -35,6 +47,14 @@ Cloudflare Access:
 - The public host is allowed as `Host`, and only the https public origin is
   allowed as `Origin`, alongside loopback.
 - Igor will not start in hosted mode without its Access settings.
+
+**Hosted password mode.** With `STEX_IGOR_AUTH=password`, Igor uses its
+own email/password sign-in and signed session cookie. Signed-out pages
+redirect to `/igor/login`; protected APIs, including interface/context, return
+401. The public HTTPS origin is required. Sign-out, password-hash changes and
+disabled users invalidate sessions. This is the current hosted configuration;
+Access mode remains a supported alternative. Local Pantheon's entry is still
+single-user navigation without authentication.
 
 ## Data
 

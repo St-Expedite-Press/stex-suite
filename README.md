@@ -6,21 +6,23 @@ publishing state, Seaxneat owns website workspaces, and Igor supplies the
 Hermes-derived intelligence layer. Ēostre and Woden remain deferred.
 
 The [platform transition plan](docs/PLATFORM-TRANSITION.md) distinguishes the
-destination from implementation. Seaxneat and Frige now have platform-owned
-workspaces; Igor's composition remains the next presentation stage.
-The evolving User Graph and multimodal knowledge base remain specified future
-work; the current knowledge adapter is optional and read-only.
+destination from implementation. Seaxneat and Frige have platform-owned
+workspaces, and Pantheon composes Igor's private renderer through a versioned
+HTTP interface. Igor can receive explicitly previewed, revision-pinned project
+sources. Optional knowledge projections retain source provenance, user
+assertions, and reviewable inferences. Embeddings, multimodal retrieval,
+runtime engine tools, and vault integration remain outside this implementation.
 
 | Subsystem | Path | Status |
 | --- | --- | --- |
 | Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
 | Frige | `apps/frige`; UI in `apps/pantheon/workspaces/frige` | Engine-owned manuscripts/proofs and platform-owned publishing workspace |
 | Seaxneat | `apps/seaxneat`; UI in `apps/pantheon/workspaces/seaxneat` | Active engine and platform-owned website workspace |
-| Igor | `stex-igor/apps/igor` | Active conversations with the Pantheon Director; fake transport by default |
+| Igor | `stex-igor/apps/igor` | Composed Director conversations and approved project context; fake transport by default |
 | Eostre / Woden | `apps/eostre`, `apps/woden` | Deferred, no simulated workflows |
 | Design system | `packages/design-system`, `assets` | Shared CSS tokens, type, and brand marks; LFS asset library |
 | Hermes | `stex-igor/runtime/hermes-agent`, `stex-igor/hermes`, `stex-igor/services/inference` | Pinned upstream runtime source, declarative STEX roster, and fake/upstream API boundary |
-| User Graph | `vault`, `services/knowledge` | Optional portable vault; read-only adapter |
+| User Graph | `services/knowledge`; optional `vault` | Opt-in metadata projections; separate read-only vault adapter remains unexposed |
 
 ## Prerequisites
 
@@ -71,6 +73,27 @@ renders Frige at `/frige/`, proxying its versioned engine API;
 the proxy. `/texgraph/` remains
 an explicit Frige compatibility redirect. The fake Hermes transport is deterministic and makes no provider
 request.
+
+Igor at `/igor/` shares Pantheon's navigation. A project's Igor link opens
+source selection: preview the exact text and approve it before
+sending. Changing or withdrawing context starts a fresh reasoning context;
+earlier conversation records remain visible.
+
+The **Graph** page is disabled by default. To enable its local metadata journal
+from PowerShell at the repository root, run:
+
+```powershell
+$env:STEX_KNOWLEDGE_DATA_DIR = Join-Path (Get-Location) 'services/knowledge/.local-data'
+corepack pnpm dev:alpha
+```
+
+Accept selected source revisions, record evidence-backed assertions or
+inferences, correct or reject relationships, export knowledge, or erase the
+journal. Graph acceptance stores metadata rather than source text. Sources
+are checked with their engine before use; unavailable revisions stay labelled.
+See the [user manual](docs/USER-MANUAL.md). Activity remains unimplemented.
+These workflows are implemented and tested locally; this transition does not
+change the hosted deployment.
 
 Use `corepack pnpm dev:pantheon`, `dev:frige`, or `dev:seaxneat` for an
 individual active application. The temporary `dev:lab` and `dev:texgraph`

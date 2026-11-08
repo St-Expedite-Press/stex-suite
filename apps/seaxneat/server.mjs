@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { SeaxneatStore } from './src/project-store.mjs';
 import { previewPath, previewTarget } from './src/preview-proxy.mjs';
 import { workspaceApi } from './src/workspace-api.mjs';
+import { projectContext } from './src/project-context.mjs';
+import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { projectSummaries } from './src/project-summary.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -71,6 +73,14 @@ const server = http.createServer(async (request, response) => { try {
   if (!opaquePreviewRead && (request.headers['sec-fetch-site'] === 'cross-site' || (origin && origin !== `http://${request.headers.host}` && origin !== platformOrigin.origin))) return send(response, 403, { code: 'FORBIDDEN', error: 'Foreign browser origin refused.' });
   if (pathname === '/api/health') return send(response, 200, { ok: true, dataDirectory, vault: 'disabled', transport: 'deterministic' });
   if (pathname === '/api/stex/projects' && request.method === 'GET') return send(response, 200, projectSummaries(store.list()));
+  if (pathname.startsWith('/api/stex/context/v1/')) {
+    const observation = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/observation$/.exec(pathname);
+    if (observation && request.method === 'POST') return send(response, 200, await knowledgeEvent(store, observation[1], await body(request)));
+    const match = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/sources\/(page|layout|styles))?$/.exec(pathname);
+    if (!match) return send(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
+    if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return send(response, 405, { error: 'Method not allowed.' }); }
+    return send(response, 200, await projectContext(store, match[1], { sourceId: match[2], revision: url.searchParams.get('revision') }));
+  }
   const previewMatch = /^\/api\/projects\/([a-z0-9][a-z0-9-]{0,62})\/preview(?:\/(.*))?$/.exec(pathname);
   if (previewMatch && ['GET', 'HEAD'].includes(request.method)) { const project = store.get(previewMatch[1]); return proxyPreview(request, response, project.preview?.target, previewMatch[2], url.search, `${basePath}/api/projects/${project.id}/preview`); }
   if (pathname === '/api/projects' || pathname.startsWith('/api/projects/') || pathname === '/api/stex/workspace/v1' || pathname.startsWith('/api/stex/workspace/v1/')) {
@@ -82,5 +92,5 @@ const server = http.createServer(async (request, response) => { try {
     response.writeHead(308, { location: target.href }); response.end(); return;
   }
   return send(response, 404, { error: 'Not found.' });
-} catch (error) { send(response, error.code === 'BUILD_FAILED' ? 422 : 400, { error: error.message || 'Request failed.', code: error.code || 'INVALID_REQUEST' }); } });
+} catch (error) { send(response, error.status || (error.code === 'BUILD_FAILED' ? 422 : 400), { error: error.message || 'Request failed.', code: error.code || 'INVALID_REQUEST' }); } });
 server.listen(port, '127.0.0.1', () => console.log(`Seaxneat is ready at http://127.0.0.1:${port}`));

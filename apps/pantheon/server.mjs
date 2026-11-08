@@ -5,8 +5,10 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage } from './src/pages.mjs';
+import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage, directorPage, graphPage } from './src/pages.mjs';
 import { isLoopbackHost, localProxyTarget, mountedApplication, proxyApplication, shellApplications, validateRegistry } from './src/shell.mjs';
+import { openKnowledge } from '../../services/knowledge/src/projections.mjs';
+import { knowledgeApi } from './src/knowledge-api.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
@@ -30,6 +32,8 @@ const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
 };
+const knowledge = await openKnowledge({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '' });
+const knowledgeRoute = knowledgeApi({ knowledge, targets: proxyTargets });
 // The shared design system is served from its own package; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
@@ -37,12 +41,12 @@ const pages = {
   '/home/': () => homePage(applications),
   '/projects/': () => projectsPage(),
   '/studios/': () => studiosPage(applications),
-  '/graph/': () => unbuiltPage('graph'),
+  '/graph/': () => graphPage(),
   '/activity/': () => unbuiltPage('activity'),
   '/workspaces/seaxneat/': () => developmentPage(),
 };
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
-function sendPage(response, html) { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); response.end(html); }
+function sendPage(response, html, headers = {}) { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers }); response.end(html); }
 
 // Static files revalidate by ETag and honour a single byte range, which browsers
 // (Safari in particular) require before they will play <video>.
@@ -80,6 +84,12 @@ http.createServer(async (request, response) => {
   if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
+    if (url.pathname === '/api/knowledge/v1' || url.pathname.startsWith('/api/knowledge/v1/')) return await knowledgeRoute(request, response, url);
+    if (url.pathname === '/igor') { response.writeHead(308, { location: `/igor/${url.search}` }); response.end(); return; }
+    if (['/igor/', '/igor/new'].includes(url.pathname) || /^\/igor\/c\/[^/]+\/?$/.test(url.pathname)) {
+      if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: 'Method not allowed.' });
+      return sendPage(response, directorPage(), { 'content-security-policy': "img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'" });
+    }
     if (url.pathname === '/frige') { response.writeHead(308, { location: `/frige/${url.search}` }); response.end(); return; }
     if (url.pathname === '/frige/' && ['GET', 'HEAD'].includes(request.method)) {
       const workstation = Boolean(url.searchParams.get('book') || url.searchParams.get('project'));

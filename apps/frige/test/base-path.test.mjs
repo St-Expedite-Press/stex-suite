@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -28,6 +28,24 @@ test('serves Frige APIs and runtime configuration under its shell mount', async 
   assert.match(await runtime.text(), /STEX_SHELL_URL="\/"/);
   const unmapped = await fetch('http://127.0.0.1:4410/api/health');
   assert.equal(unmapped.status, 404);
+});
+
+test('cold context and knowledge routes reject manuscript links before creating any graph state', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-cold-context-'));
+  const book = path.join(root, 'books', 'linked-book'); const outside = path.join(root, 'outside');
+  await mkdir(book, { recursive: true }); await mkdir(outside);
+  const privateText = '# Programme\n\nPRIVATE linked content\n';
+  await writeFile(path.join(outside, 'Programme.md'), privateText);
+  await symlink(outside, path.join(book, 'manuscript'), process.platform === 'win32' ? 'junction' : 'dir');
+  await startFrige(root, 4427, context);
+  const base = 'http://127.0.0.1:4427/frige/api/stex/context/v1/projects/';
+  for (const [route, options] of [['linked-book', {}], ['linked-book/observation', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"sources":[]}' }]]) {
+    const result = await fetch(base + route, options); assert.equal(result.status, 403);
+    assert.ok(!(await result.text()).includes('PRIVATE'));
+    await assert.rejects(access(path.join(book, '.texgraph')), { code: 'ENOENT' });
+  }
+  assert.equal((await fetch(base + 'missing-book')).status, 404);
+  assert.equal(await readFile(path.join(outside, 'Programme.md'), 'utf8'), privateText);
 });
 
 test('returns to the Pantheon command center by default when mounted', async (context) => {

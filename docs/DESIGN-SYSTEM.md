@@ -15,7 +15,8 @@ a luxury-brand website, or a GPT wrapper.
 
 **Status.** Implemented and tested: tokens, typography, shared components, the
 Pantheon splash (`/`), and the command center (`/home/`, `/projects/`,
-`/studios/`, with honest Graph and Activity placeholders). Motion
+`/studios/`, composed Igor, and an optional Graph knowledge view; Activity
+remains an honest placeholder). Motion
 preferences are honoured per component; the design system applies no global
 motion override, so proof viewers, editors, and canvases keep their own. Frige
 adopted the system in D4 (tokens, Dusty Garnet accent, masthead, responsive

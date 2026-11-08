@@ -42,6 +42,7 @@
     "test:lab": "corepack pnpm run test:pantheon",
     "test:texgraph": "corepack pnpm run test:frige",
     "build:pantheon": "corepack pnpm --dir apps/pantheon build",
-    "verify:platform": "node scripts/verify-platform.mjs"
+    "verify:platform": "node scripts/verify-platform.mjs",
+    "verify:knowledge": "node scripts/verify-knowledge.mjs"
   }
 }

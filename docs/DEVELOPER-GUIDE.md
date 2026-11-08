@@ -12,7 +12,7 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm verify:platform` | Real `dev:alpha`, disposable Seaxneat create/edit/diff/restore and Next preview, sandbox checks, five viewports |
 | `corepack pnpm build:igor` | Igor's Vite production build (needed before `dev:igor` or `verify:igor`) |
 | `corepack pnpm run test:hermes` | Validate the role/profile catalog |
-| `corepack pnpm run test:knowledge` | Validate the optional User Graph adapter |
+| `corepack pnpm run test:knowledge` | Metadata journal/projection, consent, replay, inference, durability and legacy vault-adapter tests |
 | `corepack pnpm run test:design-system` | Tokens, contrast, status colours, font coverage |
 | `corepack pnpm run test:assets` | Asset manifest, naming, checksums, budgets, LFS pointers |
 | `corepack pnpm assets:build [splash\|masthead\|emblems]` | Rebuild web media from masters, bit-exact (needs FFmpeg) |
@@ -20,6 +20,7 @@ Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnp
 | `corepack pnpm verify:home` | Browser check of the command center with an isolated stack and disposable data (needs Chrome or Edge) |
 | `corepack pnpm verify:igor-login` | Browser check of hosted Igor's password sign-in page (the Pantheon splash with a form) at 15 viewports, plus a real sign-in, with a disposable user; needs `corepack pnpm build:igor` and Chrome or Edge |
 | `corepack pnpm verify:igor` | Browser check of the Igor handoff, conversation workflow, and layout at 5 viewports with a stub inference service (needs Chrome or Edge) |
+| `corepack pnpm verify:knowledge` | Disposable engine/knowledge workflow, revision acceptance, relationships, withdrawal, restart, export/deletion and four Chrome viewports |
 
 Use disposable temp data for Seaxneat through `STEX_SEAXNEAT_DATA_DIR` and for Igor through `STEX_IGOR_DATA_DIR`. Canonical
 Pantheon and Frige settings are `STEX_PANTHEON_*` and `STEX_FRIGE_*`; legacy
@@ -45,7 +46,10 @@ workspace state and operations through
 [`stex.seaxneat.workspace.v1`](../protocol/seaxneat/README.md). Publishing UI
 lives in `apps/pantheon/workspaces/frige` and consumes
 [`stex.frige.publishing.v1`](../protocol/frige/README.md#publishing-v1).
-Igor's conversation composition is next. Do not relocate canonical state to Pantheon.
+Igor's private renderer is composed through `stex.igor.interface.v1`; Pantheon
+owns the shell and loads only validated same-origin assets from its descriptor.
+The conversation service owns approved project snapshots and context epochs
+under `stex.igor.context.v1`. Do not relocate canonical state to Pantheon.
 The legacy `/api/books` API now proxies a
 [Frige-owned boundary](../protocol/frige/README.md).
 
@@ -54,13 +58,40 @@ sets each engine's `STEX_PANTHEON_URL` to the selected shell port. When
 launching engines independently with a non-default platform port, set this
 loopback origin explicitly so same-origin browser requests are admitted.
 `STEX_BOOKS_DIR` remains a Frige compatibility fallback; Pantheon ignores
-filesystem settings. Generated preview responses and frames are sandboxed;
+engine filesystem settings; its optional knowledge service has a separate
+explicit data directory. Generated preview responses and frames are sandboxed;
 opaque browser origins cannot mutate engine APIs. OS isolation for arbitrary
 build code remains outside this local alpha's verified guarantees.
 
-The User Graph/twin and source/artifact knowledge projections are specified
-future architecture, not an implemented event system. No shared store,
-embeddings, agent tools, identity backend or scheduler is implied by P1.
+`dev:alpha` also gives Igor fixed loopback `STEX_FRIGE_URL` and
+`STEX_SEAXNEAT_URL` origins for owner-validated context exports. Standalone or
+hosted Igor without those explicit settings reports the engine unavailable.
+Context selection uses metadata catalogs, exact text preview, a digest and
+revision revalidation. Changed/withdrawn context advances its runtime session
+epoch and excludes prior-epoch history; this is not provider-side deletion.
+
+Knowledge is opt-in. From PowerShell at the repository root:
+
+```powershell
+$env:STEX_KNOWLEDGE_DATA_DIR = Join-Path (Get-Location) 'services/knowledge/.local-data'
+corepack pnpm dev:alpha
+```
+
+Pantheon hosts `/api/knowledge/v1` and the Graph view; the knowledge library
+owns its metadata journal in that selected ignored directory. Engines emit
+durable monotonic observation events after revision checks; accepting one
+updates coordinated source and user-context projections. No source text,
+conversation transcript or engine operational state is stored there. Current
+source access checks are bounded to 40 references, four concurrent requests,
+and a six-second deadline; unchecked references remain unavailable.
+Graph assertions/inferences have evidence, correction/rejection and explicit
+preview handoff to Igor. Export/erasure, replay and stale events are specified
+in [the knowledge contract](../protocol/knowledge/README.md).
+
+These paths are implemented and tested locally. The broader twin,
+embeddings, multimodal retrieval, vault integration, agent tools, shared
+identity and a generalized scheduler remain outside this transition. No
+production deployment follows from a review-branch push.
 
 ## Hermes / Igor runtime (H1)
 

@@ -32,5 +32,7 @@ make provider calls, deploy, or push without explicit authorization.
 
 Use `docs/PLATFORM-TRANSITION.md` for the target architecture and ordered
 acceptance gates. Seaxneat and Frige presentation is platform-owned; Igor
-composition, contextual assistance and knowledge projections remain staged.
+composition, explicit project context and optional metadata knowledge
+projections work locally. Embeddings, multimodal retrieval, vault integration
+and runtime tools remain future work.
 Do not rewrite dated historical reports as if later behavior existed then.

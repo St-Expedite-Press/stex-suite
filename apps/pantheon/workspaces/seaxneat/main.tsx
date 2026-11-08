@@ -106,6 +106,8 @@ function Workspace() {
       <section className="workspace-project" aria-label="Selected website">
         {selected ? <>
           <p className="workspace-reference">{selected.ref}</p><h2>{selected.title}</h2>
+          <a className="stex-button stex-button--secondary" href={'/igor/new?project=' + encodeURIComponent(selected.ref)}>Discuss this project with Igor</a>
+          <a className="stex-button stex-button--secondary" href={'/graph/?project=' + encodeURIComponent(selected.ref)}>Project knowledge</a>
           <p>Operation: {selected.operation.state}. Last validated revision: <code>{selected.lastValidatedRevision?.slice(0, 12) || 'None'}</code></p>
           {selected.operation.detail && <p className="workspace-notice">{selected.operation.detail}</p>}
           <button className="stex-button stex-button--secondary" type="button" disabled={busy} onClick={startPreview}>Build and start local preview</button>

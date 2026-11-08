@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { legacyBooksApi } from './src/legacy-books.mjs';
 import { publishingRoute } from './src/publishing-contract.mjs';
+import { projectContext, validateContextTree } from './src/project-context.mjs';
+import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
@@ -125,6 +127,13 @@ async function serveFile(response, file) {
   }
 }
 
+async function contextStoreFor(id, url) {
+  const candidate = new ProjectStore(path.join(booksDirectory, id));
+  try { await validateContextTree(candidate); }
+  catch (error) { if (error.status) throw error; throw Object.assign(new Error('The selected publishing project is unavailable.'), { status: error.code === 'ENOENT' ? 404 : 503, code: error.code === 'ENOENT' ? 'NOT_FOUND' : 'UNAVAILABLE' }); }
+  const selected = new URL(url); selected.searchParams.set('book', id);
+  return storeFor(selected);
+}
 async function storeFor(url) {
   const bookId = url.searchParams.get('book');
   if (bookId) {
@@ -394,6 +403,14 @@ http.createServer(async (request, response) => {
       if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
+    if (url.pathname.startsWith('/api/stex/context/v1/')) {
+      const observation = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/observation$/.exec(url.pathname);
+      if (observation && request.method === 'POST') return json(response, 200, await knowledgeEvent(await contextStoreFor(observation[1], url), observation[1], await body(request)));
+      const match = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/sources\/([a-z][a-z0-9-]{5,80}))?$/.exec(url.pathname);
+      if (!match) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
+      if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
+      return json(response, 200, await projectContext(await contextStoreFor(match[1], url), match[1], { sourceId: match[2], revision: url.searchParams.get('revision'), offset: url.searchParams.get('offset') || '0' }));
+    }
     if (url.pathname === '/api/stex/publishing/v1' || url.pathname.startsWith('/api/stex/publishing/v1/')) {
       const suffix = url.pathname.slice('/api/stex/publishing/v1'.length);
       const methods = publishingRoute(suffix);
@@ -434,7 +451,7 @@ http.createServer(async (request, response) => {
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);
   } catch (error) {
-    json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400, { error: error.message || 'Unexpected server error.' });
+    json(response, error.status || (error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400), { error: error.message || 'Unexpected server error.', ...(error.code ? { code: error.code } : {}) });
   }
 }).listen(port, '127.0.0.1', () => {
   console.log(`Frige Studio is ready at http://127.0.0.1:${port}${mountedAt || '/'}`);
