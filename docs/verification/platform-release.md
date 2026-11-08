@@ -1,6 +1,7 @@
 # Platform release and instruction reconciliation
 
-Status: **IN PROGRESS — release gates have not yet passed**.
+Status: **BLOCKED on permitted CI access — preparation verified, no main merge
+or deployment performed**.
 
 ## Baseline and pre-correction audit
 
@@ -99,3 +100,69 @@ STEX's runtime charter forbids editing that subtree for this release. STEX's
 
 These are **pre-merge** results. Effective CI, both main merges, the intended
 production deployment and post-merge acceptance remain mandatory pending gates.
+
+## Release packaging compatibility
+
+The local release command exposed an existing Windows defect: the script
+passed GNU-only `--force-local` to Windows BSD tar. The bounded repair uses
+relative tar archive/staging paths and shell-free process arguments, including
+the existing Node/Corepack invocation convention on Windows. A containment
+check precedes staging replacement. The installer layout and metadata fields
+are unchanged. Local archive acceptance passed: 122 safe relative entries,
+required renderer/manifest/context/inference/installer files present, and no
+environment, conversation, user or local-state files. Independent review found
+no remaining issue in the fix. Igor PR CI now packages the built release and
+checks required entries without deploying; actual Linux execution is recorded
+only once its CI run completes.
+
+The organization reports `deploy_keys_enabled_for_repositories=false`.
+Changing it would affect organization policy, so it is not implied by the
+earlier permission to create one read-only key. The follow-up owner access
+decision remains pending. [Suite run 42446240079](https://github.com/St-Expedite-Press/stex-suite/actions/runs/42446240079)
+fails closed because the approved SSH secret could not be installed; its
+dependent test job is not acceptance evidence. No main merge or deployment
+has been attempted.
+
+## Instruction reconciliation inventory
+
+Every listed charter changed; its sibling `CLAUDE.md` is now the single
+`@AGENTS.md` import. There is no second Claude architecture specification.
+
+| Repository | Charter paths |
+| --- | --- |
+| stex-suite | `AGENTS.md`; `apps/frige/AGENTS.md`; `apps/frige/books/lift-wind-love-heat/AGENTS.md`; `apps/pantheon/AGENTS.md`; `apps/seaxneat/AGENTS.md`; `packages/design-system/AGENTS.md`; `services/knowledge/AGENTS.md` |
+| stex-igor | `AGENTS.md`; `apps/igor/AGENTS.md`; `hermes/AGENTS.md`; `runtime/AGENTS.md`; `services/inference/AGENTS.md`; `deploy/AGENTS.md`; `vendor/design-system/AGENTS.md` (synchronized source copy) |
+
+Both repositories add `.codex/agents/stex_explorer.toml` and
+`stex_reviewer.toml`, without model or permission overrides. The suite's
+`.github/agents/stex-documentation-director.agent.md` retains its distinct
+documentation role and follows root authority. Mechanical instruction checks
+run from both package manifests; the suite synchronizes the private verifier
+copy without pruning independently owned private scripts. Broken runtime
+links, stale composition/language/Obsidian statements and development/runtime
+role ambiguity are corrected. No Hermes roster, skill or tool policy changed.
+
+## Published preparation and remaining gates
+
+Private candidate `be3a37f8e90b9ce51ff02d46d732f4a15e484c7a` is pushed to
+[Igor PR 1](https://github.com/St-Expedite-Press/stex-igor/pull/1).
+[CI run 42446491577](https://github.com/St-Expedite-Press/stex-igor/actions/runs/42446491577)
+executed tests, typecheck, build and the new release-archive inspection on
+Ubuntu successfully. Native Windows BSD-tar packaging also passed from that
+clean revision; local generation-zero archives were not deployed.
+The suite review branch pins this candidate while integration is held. It
+must be updated to the actual merged Igor-main revision before suite merge.
+
+Hosted read-only recheck confirms the same baseline generation 11 and healthy
+readiness. Its Hermes source is exactly `e76fbd80…`. Public `/igor/` redirects
+to password sign-in; conversation/readiness APIs return 401 signed out and
+`/igor/login` returns 200. No paid turn, user mutation, production configuration
+change or deploy occurred. Existing authentication sessions were not exercised
+using private user credentials. Claude live execution also remains unverified.
+
+Required next steps remain: establish owner-approved CI read access; run the
+full suite in GitHub; merge Igor through its reviewed PR; monitor deployment,
+compare private record-integrity evidence and confirm rollback readiness;
+pin the merged reachable revision in the suite; run its gates and merge;
+verify clean mains and repeat post-merge acceptance. Neither release success
+nor these post-merge results are claimed while access is blocked.
