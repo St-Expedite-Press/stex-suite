@@ -85,6 +85,18 @@ event ordering, replay/renewal, failed durable writes and crashed-writer locks.
 
 ## Review and limits
 
+Publication verified on GitHub: suite implementation
+`b9db0d935a672c013ce59d3da367d8d8087c3d20` pins private Igor
+`c0e4950633963c97393ee15754da7be10783a359`. Both review branches are pushed.
+[Igor CI](https://github.com/St-Expedite-Press/stex-igor/actions/runs/42440402873)
+passed tests, TypeScript and build. The
+[suite workflow](https://github.com/St-Expedite-Press/stex-suite/actions/runs/42440419215)
+completed its gate but **skipped** its test job without the private-submodule
+read token. That is not test evidence; local acceptance above remains the
+verified suite result. Final evidence-only commits do not change tested code.
+Remote main revisions remain suite `5800920a1ab67266e3be5b941be7605ea12d541e`
+and Igor `462bf60ee5bf12a83d3eba02df1f78100fb351dd`.
+
 Independent review found and verified repairs for BOM stripping, unchanged
 source reconsent, split UTF-8 decoding, unbounded aggregate access checks and
 cold Frige initialization ordering. A real cold-server junction test proves
