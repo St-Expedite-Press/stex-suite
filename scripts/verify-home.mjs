@@ -181,9 +181,9 @@ async function main() {
     // Keyboard: skip link first, then the brand, then the tabs in order.
     await tab.go(`${base}/home/`); await settle(tab);
     const order = [];
-    for (let index = 0; index < 7; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
+    for (let index = 0; index < 8; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
     report.keyboard = order;
-    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2).join('|') === 'Home|Projects|Studios|Graph|Activity', `Keyboard order: ${order.join(' → ')}.`);
+    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2).join('|') === 'Home|Projects|Studios|Igor|Graph|Activity', `Keyboard order: ${order.join(' → ')}.`);
     await tab.close();
 
     // Motion: plays by default; reduced motion fetches no masthead video at all.

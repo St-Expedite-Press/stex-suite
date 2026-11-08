@@ -24,3 +24,13 @@ ownership and failure behavior; they do not grant authority.
 The [platform transition](../docs/PLATFORM-TRANSITION.md) records the implemented
 publishing, contextual Igor, and optional metadata knowledge boundaries.
 Existing registry, project, Igor and Hermes versions keep their meaning.
+
+Architecture authority remains [WHITEPAPER.md](../docs/WHITEPAPER.md).
+STEX-owned application backends target Python/FastAPI and typed Python
+contracts under the [migration plan](../docs/PLATFORM-TRANSITION.md#python-backend-migration).
+The current Node implementations remain transitional; a language migration
+does not authorize breaking a versioned contract or moving engine ownership.
+Obsidian is the required direct human-facing knowledge integration under its
+[future gate](../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
+Current metadata projections and the read-only vault boundary do not complete
+actual-vault sync. Neither migration is implemented in this release.

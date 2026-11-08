@@ -4,6 +4,14 @@ These rules govern agents that build Frige (`apps/frige/`). The root
 `AGENTS.md` stays authoritative; this file adds Frige-specific
 requirements. Developer agents are not Hermes: Hermes is the runtime director
 inside the product, reached only through `stex-igor/services/inference/`.
+Pantheon owns its library/workstation presentation; Frige remains the sole
+owner of manuscript, proposal, profile, compiler and proof state. Read the
+[platform charter](../../AGENTS.md) and the
+[publishing contract](../../protocol/frige/README.md).
+
+The Node engine is the current implementation. Python/FastAPI is the approved
+backend destination, governed by the root migration gate; this release must
+preserve the working Node engine and never port or replace canonical storage.
 
 Frige's goal is a graph-native literary typesetting and publishing
 workstation in which textual integrity, typographic quality, reproducibility

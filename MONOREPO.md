@@ -28,11 +28,25 @@ imports another product's private storage as an integration shortcut.
 `stex-igor/runtime/hermes-agent` pins the upstream runtime source; `stex-igor/hermes/` holds
 STEX-owned declarative configuration only. Activation remains separately
 authorized because the upstream runtime has powerful tools and owns provider
-credentials. `vault/` is an optional
-Obsidian-compatible User Graph. `services/knowledge` provides an optional
+credentials. Codex development subagents are separate from Igor/Hermes runtime
+agents; their permissions, tools and budgets do not transfer.
+
+Python/FastAPI and typed contracts are the required destination for STEX-owned
+application backends. Current Node servers remain transitional; frontend
+React/TypeScript and necessary Node build/compatibility tooling remain valid.
+Future backend changes follow the
+[migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration), not a
+rewrite during this release.
+
+`vault/` currently supplies optional portable scaffolding. Obsidian is the
+required direct human-facing knowledge integration, with actual-vault
+reconciliation reserved for its
+[future milestone](docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
+`services/knowledge` provides an optional
 metadata journal with coordinated source/provenance and user-context views,
 plus a separate legacy read-only vault adapter. The platform integration never
-opens the vault. Applications continue to work with knowledge disabled.
+opens the vault. These are foundations, not completed Obsidian integration.
+Applications continue to work with knowledge disabled.
 
 ## Layout
 

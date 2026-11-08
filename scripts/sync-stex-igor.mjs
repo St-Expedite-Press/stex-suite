@@ -4,6 +4,7 @@
 //   apps/pantheon/public/media/splash        ->  stex-igor/apps/igor/public/media/splash
 //   apps/pantheon/public/{splash.css,motion.js} -> stex-igor/apps/igor/public/splash
 //     (hosted Igor's sign-in page is the Pantheon splash)
+//   scripts/verify-instructions.mjs         ->  stex-igor/scripts/verify-instructions.mjs
 // stex-suite is the source of truth. `--check` fails on any difference, missing,
 // or extra file (part of `corepack pnpm test`); without it, the copies are
 // rewritten and must then be committed in stex-igor.
@@ -25,6 +26,7 @@ const pairs = [
   { source: 'apps/pantheon/public/media/masthead', target: 'stex-igor/apps/igor/public/media/masthead', files: () => tracked('apps/pantheon/public/media/masthead') },
   { source: 'apps/pantheon/public/media/splash', target: 'stex-igor/apps/igor/public/media/splash', files: () => tracked('apps/pantheon/public/media/splash') },
   { source: 'apps/pantheon/public', target: 'stex-igor/apps/igor/public/splash', files: () => ['splash.css', 'motion.js'] },
+  { source: 'scripts', target: 'stex-igor/scripts', files: () => ['verify-instructions.mjs'], prune: false },
 ];
 
 function tracked(directory) {
@@ -64,6 +66,7 @@ for (const pair of pairs) {
     console.log(`updated ${pair.target}/${file}`);
   }
   const expected = new Set(sources);
+  if (pair.prune === false) continue; // Other private repository scripts are independently owned.
   for (const file of await listFiles(path.join(root, pair.target))) {
     if (expected.has(file)) continue;
     if (check) { problems.push(`${pair.target}/${file} has no source in ${pair.source}`); continue; }

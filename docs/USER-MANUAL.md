@@ -120,9 +120,15 @@ that message. It does not grant Igor tools or ongoing access to the graph.
 The [platform transition](PLATFORM-TRANSITION.md) concentrates on Frige,
 Seaxneat, and Igor. Their composed workspaces, approved project context, and
 optional metadata knowledge foundation are implemented and tested locally.
-A broader second brain/digital twin, embeddings, multimodal retrieval, vault
-integration, runtime engine tools and shared identity remain future work.
-Activity remains unimplemented. This transition has not changed production.
+A broader second brain/digital twin, embeddings, multimodal retrieval,
+runtime engine tools and shared identity remain future work. Direct
+integration with an actual Obsidian vault is a required future milestone;
+the current metadata Graph and read-only vault adapter do not provide it.
+Python/FastAPI backend migration is also required future work and does not
+change the current user workflow during this release.
+Activity remains unimplemented. The reviewed release is in progress;
+[the release report](verification/platform-release.md) distinguishes local
+testing, merges and verified deployment. No Obsidian sync is introduced here.
 
 Hosted Igor at `https://igor.stexpedite.press` has its own password sign-in.
 That is separate from the credential-free local Pantheon entrance described

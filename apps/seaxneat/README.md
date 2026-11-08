@@ -5,6 +5,10 @@ server owns workspace state, Git history, proposals, builds and previews.
 The TypeScript/React presentation now belongs to Pantheon at
 `apps/pantheon/workspaces/seaxneat`; there is one implementation of that UI.
 The engine does not run the legacy Agent Studio Python/cloud/orchestrator stack.
+Its current Node application backend is transitional. Future backend work
+follows the [Python/FastAPI migration plan](../../docs/PLATFORM-TRANSITION.md#python-backend-migration),
+preserving typed contracts, Git history and validated-revision behavior.
+The release does not rewrite the backend or reintroduce the legacy stack.
 
 Run `corepack pnpm --dir apps/seaxneat test` for deterministic state tests.
 After root dependencies are installed, run:
@@ -60,6 +64,9 @@ valid selections advance it; failed builds do not advance the validated source
 revision. The optional Graph accepts this provenance through the
 [knowledge contract](../../protocol/knowledge/README.md), retaining metadata
 rather than source text. Seaxneat continues to operate with Graph disabled.
+Actual-vault Obsidian integration is a required future milestone, not an
+implemented consequence of these observations; see the
+[direct Obsidian gate](../../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
 
 The platform uses the versioned
 [`stex.seaxneat.workspace.v1`](../../protocol/seaxneat/README.md) HTTP facade;

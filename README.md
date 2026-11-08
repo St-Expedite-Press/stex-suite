@@ -13,6 +13,14 @@ sources. Optional knowledge projections retain source provenance, user
 assertions, and reviewable inferences. Embeddings, multimodal retrieval,
 runtime engine tools, and vault integration remain outside this implementation.
 
+Python/FastAPI with typed contracts is the required destination for STEX-owned
+application backends; existing Node servers remain transitional during this
+release. Obsidian is the required direct human-facing knowledge integration.
+Both are required future milestones under the
+[migration plan](docs/PLATFORM-TRANSITION.md#python-backend-migration) and
+[Obsidian gate](docs/PLATFORM-TRANSITION.md#direct-obsidian-integration),
+not changes introduced by this merge.
+
 | Subsystem | Path | Status |
 | --- | --- | --- |
 | Pantheon | `apps/pantheon` | Common shell, composed Seaxneat workspace, local proxy |
@@ -26,7 +34,9 @@ runtime engine tools, and vault integration remain outside this implementation.
 
 ## Prerequisites
 
-STEX is Node-only; there is no Python environment or `requirements.txt`.
+The current application stack uses Node; this release adds no Python
+application environment or `requirements.txt`. The approved backend target is
+Python/FastAPI, with migration gated by the plan above.
 JavaScript dependencies are declared in each workspace's `package.json` and
 pinned in `pnpm-lock.yaml`. System tools are installed separately:
 
@@ -92,8 +102,9 @@ inferences, correct or reject relationships, export knowledge, or erase the
 journal. Graph acceptance stores metadata rather than source text. Sources
 are checked with their engine before use; unavailable revisions stay labelled.
 See the [user manual](docs/USER-MANUAL.md). Activity remains unimplemented.
-These workflows are implemented and tested locally; this transition does not
-change the hosted deployment.
+These workflows are implemented and tested locally. The reviewed merge and
+Igor release are in progress; [release evidence](docs/verification/platform-release.md)
+records actual merge/deployment results when verified.
 
 Use `corepack pnpm dev:pantheon`, `dev:frige`, or `dev:seaxneat` for an
 individual active application. The temporary `dev:lab` and `dev:texgraph`

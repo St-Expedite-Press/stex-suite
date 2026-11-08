@@ -11,6 +11,14 @@ This definition describes the destination. The [transition plan](PLATFORM-TRANSI
 sets delivery order and acceptance gates; [STATUS.md](STATUS.md) distinguishes
 implemented and tested behavior from specified or planned work.
 
+This document is the system architecture authority. The
+[design doctrine](DESIGN-SYSTEM.md) governs visual presentation;
+[PLATFORM-TRANSITION.md](PLATFORM-TRANSITION.md) governs migration order and
+acceptance gates. Engine READMEs describe their owned workflows, `protocol/`
+defines versioned boundaries, developer/operator guides describe execution,
+and STATUS plus dated verification distinguish current evidence from targets.
+There is no separate competing architecture specification for coding agents.
+
 ## One platform, modular engines
 
 Pantheon owns common presentation, navigation, workspace composition, and the
@@ -34,6 +42,23 @@ Deterministic operations run directly through engine APIs without Igor.
 Application capabilities are operations; agent skills describe how reasoning
 can use those operations. Their contracts and authorities remain distinct.
 
+## Backend language policy
+
+Python is the required destination for STEX-owned backend application logic,
+with FastAPI and typed Python contracts as the application-service standard.
+TypeScript and React remain appropriate for frontend work. JavaScript/Node.js
+remain appropriate for frontend builds, compatibility adapters and specialized
+external tooling where needed.
+
+The implemented Node application backends are transitional. Their current
+behavior, storage, contracts and tests remain the release baseline; this
+release does not rewrite them or install a speculative Python stack. Future
+application-backend work follows the approved
+[Python migration plan](PLATFORM-TRANSITION.md#python-backend-migration),
+including bounded parity work and a separately scoped implementation milestone.
+This policy does not authorize copying the retired Agent Studio backend or
+rewriting the pinned upstream Hermes runtime.
+
 ## Igor: runtime, Director, conversation surface
 
 Igor has three meanings that must stay explicit: the Hermes-derived runtime,
@@ -41,6 +66,11 @@ the existing Pantheon Director role/profile, and the conversation surface.
 The implementation adapts a pinned upstream Hermes checkout with STEX
 configuration; it does not maintain a separately verified source fork.
 Internal Hermes identifiers and the stable turn contract retain their names.
+
+Codex development subagents are separate from Igor/Hermes runtime agents.
+Their instructions, tools, permissions, budgets, skills and execution
+environments do not transfer between systems. A development reviewer is not a
+new Director, runtime specialist or permission to enable Hermes delegation.
 
 The Igor application owns conversation records and pending/failure state.
 Pantheon's home composer hands off to that service and stores no conversation
@@ -91,9 +121,15 @@ previewed and deliberately sent to Igor as a new user message.
 
 This is a bounded knowledge foundation, not a complete digital twin. There
 are no embeddings, multimodal retrieval, automatic transcript mining, or
-implicit engine writes. The separate portable Obsidian vault remains
-optional and unexposed to the browser, never an execution queue, credential
-store, or second canonical application database. See the
+implicit engine writes. Obsidian is the required direct human-facing knowledge
+integration target: authorized reconciliation with an actual user-selected
+vault must preserve human control, portability, provenance and privacy.
+The current optional vault scaffolding and read-only adapter are foundations,
+not completed Obsidian integration. No synchronization service is introduced
+in this release. The vault remains unexposed to the browser and never becomes
+an execution queue, credential store, or second canonical engine database.
+The [direct Obsidian gate](PLATFORM-TRANSITION.md#direct-obsidian-integration)
+defines the required future milestone. See also the
 [knowledge contract](../protocol/knowledge/README.md).
 
 ## Extensibility and limits

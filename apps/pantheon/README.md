@@ -7,6 +7,10 @@ destination. Seaxneat and Frige have platform-owned workspaces. Igor's private
 renderer is composed in the same shell through a versioned HTTP descriptor;
 its conversation service remains the record owner. An optional local knowledge
 journal supplies the Graph view without taking ownership of engine state.
+React/TypeScript remains the frontend stack. Current Node application-backend
+logic is transitional under the
+[Python/FastAPI migration plan](../../docs/PLATFORM-TRANSITION.md#python-backend-migration);
+the release preserves the existing implementation and presentation.
 
 | Route | Behaviour |
 | --- | --- |
@@ -176,7 +180,11 @@ and explicitly sent to Igor as the exact normal user message shown. Source
 access is rechecked before that handoff. No automatic graph inference,
 transcript mining, engine writes or runtime tools are enabled. See the
 [knowledge contract](../../protocol/knowledge/README.md). These workflows are
-tested locally; production has not changed.
+tested locally; the reviewed release is in progress and deployment evidence
+belongs in [the release report](../../docs/verification/platform-release.md).
+Obsidian is the required direct human-facing knowledge integration. The
+metadata Graph does not implement actual-vault synchronization; that remains
+the [separate required gate](../../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
 
 ## Website workspace
 

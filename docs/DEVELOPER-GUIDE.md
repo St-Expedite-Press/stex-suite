@@ -2,6 +2,13 @@
 
 Supported local workflow: Node 22.13+ (22 or 24 LTS, which bundle Corepack), pnpm 9.15 via Corepack, Git, LuaLaTeX for Frige proof tests, and optionally `pdffonts` for Frige preflight. Check the toolchain with `corepack pnpm check:prereqs` (see [Prerequisites](../README.md#prerequisites)), then install with `corepack pnpm install --frozen-lockfile`.
 
+This is the current transitional implementation. Python/FastAPI with typed
+contracts is the required target for STEX-owned application backends;
+React/TypeScript remains the frontend stack. Future backend work follows the
+[approved migration plan](PLATFORM-TRANSITION.md#python-backend-migration).
+This release preserves the Node services and introduces no Python rewrite,
+dependency stack or data migration.
+
 | Command | Purpose |
 | --- | --- |
 | `corepack pnpm test` | All deterministic suites, including `test:stex-igor-sync` |
@@ -33,12 +40,38 @@ application READMEs, and [verification reports](verification/).
 
 ## Platform transition
 
-The suite's GitHub CI needs the repository secret `STEX_IGOR_READ_TOKEN` to
-read the private submodule. Its gate intentionally skips the test job when
-the token is unavailable; a green workflow alone does not prove tests ran.
-P1's suite PR encountered that limit, while all 130 tests passed locally and
-Igor's independent GitHub CI ran successfully. Credential changes require
-separate owner authorization.
+Development instructions have one authority per repository: root `AGENTS.md`
+plus applicable nested charters. `CLAUDE.md` files are thin sibling imports,
+not separate architectural specifications. `corepack pnpm test:instructions`
+checks pairs, local references and minimal development-role files in both
+repositories; private Igor also runs it independently.
+
+The checked Codex CLI is 0.144.1. Project `.codex/agents/stex_explorer.toml`
+and `stex_reviewer.toml` provide two bounded read-only development roles;
+they inherit the parent model and permissions. The existing GitHub
+documentation agent retains its distinct purpose. These are never runtime
+Hermes roles. The [official custom-agent schema](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+defines `name`, `description` and `developer_instructions`; no model or
+permission override is hardcoded here. Supported clients must trust the project
+before loading project configuration. No user-level trust or credentials are
+changed by the repository configuration.
+
+[Claude documents relative file imports](https://code.claude.com/docs/en/memory#import-additional-files)
+such as `@AGENTS.md`. Every repository import resolves statically. Claude CLI
+is absent on this workstation, so actual Claude execution is unverified. In a
+client without import support, read the sibling `AGENTS.md` directly; do not
+assume automatic loading. Codex's offline `debug prompt-input` checks instruction
+discovery without a model turn. Private Igor's root charter works in a standalone
+checkout; no parent suite is required for engineering authority.
+
+The suite's GitHub CI needs authorized read access to the exact private Igor
+pin and fails closed when it cannot be checked out. Fork code receives neither
+private source nor the credential. Earlier P1/P4 runs skipped the test job;
+those green summaries are not full-suite evidence. The release must demonstrate
+actual test execution, including real proof prerequisites. The current
+credential-policy blocker and the owner's authorized access choice are recorded
+in [release evidence](verification/platform-release.md); a workflow change alone
+does not establish access.
 
 Follow [the ordered plan](PLATFORM-TRANSITION.md). Pantheon owns the common
 shell and `apps/pantheon/workspaces/seaxneat` presentation; Seaxneat owns
@@ -89,9 +122,19 @@ preview handoff to Igor. Export/erasure, replay and stale events are specified
 in [the knowledge contract](../protocol/knowledge/README.md).
 
 These paths are implemented and tested locally. The broader twin,
-embeddings, multimodal retrieval, vault integration, agent tools, shared
-identity and a generalized scheduler remain outside this transition. No
-production deployment follows from a review-branch push.
+embeddings, multimodal retrieval, agent tools, shared identity and a
+generalized scheduler remain outside this release. Obsidian is the required
+direct human-facing knowledge integration; the existing optional vault reader
+and metadata journal are foundations, not completed actual-vault sync. Follow
+the [direct Obsidian gate](PLATFORM-TRANSITION.md#direct-obsidian-integration)
+before a separately authorized implementation. No sync service is added here.
+
+Codex development subagents and Igor/Hermes runtime agents have separate
+instructions, tools, permissions, budgets and execution environments.
+Development delegation never enables runtime specialists or tools.
+Review-branch pushes do not deploy. Reviewed merges and automatic Igor
+deployment are authorized for this release only after verification gates;
+actual merge/production status belongs in the release report and STATUS.
 
 ## Hermes / Igor runtime (H1)
 

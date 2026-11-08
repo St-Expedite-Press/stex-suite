@@ -12,6 +12,15 @@ unresolved conflicts rather than silently overriding them. The visual doctrine
 is [docs/DESIGN-SYSTEM.md](https://github.com/St-Expedite-Press/stex-suite/blob/main/docs/DESIGN-SYSTEM.md); artwork rules are in
 [assets/README.md](https://github.com/St-Expedite-Press/stex-suite/blob/main/assets/README.md).
 
+Paths describing the platform below are stex-suite-relative. In the synced
+stex-igor copy, apply the visual rules to its local Igor renderer and use that
+repository's [root charter](../../AGENTS.md). The source of this charter and
+its shim remains stex-suite; synchronize vendor copies rather than editing
+them independently. Codex reviewers are development roles, not Hermes agents.
+Python backend and first-class Obsidian integration are root architectural
+targets; neither authorizes a UI redesign or backend rewrite during release.
+Preserve the approved splash/artwork bytes and motion/responsive behavior.
+
 ## 1. Mission
 
 Implement one coherent, production-quality visual language across Pantheon
@@ -122,7 +131,7 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   the instrumental view uses a compact header. Igor's private renderer is
   composed through a versioned HTTP descriptor with a compact toolbar and
   explicit project-context consent. See
-  [its migration gate](https://github.com/St-Expedite-Press/stex-suite/blob/feat/pantheon-platform-p1/docs/PLATFORM-TRANSITION.md).
+  [its migration gate](https://github.com/St-Expedite-Press/stex-suite/blob/main/docs/PLATFORM-TRANSITION.md).
   Generated preview documents remain sandboxed outside the trusted UI.
 
 ## 7. Artwork

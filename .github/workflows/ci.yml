@@ -3,13 +3,11 @@ name: CI
 # Runs the whole suite, including test:stex-igor-sync (the design-system and
 # masthead copies inside the private stex-igor submodule must match their
 # sources here). stex-igor is private, so fetching it needs the repository
-# secret STEX_IGOR_READ_TOKEN: a fine-grained token with read-only Contents
-# access to St-Expedite-Press/stex-igor. The existing organization secret
-# HF_GITHUB_WRITE is a compatibility fallback only when the dedicated secret
-# is absent. Its scope is not assumed: the gate probes the exact pinned
-# commit, using the credential only for read requests even if it is broader.
+# secret STEX_IGOR_READ_SSH_KEY: the private half of an Igor-only, read-only
+# deploy key. The gate verifies access by checking out the exact pinned commit
+# without LFS and with only package.json in its sparse working tree.
 # Missing access fails CI; a skipped test job is never release verification.
-# Fork code never receives a private checkout or an organization credential.
+# Fork code never receives a private checkout or the deploy credential.
 
 on:
   push:
@@ -51,27 +49,32 @@ jobs:
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - name: Verify read access to the exact private Igor revision
+      - name: Require the read-only Igor deploy credential
         env:
-          TOKEN: ${{ secrets.STEX_IGOR_READ_TOKEN || secrets.HF_GITHUB_WRITE }}
+          KEY_AVAILABLE: ${{ secrets.STEX_IGOR_READ_SSH_KEY != '' }}
+        run: |
+          if [ "$KEY_AVAILABLE" != "true" ]; then
+            echo "::error::Private Igor verification requires the owner-authorized read-only deploy key in STEX_IGOR_READ_SSH_KEY. CI cannot accept skipped tests."
+            exit 1
+          fi
+      - name: Verify checkout access to the exact private Igor revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: St-Expedite-Press/stex-igor
+          ref: ${{ steps.pin.outputs.sha }}
+          path: .igor-pin-check
+          ssh-key: ${{ secrets.STEX_IGOR_READ_SSH_KEY }}
+          ssh-strict: true
+          persist-credentials: false
+          lfs: false
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+      - name: Confirm the verified Igor revision
+        env:
           IGOR_SHA: ${{ steps.pin.outputs.sha }}
         run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::No existing credential can verify private Igor. The owner must provide STEX_IGOR_READ_TOKEN with read-only Contents access to St-Expedite-Press/stex-igor."
-            exit 1
-          fi
-          if ! status=$(curl --silent --show-error --proto '=https' --connect-timeout 10 --max-time 30 \
-            --header "Authorization: Bearer $TOKEN" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            --output /dev/null --write-out '%{http_code}' \
-            "https://api.github.com/repos/St-Expedite-Press/stex-igor/commits/$IGOR_SHA"); then
-            echo "::error::Private Igor access could not be verified because the GitHub request failed."
-            exit 1
-          fi
-          echo "Private Igor commit probe HTTP $status"
-          if [ "$status" != "200" ]; then
-            echo "::error::The configured credential cannot read the declared Igor commit. The owner must verify that commit exists and provide STEX_IGOR_READ_TOKEN with read-only Contents access; CI cannot accept skipped tests."
+          if [ "$(git -C .igor-pin-check rev-parse HEAD)" != "$IGOR_SHA" ]; then
+            echo "::error::The verified Igor checkout does not match the suite's declared revision."
             exit 1
           fi
 
@@ -89,7 +92,8 @@ jobs:
           repository: St-Expedite-Press/stex-igor
           ref: ${{ needs.gate.outputs.igor-sha }}
           path: stex-igor
-          token: ${{ secrets.STEX_IGOR_READ_TOKEN || secrets.HF_GITHUB_WRITE }}
+          ssh-key: ${{ secrets.STEX_IGOR_READ_SSH_KEY }}
+          ssh-strict: true
           lfs: true
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0

@@ -2,6 +2,9 @@
 
 This package has two independent, optional local libraries. It has no HTTP
 server, engine filesystem access, provider integration, or embeddings.
+The current Node implementation is transitional; future STEX-owned backend
+logic follows the [Python/FastAPI migration plan](../../docs/PLATFORM-TRANSITION.md#python-backend-migration).
+The release does not rewrite this library or migrate existing metadata journals.
 
 `src/projections.mjs` implements the bounded P4 foundation: a durable metadata
 journal from explicitly accepted engine revision events, with coordinated
@@ -45,13 +48,20 @@ relationship subjects use accepted projects. Frige and Seaxneat provide
 be previewed and explicitly sent to Igor as the exact normal user message
 shown, after another access check. It never mines transcripts, generates
 inferences automatically, or mutates engine files. These paths are implemented
-and tested locally; the hosted deployment is unchanged.
+and tested locally. The reviewed release is in progress; actual merge and
+deployment outcomes belong in [release evidence](../../docs/verification/platform-release.md).
 
 `src/local-adapter.mjs` is the separate legacy read-only Markdown vault
 adapter, disabled without `STEX_VAULT_PATH`. It is not used by the projection
 library. It must remain unexposed to browsers until symlink/junction and
-Windows path-alias handling are hardened. The vault stays optional, portable,
-and independent of engine workflows.
+Windows path-alias handling are hardened. Optional activation remains a user
+choice in the current implementation. Obsidian itself is the required direct
+human-facing knowledge integration, with authorized reconciliation of an
+actual vault reserved for the
+[direct Obsidian milestone](../../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
+Neither this reader nor the metadata journal completes that integration.
+No synchronization service is introduced during the release; user notes stay
+portable and separate from engine operational state.
 
 Run `corepack pnpm test:knowledge` from the repository root. Tests use
 disposable directories and cover accepted revisions, both views, stale and

@@ -6,6 +6,10 @@ Frige is the publishing capability engine in the
 [platform transition](../../docs/PLATFORM-TRANSITION.md). Pantheon owns its
 library and workstation presentation at `apps/pantheon/workspaces/frige`;
 manuscript and proof authority stays in this engine.
+The current Node backend is transitional: STEX-owned backend application logic
+targets Python/FastAPI and typed contracts under the
+[approved migration plan](../../docs/PLATFORM-TRANSITION.md#python-backend-migration).
+No backend rewrite, source conversion or UI redesign is part of this release.
 Never use a real manuscript as a test fixture or alter
 `books/*/manuscript/` for layout convenience.
 
@@ -73,6 +77,10 @@ selections advance it. No source text is retained in this checkpoint.
 Pantheon's optional Graph accepts this provenance under the
 [knowledge contract](../../protocol/knowledge/README.md); it never becomes
 Frige's canonical manuscript or workflow store. Frige works with Graph disabled.
+Direct human-facing Obsidian integration is a required future milestone under
+the [Obsidian gate](../../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
+The current metadata checkpoint and vault reader do not implement sync or
+authorize changes to a manuscript from a note.
 
 ## One-page compatibility contract
 

@@ -8,6 +8,11 @@ knowledge**. Development concentrates on the existing Frige, Seaxneat, and
 Igor implementations. Ēostre and Woden remain deferred. Extensibility means
 clear contracts and ownership, not implementing unused plug-in infrastructure.
 
+The release directive adds two binding destinations: Python/FastAPI with
+typed contracts for STEX-owned backend application logic, and Obsidian as the
+direct human-facing knowledge integration. The plans below govern future
+increments; neither migration is implemented during this merge/release.
+
 Pantheon owns the common web environment and progressively composes working
 surfaces from engine APIs. Engines retain canonical state and deterministic
 operations; a user must be able to publish or develop without involving a
@@ -37,6 +42,10 @@ and `stex.hermes.turn.v1` keep their names. The hosted chat is one working
 Igor surface. P3 now establishes explicit project context locally; hosted
 deployment and runtime tool execution remain separately gated.
 
+Codex development subagents do not belong to the Igor/Hermes runtime roster.
+Development instructions, permissions, budgets, tools and skills remain
+separate from runtime policy and execution environments.
+
 ## Migration rules
 
 1. Keep a working engine and its state while migrating one presentation slice.
@@ -54,8 +63,10 @@ deployment and runtime tool execution remain separately gated.
    acceptance gate; frontend composition does not silently introduce either.
 5. Keep authored previews and artifacts outside the trusted platform document.
    A sandboxed preview must not gain same-origin access to Igor or Pantheon.
-6. Use fake/stub inference for verification. This transition requires no paid
-   calls, new cloud resources, enabled runtime tools, or production release.
+6. Use fake/stub inference for verification. The current release authorizes
+   reviewed merges and the automatic Igor deployment only after release
+   gates pass. It does not authorize paid calls, new cloud resources, runtime
+   tools, Python backend rewrites or Obsidian synchronization.
 
 ## Ordered delivery plan
 
@@ -161,9 +172,10 @@ Before implementation, specify entity/revision/event schemas, explicit consent,
 assertion/inference distinctions, source access checks, retention/export/
 deletion, replay and deduplication, out-of-order and missed events, correction,
 and rebuild after a crash. Keep application operation journals in engines.
-The optional Obsidian vault remains a portable knowledge adapter, not a
-database requirement. Harden symlink/junction and Windows alias handling
-before exposing its current local reader to a browser.
+The current opt-in vault adapter remains unexposed. Obsidian is the intended
+direct human-facing knowledge integration, governed by the separate future
+gate below. Harden symlink/junction and Windows alias handling before any
+vault source is exposed; the vault never becomes an engine operational store.
 
 Acceptance: an accepted synthetic revision updates both projections once;
 replay is idempotent; missing/deleted/restricted sources stay unavailable;
@@ -172,6 +184,77 @@ restart/rebuild and export/deletion work. No embeddings or multimodal search
 claim without actual retrieval evidence. The applications still work when
 knowledge integration is disabled.
 
+## Python backend migration
+
+**Approved architectural plan; implementation remains a required future
+milestone.** Python is the target for STEX-owned application-backend logic,
+using FastAPI and typed Python contracts. React/TypeScript presentation stays
+in Pantheon; Node may remain for frontend builds, existing compatibility
+boundaries and specialized external tooling. The current Node backends are
+transitional implementations, not code to replace during this release.
+
+Future backend changes must be scoped against this plan. Bounded fixes for
+current compatibility, security, correctness and release parity may continue
+in existing Node modules; they must preserve engine ownership and must not
+establish a new general Node application-service architecture.
+
+1. Inventory one candidate service's callers, versioned contracts, canonical
+   storage, validation, authorization, failure behavior, cancellation and
+   concurrency. Record the existing synthetic fixtures and acceptance checks.
+2. Obtain authorization for one bounded migration slice with its owning paths,
+   typed Python interface, storage strategy, dependencies and rollback. Select
+   the Python toolchain and dependency versions from verified requirements at
+   that milestone; this release introduces none.
+3. Implement a compatible Python/FastAPI slice behind the existing versioned
+   boundary. Preserve request/reply shapes and errors, explicit acceptance,
+   stale-write safeguards, byte fidelity, idempotency and isolation. A language
+   change alone does not justify a breaking contract or a shared engine store.
+4. Prove parity with differential contract/negative tests, disposable storage
+   and real owning workflows. Include LuaLaTeX/PDF or Next build evidence when
+   the migrated slice claims those capabilities. Keep approved UI and assets
+   unchanged and test rollback to the working compatibility implementation.
+5. Switch routing only after owning/full suites, browser workflows and an
+   independent review pass. Retire a Node application slice only when no
+   caller depends on it and recovery is verified. Repeat incrementally.
+
+No step may rewrite protected manuscripts, conversations, user-authored vault
+notes or validated workspace history. No application may import another
+engine's private implementation as a migration shortcut. Upstream Hermes
+source and its Python environment remain separately owned runtime tooling;
+this plan is not an upstream rewrite or runtime upgrade.
+
+## Direct Obsidian integration
+
+**Required future milestone; no synchronization implementation in this
+release.** Obsidian is the direct human-facing knowledge integration, not
+merely an interchangeable Markdown folder. The existing metadata journal,
+portable vault scaffold and unexposed read-only adapter are foundations.
+The target must work with an actual user-selected Obsidian vault while
+preserving user control, portability, provenance and privacy.
+
+Before implementation, specify a versioned reconciliation boundary covering
+ownership of human-authored versus projected fields, stable identities,
+frontmatter and wikilinks, source locators, consent, authorized events, and
+explicit diff/conflict review. Preserve unknown note metadata and intentional
+content. Human edits and engine revisions must not silently overwrite each
+other. Define deletion/revocation, tombstones, ordering, replay, export,
+retention and correction before enabling write-back.
+
+Acceptance requires a disposable actual vault exercised through Obsidian,
+not just Markdown enumeration: create/edit in the human interface, approved
+reconciliation in both relevant directions, competing-edit conflict handling,
+source/revision provenance, withdrawn access, restart/replay, deletion/export
+and recovery. Include executable symlink/junction and Windows alias negative
+tests before exposing vault reads. Keep private notes, attachment content,
+transcripts and credentials out of engineering evidence.
+
+The knowledge base and User Graph remain coordinated projections over shared
+canonical references. A vault is never an engine database, queue, lock,
+credential store or source of implicit execution authority. Applications must
+remain usable when knowledge integration is disabled. Full multimodal
+retrieval, shared identity and Igor runtime tools have separate acceptance
+and security gates; none follows automatically from Obsidian integration.
+
 ## Risks and publication
 
 The main risks are canonical state duplication, presentation migration
@@ -179,9 +262,17 @@ regressions, generated content crossing the trust boundary, mistaken authority
 from references, and undocumented partial transitions. Each stage must have
 failure tests and an independent review before acceptance.
 
-The owner authorized GitHub publication for this goal. Publish review branches
-in both repositories where needed, pushing the submodule branch before the
-suite pointer. `stex-igor/main` automatically deploys; production deployment,
-credentials, permissions, paid calls, and remote runtime workloads remain
-outside this increment. Record exact revisions and verification limits in
-[the acceptance report](verification/platform-transition-p1.md).
+P0–P4 were published as reviewed branches with local acceptance evidence.
+The current release directive authorizes reviewed merges, associated pushes
+and automatic Igor deployment conditionally on verification and production
+safety gates. Reconcile instructions and restore effective CI first; merge
+Igor, verify its active release, authentication, preserved records and rollback,
+then pin that merged revision in the suite and merge the suite after its gates.
+Do not treat a skipped test job or a planned deployment as completed evidence.
+
+The release is in progress. Exact merge revisions, CI results, production
+checks and final repository state belong in
+[the release report](verification/platform-release.md) and [STATUS.md](STATUS.md).
+Earlier acceptance reports remain historical. No credential/permission change,
+billable runtime workload, runtime tool enablement, Python rewrite or Obsidian
+sync service is implied by this release authorization.
