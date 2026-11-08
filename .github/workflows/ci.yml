@@ -4,9 +4,12 @@ name: CI
 # masthead copies inside the private stex-igor submodule must match their
 # sources here). stex-igor is private, so fetching it needs the repository
 # secret STEX_IGOR_READ_TOKEN: a fine-grained token with read-only Contents
-# access to St-Expedite-Press/stex-igor. Without it, the gate reports why and
-# the test job is skipped, never failed. Secrets are not given to pull
-# requests from forks, so those are skipped the same way.
+# access to St-Expedite-Press/stex-igor. The existing organization secret
+# HF_GITHUB_WRITE is a compatibility fallback only when the dedicated secret
+# is absent. Its scope is not assumed: the gate probes the exact pinned
+# commit, using the credential only for read requests even if it is broader.
+# Missing access fails CI; a skipped test job is never release verification.
+# Fork code never receives a private checkout or an organization credential.
 
 on:
   push:
@@ -16,40 +19,77 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   gate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
-      has-token: ${{ steps.check.outputs.has-token }}
+      igor-sha: ${{ steps.pin.outputs.sha }}
     steps:
-      - id: check
+      - name: Require a trusted repository branch
         env:
-          TOKEN: ${{ secrets.STEX_IGOR_READ_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          if [ -n "$TOKEN" ]; then echo "has-token=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has-token=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Tests skipped: add the STEX_IGOR_READ_TOKEN secret (read-only access to St-Expedite-Press/stex-igor) to run them."
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$SAME_REPOSITORY" != "true" ]; then
+            echo "::error::Full verification requires private Igor. A maintainer must review fork changes and verify them on a trusted same-repository branch; fork code receives no private checkout."
+            exit 1
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - id: pin
+        name: Read the declared Igor revision
+        run: |
+          sha=$(git ls-tree HEAD stex-igor | awk '$1 == "160000" && $2 == "commit" && $4 == "stex-igor" { print $3 }')
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The suite does not declare a valid Igor submodule revision."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Verify read access to the exact private Igor revision
+        env:
+          TOKEN: ${{ secrets.STEX_IGOR_READ_TOKEN || secrets.HF_GITHUB_WRITE }}
+          IGOR_SHA: ${{ steps.pin.outputs.sha }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No existing credential can verify private Igor. The owner must provide STEX_IGOR_READ_TOKEN with read-only Contents access to St-Expedite-Press/stex-igor."
+            exit 1
+          fi
+          if ! status=$(curl --silent --show-error --proto '=https' --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output /dev/null --write-out '%{http_code}' \
+            "https://api.github.com/repos/St-Expedite-Press/stex-igor/commits/$IGOR_SHA"); then
+            echo "::error::Private Igor access could not be verified because the GitHub request failed."
+            exit 1
+          fi
+          echo "Private Igor commit probe HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::The configured credential cannot read the declared Igor commit. The owner must verify that commit exists and provide STEX_IGOR_READ_TOKEN with read-only Contents access; CI cannot accept skipped tests."
+            exit 1
           fi
 
   test:
     needs: gate
-    if: needs.gate.outputs.has-token == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           lfs: true
           persist-credentials: false
-      - id: pin
-        run: echo "sha=$(git ls-tree HEAD stex-igor | awk '{print $3}')" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: St-Expedite-Press/stex-igor
-          ref: ${{ steps.pin.outputs.sha }}
+          ref: ${{ needs.gate.outputs.igor-sha }}
           path: stex-igor
-          token: ${{ secrets.STEX_IGOR_READ_TOKEN }}
+          token: ${{ secrets.STEX_IGOR_READ_TOKEN || secrets.HF_GITHUB_WRITE }}
           lfs: true
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -57,6 +97,15 @@ jobs:
           node-version: 22
           # pnpm comes from corepack in the next step; v5 would otherwise try to cache it first.
           package-manager-cache: false
+      - name: Install real proof and preflight prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y texlive-luatex texlive-latex-recommended lmodern poppler-utils
+          lualatex --version
+          for package in fontspec.sty microtype.sty geometry.sty; do
+            test -n "$(kpsewhich "$package")"
+          done
+          pdffonts -v
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
       - run: corepack pnpm build:pantheon
