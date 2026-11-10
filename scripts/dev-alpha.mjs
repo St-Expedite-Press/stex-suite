@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -8,6 +9,7 @@ const frigePort = process.env.STEX_FRIGE_PORT || process.env.TEXGRAPH_PORT || '4
 const seaxneatPort = process.env.SEAXNEAT_PORT || '4320';
 const igorPort = process.env.STEX_IGOR_PORT || '4330';
 const inferencePort = process.env.STEX_INFERENCE_PORT || '8100';
+const platformPort = process.env.STEX_PLATFORM_PORT || '4340';
 const shared = process.env.STEX_INFERENCE_SHARED_SECRET || 'stex-alpha-local';
 
 function run(args, environment = {}) {
@@ -36,6 +38,15 @@ function build(directory, environment = {}) {
 build('apps/seaxneat', { SEAXNEAT_BASE_PATH: '/seaxneat/' });
 build('stex-igor/apps/igor');
 
+// The Python platform API runs from the locked uv environment. Its interpreter is
+// started directly (not through uv) so stopping dev:alpha stops it too.
+const python = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+// Pantheon falls back to per-studio loading without it, so the platform is optional
+// here: a missing uv or a platform crash is reported but never stops the stack.
+const synced = spawnSync('uv', ['sync', '--frozen'], { cwd: root, stdio: 'inherit', windowsHide: true });
+const platformReady = synced.status === 0 && existsSync(python);
+if (!platformReady) console.warn('Platform API not started: uv sync --frozen failed (see README Prerequisites). Pantheon will poll studios directly.');
+
 const children = [
   run(['pnpm', '--dir', 'stex-igor/services/inference', 'dev'], {
     STEX_INFERENCE_PORT: inferencePort,
@@ -46,16 +57,20 @@ const children = [
     STEX_FRIGE_PORT: frigePort,
     STEX_FRIGE_BASE_PATH: '/frige',
     STEX_FRIGE_SHELL_URL: '/home/',
+    STEX_PANTHEON_URL: `http://127.0.0.1:${shellPort}`,
     STEX_FRIGE_INFERENCE_MODE: 'fake',
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,
   }),
   run(['pnpm', '--dir', 'apps/seaxneat', 'dev'], {
     SEAXNEAT_PORT: seaxneatPort,
+    STEX_PANTHEON_URL: 'http://127.0.0.1:' + shellPort,
   }),
   // Igor holds the inference secret; Pantheon only proxies to it.
   run(['pnpm', '--dir', 'stex-igor/apps/igor', 'dev'], {
     STEX_IGOR_PORT: igorPort,
+    STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`,
+    STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}`,
     STEX_INFERENCE_URL: `http://127.0.0.1:${inferencePort}`,
     STEX_INFERENCE_SHARED_SECRET: shared,
   }),
@@ -64,14 +79,27 @@ const children = [
     STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`,
     STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}`,
     STEX_IGOR_URL: `http://127.0.0.1:${igorPort}`,
+    STEX_PLATFORM_URL: `http://127.0.0.1:${platformPort}`,
   }),
 ];
+
+let platform = null;
+if (platformReady) {
+  platform = spawn(python, ['-m', 'stex'], {
+    cwd: root,
+    env: { ...process.env, STEX_PLATFORM_PORT: platformPort, STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${seaxneatPort}` },
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  platform.once('exit', (code) => { if (!stopping) console.warn(`Platform API stopped (${code}); Pantheon will poll studios directly.`); });
+}
 
 let stopping = false;
 function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   for (const child of children) child.kill();
+  if (platform && platform.exitCode === null) platform.kill();
   process.exitCode = code;
 }
 for (const child of children) child.once('exit', (code) => { if (!stopping && code) stop(code); });

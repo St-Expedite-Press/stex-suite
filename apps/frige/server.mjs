@@ -6,6 +6,10 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { legacyBooksApi } from './src/legacy-books.mjs';
+import { publishingRoute } from './src/publishing-contract.mjs';
+import { projectContext, validateContextTree } from './src/project-context.mjs';
+import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
@@ -16,7 +20,7 @@ import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -33,7 +37,9 @@ function preservedDefault(current, legacy) { return existsSync(current) || !exis
 const legacyDirectory = path.join(directory, '..', 'texgraph');
 const projectDirectory = path.resolve(configuration('STEX_FRIGE_PROJECT_DIR', 'TEXGRAPH_PROJECT_DIR', preservedDefault(path.join(directory, '.local-book'), path.join(legacyDirectory, '.local-book'))));
 const projectsDirectory = path.resolve(configuration('STEX_FRIGE_PROJECTS_DIR', 'TEXGRAPH_PROJECTS_DIR', preservedDefault(path.join(directory, '..', 'pantheon', '.local-projects'), path.join(directory, '..', 'lab', '.local-projects'))));
-const booksDirectory = path.resolve(configuration('STEX_FRIGE_BOOKS_DIR', 'TEXGRAPH_BOOKS_DIR', path.join(directory, 'books')));
+const booksDirectory = path.resolve(configuration('STEX_FRIGE_BOOKS_DIR', 'TEXGRAPH_BOOKS_DIR', process.env.STEX_BOOKS_DIR || path.join(directory, 'books')));
+const platformOrigin = new URL(process.env.STEX_PANTHEON_URL || 'http://127.0.0.1:4300');
+if (platformOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(platformOrigin.hostname) || platformOrigin.username || platformOrigin.password || platformOrigin.pathname !== '/' || platformOrigin.search || platformOrigin.hash) throw new Error('STEX_PANTHEON_URL must be a loopback HTTP origin.');
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(configuration('STEX_FRIGE_PORT', 'TEXGRAPH_PORT', 4310));
@@ -121,6 +127,13 @@ async function serveFile(response, file) {
   }
 }
 
+async function contextStoreFor(id, url) {
+  const candidate = new ProjectStore(path.join(booksDirectory, id));
+  try { await validateContextTree(candidate); }
+  catch (error) { if (error.status) throw error; throw Object.assign(new Error('The selected publishing project is unavailable.'), { status: error.code === 'ENOENT' ? 404 : 503, code: error.code === 'ENOENT' ? 'NOT_FOUND' : 'UNAVAILABLE' }); }
+  const selected = new URL(url); selected.searchParams.set('book', id);
+  return storeFor(selected);
+}
 async function storeFor(url) {
   const bookId = url.searchParams.get('book');
   if (bookId) {
@@ -375,10 +388,14 @@ async function api(request, response, url, store) {
   return false;
 }
 
+const legacyBooks = legacyBooksApi(booksDirectory);
 await defaultStore.initialize();
 http.createServer(async (request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
   try {
+    if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(request.headers.host || '')) return json(response, 403, { error: 'Frige answers only on its local address.' });
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const origin = request.headers.origin;
+    if (request.headers['sec-fetch-site'] === 'cross-site' || (origin && origin !== `http://${request.headers.host}` && origin !== platformOrigin.origin)) return json(response, 403, { error: 'Foreign browser origin refused.' });
     if (mountedAt && url.pathname === mountedAt) {
       response.writeHead(308, { location: `${mountedAt}/${url.search}` }); response.end(); return;
     }
@@ -386,6 +403,23 @@ http.createServer(async (request, response) => {
       if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
+    if (url.pathname.startsWith('/api/stex/context/v1/')) {
+      const observation = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/observation$/.exec(url.pathname);
+      if (observation && request.method === 'POST') return json(response, 200, await knowledgeEvent(await contextStoreFor(observation[1], url), observation[1], await body(request)));
+      const match = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/sources\/([a-z][a-z0-9-]{5,80}))?$/.exec(url.pathname);
+      if (!match) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
+      if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
+      return json(response, 200, await projectContext(await contextStoreFor(match[1], url), match[1], { sourceId: match[2], revision: url.searchParams.get('revision'), offset: url.searchParams.get('offset') || '0' }));
+    }
+    if (url.pathname === '/api/stex/publishing/v1' || url.pathname.startsWith('/api/stex/publishing/v1/')) {
+      const suffix = url.pathname.slice('/api/stex/publishing/v1'.length);
+      const methods = publishingRoute(suffix);
+      if (!methods) return json(response, 404, { error: 'Unknown publishing v1 route.' });
+      if (!methods.includes(request.method)) { response.setHeader('allow', methods.join(', ')); return json(response, 405, { error: 'Method not allowed.' }); }
+      response.setHeader('x-stex-contract', 'stex.frige.publishing.v1');
+      url.pathname = `/api${suffix}`;
+    }
+    if (/^\/api\/stex\/legacy-books\/v1(?:\/|$)/.test(url.pathname)) return await legacyBooks(request, response, url);
     // Suite settings belong to the gateway, not to a book.
     const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
     if (relay) { const result = await gatewaySettings(relay[0], relay[1], relay[0] === 'PUT' ? await body(request) : undefined); return json(response, result.status, result.body); }
@@ -408,12 +442,16 @@ http.createServer(async (request, response) => {
     }
     const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
     if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
-    const requested = url.pathname === '/' && !url.searchParams.get('book') && !url.searchParams.get('project') ? '/lobby.html' : url.pathname === '/' ? '/index.html' : url.pathname;
+    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/lobby.html') {
+      const target = new URL('/frige/', platformOrigin); target.search = url.search;
+      response.writeHead(308, { location: target.href }); response.end(); return;
+    }
+    const requested = url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);
   } catch (error) {
-    json(response, error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400, { error: error.message || 'Unexpected server error.' });
+    json(response, error.status || (error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400), { error: error.message || 'Unexpected server error.', ...(error.code ? { code: error.code } : {}) });
   }
 }).listen(port, '127.0.0.1', () => {
   console.log(`Frige Studio is ready at http://127.0.0.1:${port}${mountedAt || '/'}`);

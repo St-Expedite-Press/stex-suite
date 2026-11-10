@@ -1,0 +1,15 @@
+    <header class="page-head">
+      <p class="eyebrow">Publishing and typography</p>
+      <h1 class="page-title">Book projects</h1>
+      <p class="page-lede">Choose a local manuscript workspace. Frige will not open or alter a book until you select it.</p>
+    </header>
+    <section aria-labelledby="projects-title">
+      <h2 class="section-title" id="projects-title">Select a project</h2>
+      <form id="create-project" class="create-project">
+        <label>Book title<input name="title" maxlength="140" required placeholder="Working title"></label>
+        <label>Author <span>(optional)</span><input name="author" maxlength="160" placeholder="Name for the title page"></label>
+        <button type="submit" class="stex-button stex-button--primary">Create book project</button>
+        <p id="create-state" aria-live="polite"></p>
+      </form>
+      <div id="projects" class="projects" aria-live="polite"><p class="empty">Loading local projects…</p></div>
+    </section>

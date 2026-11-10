@@ -17,6 +17,7 @@ coverage/
 *.tsbuildinfo
 apps/frige/.local-book/
 apps/pantheon/.local-projects/
+services/knowledge/.local-data/
 apps/frige/books/*/.texgraph/
 apps/frige/books/*/.obsidian/
 apps/texgraph/.local-book/

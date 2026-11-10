@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stex.platform.projects.v1",
+  "title": "STEX platform project list",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "studios", "projects"],
+  "properties": {
+    "schemaVersion": { "const": "stex.platform.projects.v1" },
+    "studios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "state"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$" },
+          "state": { "enum": ["available", "unavailable"] }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["studio", "reference", "id", "title", "kind", "updatedAt", "status", "openPath", "href"],
+        "properties": {
+          "studio": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$" },
+          "reference": { "type": ["string", "null"] },
+          "id": { "type": "string" },
+          "title": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string" },
+          "updatedAt": { "type": ["string", "null"] },
+          "status": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["state", "label"],
+            "properties": {
+              "state": { "enum": ["ready", "working", "attention", "failed"] },
+              "label": { "type": "string" }
+            }
+          },
+          "openPath": { "type": "string", "pattern": "^/(?!/)(?!(.*/)?\\.\\.(/|\\?|$))" },
+          "href": { "type": "string", "pattern": "^/[a-z][a-z0-9-]*/" }
+        }
+      }
+    }
+  }
+}

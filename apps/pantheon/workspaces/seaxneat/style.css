@@ -1,0 +1,26 @@
+.development-workspace { min-width: 0; }
+.workspace-heading h1 { margin: 0; }
+.workspace-layout { display: grid; grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr); gap: var(--stex-space-5); }
+.workspace-layout aside { border-right: 1px solid var(--stex-border-decor); padding-right: 24px; }
+.workspace-layout form { display: grid; gap: 12px; margin: 16px 0 24px; }
+.workspace-layout label { font-weight: 600; }
+.workspace-layout textarea { min-height: 100px; resize: vertical; }
+.workspace-layout input, .workspace-layout textarea { width: 100%; }
+.workspace-layout ul { list-style: none; margin: 0 0 16px; padding: 0; }
+.workspace-layout li button { display: block; width: 100%; text-align: left; margin-bottom: 8px; white-space: normal; overflow-wrap: anywhere; }
+.workspace-layout li small { display: block; }
+.workspace-layout button[aria-pressed="true"] { border-color: var(--stex-accent); color: var(--stex-accent); }
+.workspace-project { min-width: 0; }
+.workspace-reference { overflow-wrap: anywhere; font-family: var(--stex-font-mono); font-size: 12px; }
+.workspace-notice { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--stex-text-muted); }
+.workspace-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.workspace-proposal { padding: 16px; border: 1px solid var(--stex-border-decor); }
+.workspace-proposal pre, .workspace-diff { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-preview { display: block; width: 100%; min-height: 24rem; margin-top: 12px; border: 1px solid var(--stex-border-control); background: white; }
+.workspace-revisions { margin-top: 24px; }
+.workspace-revisions > div { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--stex-border-decor); }
+@media (max-width: 700px) { .workspace-layout { grid-template-columns: minmax(0, 1fr); } .workspace-layout aside { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--stex-border-decor); padding-bottom: 16px; } }
+
+.workspace-layout input, .workspace-layout textarea { min-height: var(--stex-control-height); padding: 8px 12px; border: 1px solid var(--stex-border-control); border-radius: var(--stex-radius-control); color: var(--stex-text); background: var(--stex-surface); font: inherit; }
+.workspace-heading h1 { font: 500 36px / 1.15 var(--stex-font-display); }
+.workspace-layout h2, .workspace-layout h3 { font-family: var(--stex-font-serif); }

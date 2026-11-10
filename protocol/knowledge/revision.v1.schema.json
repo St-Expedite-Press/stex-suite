@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/knowledge/revision.v1.schema.json",
+  "title": "STEX engine knowledge revision event v1",
+  "type": "object",
+  "required": ["id", "sequence", "occurredAt", "project", "sources"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$"},
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "occurredAt": {"type": "string", "format": "date-time", "maxLength": 40},
+    "project": {
+      "type": "object",
+      "required": ["application", "id", "reference", "title"],
+      "properties": {
+        "application": {"enum": ["frige", "seaxneat"]},
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+        "reference": {"type": "string", "pattern": "^stex://(frige|seaxneat)/project/[a-z0-9][a-z0-9-]{0,62}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 300}
+      }
+    },
+    "sources": {
+      "type": "array", "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["id", "reference", "revision", "title", "bytes", "mediaType"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,80}$"},
+          "reference": {"type": "string", "pattern": "^stex://(frige|seaxneat)/project/[a-z0-9][a-z0-9-]{0,62}#source=[a-z][a-z0-9-]{0,80}$"},
+          "revision": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "originRevision": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 300},
+          "bytes": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+          "mediaType": {"enum": ["text/plain", "text/markdown", "text/css"]}
+        }
+      }
+    }
+  },
+  "$comment": "Consumers additionally enforce matching application/id/reference, source containment, unique source ids and strictly increasing project sequence. Source text is not persisted in the knowledge projection."
+}

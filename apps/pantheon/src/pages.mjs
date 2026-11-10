@@ -4,10 +4,15 @@
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
+export function graphPage() {
+  return shell({ active: 'graph', title: 'User Graph', scripts: ['/knowledge.js'], body: `<section class="knowledge-workspace"><p class="eyebrow">Knowledge</p><h1>User Graph and sources</h1><p>Keep explicit project knowledge with revision evidence. Source text stays with its engine; relationships never change manuscripts or website files.</p><p id="knowledge-notice" role="status">Loading knowledge…</p><div id="knowledge-content"></div></section>` });
+}
+
 export const tabs = Object.freeze([
   { id: 'home', label: 'Home', route: '/home/' },
   { id: 'projects', label: 'Projects', route: '/projects/' },
   { id: 'studios', label: 'Studios', route: '/studios/' },
+  { id: 'igor', label: 'Igor', route: '/igor/' },
   { id: 'graph', label: 'Graph', route: '/graph/' },
   { id: 'activity', label: 'Activity', route: '/activity/' },
 ]);
@@ -49,7 +54,7 @@ function navigation(active) {
   return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul><button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
-export function shell({ active, title, body, scripts = [], app = 'pantheon' }) {
+export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main', contentTag = 'main' }) {
   const pageScripts = ['/shell.js', ...scripts].map((src) => `<script type="module" src="${src}"></script>`).join('');
   return `<!doctype html>
 <html lang="en" data-stex-app="${escape(app)}">
@@ -61,17 +66,39 @@ export function shell({ active, title, body, scripts = [], app = 'pantheon' }) {
   <link rel="icon" href="/design-system/brand/pantheon-favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system/src/stex.css">
   <link rel="stylesheet" href="/shell.css">
+  ${styles.map((href) => `<link rel="stylesheet" href="${escape(href)}">`).join('')}
   ${pageScripts}
 </head>
-<body class="shell">
-  <a class="skip-link" href="#main">Skip to content</a>
-  ${masthead}
+<body class="shell${instrumental ? ' platform-instrumental' : ''}">
+  <a class="skip-link" href="#${escape(skipTarget)}">Skip to content</a>
+  ${instrumental ? '<header class="masthead platform-compact"><a class="masthead-brand" href="/home/"><span class="stex-emblem" aria-hidden="true"></span><span>Pantheon</span></a></header>' : masthead}
   ${navigation(active)}
-  <main class="page" id="main">
+  <${contentTag} class="${escape(contentClass)}" id="main">
 ${body}
-  </main>
+  </${contentTag}>
 </body>
 </html>`;
+}
+
+export function developmentPage() {
+  return shell({ active: 'studios', title: 'Website workspace', app: 'seaxneat',
+    scripts: ['/workspace-assets/seaxneat.js'], styles: ['/workspace-assets/seaxneat.css'],
+    body: '<div id="development-workspace"></div><noscript><p>The website workspace needs JavaScript to operate the Seaxneat engine.</p></noscript>',
+  });
+}
+
+export function publishingPage(fragment, workstation = false) {
+  return shell({ active: 'studios', title: workstation ? 'Publishing workspace' : 'Book projects', app: 'frige',
+    instrumental: workstation, contentClass: workstation ? 'platform-workspace frige-workstation' : 'page frige-lobby', skipTarget: workstation ? 'conversation' : 'main',
+    scripts: workstation ? ['/frige/workspace.js', '/frige/app.js'] : ['/frige/lobby.js'],
+    styles: [workstation ? '/frige/style.css' : '/frige/lobby.css'], body: fragment,
+  });
+}
+
+export function directorPage() {
+  return shell({ active: 'igor', title: 'Igor', instrumental: true, contentTag: 'div', contentClass: 'platform-workspace',
+    scripts: ['/igor-interface.js'], body: '<div id="root" data-stex-composed="true"><p class="page" role="status">Opening Igor…</p></div>',
+  });
 }
 
 const emblemImage = (studio) => `<img class="studio-emblem" alt="" width="${studio.width}" height="64" loading="lazy" src="/media/studios/${studio.emblem}-${studio.width}w.webp" srcset="/media/studios/${studio.emblem}-${studio.width}w.webp 1x, /media/studios/${studio.emblem}-${studio.width * 2}w.webp 2x">`;
