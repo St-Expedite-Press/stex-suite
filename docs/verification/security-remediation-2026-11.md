@@ -94,11 +94,28 @@ Accepted as limits:
 | Restore-check probe against an owned store in local mode | `/ready` counts 2; a local listing returns 0 (the old check would have failed) |
 | `bash -n` on the backup and restore scripts; `git diff --check` | Pass |
 
+## Release (owner-authorized 2026-11-09)
+
+- **Igor CI.** CI on `d0598d8` passed (push run `42740714736`, PR run
+  `42740722322`).
+- **Merge.** stex-igor `main` was fast-forwarded `462bf60` → `d0598d8`; PR 1
+  is merged.
+- **Deploy.** Run `42740878426` passed CI and the deploy job. The VM reports
+  active release `d0598d8`, generation 12, with no rollback.
+- **Public checks after deploy.** `/igor/` redirects to sign-in. The
+  conversations, readiness and session APIs answer `401`, and the login page
+  answers `200`.
+- **Suite.** Branch `0d53ba4` (PR 5) still fails CI at "Verify checkout
+  access to the exact private Igor revision" (run `42740730030`), so it is
+  not merged.
+
 ## Limits
 
-- **Not shipped.** Nothing here is merged, pushed or deployed. Hosted Igor
-  keeps the shared store until the stex-igor release is authorized and
-  installed.
+- **Not verified in production.** Two-account isolation and durable sign-out
+  have not been checked against production with real accounts, and the VM
+  journal (the legacy-assignment line) was not read.
+- **Suite not merged.** The suite part, including the Seaxneat allow-list,
+  is unmerged.
 - **Not run.** The Linux restore script was not executed; only its probe and
   parser were.
 - **Rollback.** Rolling back to an earlier release makes conversations shared
