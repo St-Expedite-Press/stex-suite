@@ -37,7 +37,14 @@ operation and project state ("Building", "Build failed", "Needs attention",
 
 The deterministic simulator is not a claim of real Hermes/model behavior.
 Builds and previews run loopback-only; a failed build never advances the last
-validated revision.
+validated revision. Workspace install, build, Git and preview processes get
+an allow-listed environment (`src/child-environment.mjs`): OS, home/temp/cache,
+locale, proxy and CA-certificate variables plus `NEXT_BASE_PATH` and
+`NEXT_TELEMETRY_DISABLED=1`. Seaxneat's own settings, `STEX_*` values,
+inference/provider keys, and npm/Corepack token variables are never passed to
+generated code. This is not an OS isolation boundary: the processes still run
+as the same user with that user's file access (including files such as
+`~/.npmrc`), and a proxy URL that embeds credentials is passed through.
 
 ## Approved project context and knowledge observations
 

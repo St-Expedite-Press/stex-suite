@@ -4,6 +4,7 @@ import { execFile as execFileCallback, spawn as spawnProcess } from 'node:child_
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { childEnvironment, workspaceEnvironment } from './child-environment.mjs';
 
 const execFile = promisify(execFileCallback);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -55,7 +56,7 @@ async function atomic(file, value) {
 async function present(file) { try { await access(file); return true; } catch { return false; } }
 
 export function defaultRunner(command, args, cwd, { timeoutMs = 120_000, env } = {}) {
-  return execFile(command, args, { cwd, timeout: timeoutMs, windowsHide: true, maxBuffer: MAX_COMMAND_OUTPUT, env: { ...process.env, ...env } }).then(({ stdout = '', stderr = '' }) => ({ ok: true, stdout: String(stdout).slice(-MAX_COMMAND_OUTPUT), stderr: String(stderr).slice(-MAX_COMMAND_OUTPUT) })).catch((error) => ({ ok: false, code: error.code ?? null, stdout: String(error.stdout || '').slice(-MAX_COMMAND_OUTPUT), stderr: String(error.stderr || error.message || '').slice(-MAX_COMMAND_OUTPUT) }));
+  return execFile(command, args, { cwd, timeout: timeoutMs, windowsHide: true, maxBuffer: MAX_COMMAND_OUTPUT, env: childEnvironment(env) }).then(({ stdout = '', stderr = '' }) => ({ ok: true, stdout: String(stdout).slice(-MAX_COMMAND_OUTPUT), stderr: String(stderr).slice(-MAX_COMMAND_OUTPUT) })).catch((error) => ({ ok: false, code: error.code ?? null, stdout: String(error.stdout || '').slice(-MAX_COMMAND_OUTPUT), stderr: String(error.stderr || error.message || '').slice(-MAX_COMMAND_OUTPUT) }));
 }
 
 export class SeaxneatStore {
@@ -137,7 +138,7 @@ export class SeaxneatStore {
 
   async build(project) {
     const workspace = this.workspace(project.id); project.operation = { state: 'running', kind: 'build', startedAt: this.clock(), updatedAt: this.clock() }; await this.save();
-    const environment = { NEXT_BASE_PATH: `/seaxneat/api/projects/${project.id}/preview` };
+    const environment = workspaceEnvironment(project.id);
     const install = await this.pnpm(['install', '--frozen-lockfile'], workspace, { timeoutMs: 180_000, env: environment });
     const result = install.ok ? await this.pnpm(['build'], workspace, { timeoutMs: 180_000, env: environment }) : install;
     project.operation = result.ok ? { state: 'idle', updatedAt: this.clock() } : { state: 'failed', kind: 'build', detail: (result.stderr || result.stdout || 'Build failed.').slice(-4000), updatedAt: this.clock() }; await this.save(); return result;

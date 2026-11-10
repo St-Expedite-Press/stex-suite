@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SeaxneatStore } from './src/project-store.mjs';
+import { workspaceEnvironment } from './src/child-environment.mjs';
 import { previewPath, previewTarget } from './src/preview-proxy.mjs';
 import { workspaceApi } from './src/workspace-api.mjs';
 import { projectContext } from './src/project-context.mjs';
@@ -22,7 +23,7 @@ const previewStarter = async ({ project, workspace }) => {
   const existing = previews.get(project.id); if (existing && !existing.child.killed) return { state: 'running', target: existing.target };
   const port = 4400 + (parseInt(createHash('sha256').update(project.id).digest('hex').slice(0, 4), 16) % 1000);
   const args = ['pnpm', 'exec', 'next', 'start', '--hostname', '127.0.0.1', '--port', String(port)];
-  const env = { ...process.env, NEXT_BASE_PATH: `/seaxneat/api/projects/${project.id}/preview` };
+  const env = workspaceEnvironment(project.id); // generated code never sees Seaxneat's environment
   const child = process.platform === 'win32'
     ? spawn(process.execPath, [corepackEntry, ...args], { cwd: workspace, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
     : spawn('corepack', args, { cwd: workspace, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
