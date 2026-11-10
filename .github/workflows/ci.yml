@@ -5,7 +5,7 @@ name: CI
 # sources here). stex-igor is private, so fetching it needs the repository
 # secret STEX_IGOR_READ_SSH_KEY: the private half of an Igor-only, read-only
 # deploy key. The gate verifies access by checking out the exact pinned commit
-# without LFS and with only package.json in its sparse working tree.
+# without LFS.
 # Missing access fails CI; a skipped test job is never release verification.
 # Fork code never receives a private checkout or the deploy credential.
 
@@ -66,9 +66,9 @@ jobs:
           ssh-key: ${{ secrets.STEX_IGOR_READ_SSH_KEY }}
           ssh-strict: true
           persist-credentials: false
+          # A full (non-LFS) checkout: a sparse partial clone makes the
+          # action's credential cleanup fetch .gitmodules after the key is gone.
           lfs: false
-          sparse-checkout: package.json
-          sparse-checkout-cone-mode: false
       - name: Confirm the verified Igor revision
         env:
           IGOR_SHA: ${{ steps.pin.outputs.sha }}
