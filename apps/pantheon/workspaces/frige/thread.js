@@ -66,15 +66,52 @@ function contractTerms(changeSet) {
   const list = element('ul');
   const { offered = [], references = [], withheld = [] } = changeSet.context || {};
   list.append(element('li', '', `Igor was shown ${plural(offered.length, 'manuscript piece')}${references.length ? ` and ${plural(references.length, 'approved reference')}` : ''}${withheld.length ? `; ${plural(withheld.length, 'piece')} in this scope ${withheld.length === 1 ? 'was' : 'were'} too long to show` : ''}.`));
-  list.append(element('li', '', 'A piece is written only when you accept it, and only if it has not changed since this suggestion.'));
+  const layout = changeSet.changes.some((change) => change.kind === 'set-layout');
+  list.append(element('li', '', layout
+    ? 'The settings are written only when you accept them, and only if the publication profile has not changed since this suggestion.'
+    : 'A piece is written only when you accept it, and only if it has not changed since this suggestion.'));
   for (const effect of changeSet.effects || []) list.append(element('li', '', effect.message));
-  if (changeSet.rollback) list.append(element('li', '', 'An accepted change can be rolled back, restoring the previous text exactly, for as long as the piece is not edited again.'));
+  if (changeSet.rollback) list.append(element('li', '', layout
+    ? 'An accepted change can be rolled back, restoring the previous settings exactly, for as long as the publication profile is not changed again.'
+    : 'An accepted change can be rolled back, restoring the previous text exactly, for as long as the piece is not edited again.'));
+  // A section's settings are filed under its folder, which may appear in more than one place in the book.
+  if (changeSet.changes.some((change) => change.kind === 'set-layout' && change.level === 'section')) list.append(element('li', '', 'Section settings apply to every part of the book filed in this section’s folder.'));
   if (changeSet.conflicts?.length) {
     const pieces = new Set(changeSet.conflicts.map((conflict) => conflict.nodeId)).size;
-    list.append(element('li', 'change-conflict', `Another conversation has an undecided suggestion for ${plural(pieces, 'piece')} here. Whichever is accepted first makes the other out of date.`));
+    const what = changeSet.changes.some((change) => change.kind === 'set-layout') ? 'the same settings' : plural(pieces, 'piece');
+    list.append(element('li', 'change-conflict', `Another conversation has an undecided suggestion for ${what} here. Whichever is accepted first makes the other out of date.`));
   }
   terms.append(list);
   return terms;
+}
+
+/**
+ * A layout change as a list of settings, each from its current value to the
+ * proposed one. A setting the target does not set itself is shown as what it
+ * follows, so the author sees what an override replaces and what clearing it
+ * restores.
+ *
+ * @param {object} change  A `set-layout` change.
+ * @returns {HTMLElement}
+ */
+function layoutDiff(change) {
+  const before = change.before || {}; const after = change.after || {};
+  const inherited = change.inherited || {};
+  const yesNo = (value) => (value ? 'yes' : 'no');
+  // An unset value names what it follows and shows that value, as recorded when proposed.
+  const follows = change.level === 'node' ? 'as its section' : 'as the book';
+  const size = (override) => (override.fontSize ? `${override.fontSize} / ${override.leading}` : `${follows} (${inherited.fontSize} / ${inherited.leading})`);
+  const recto = (override) => (override.opensRecto === undefined
+    ? (inherited.opensRecto === undefined ? 'not set' : `not set (${yesNo(inherited.opensRecto)})`)
+    : yesNo(override.opensRecto));
+  const head = (override) => override.headText || (inherited.headText ? `not set (${inherited.headText})` : 'not set');
+  const rows = [['Body size / leading', size], ['Opens on a recto', recto], ...(change.level === 'section' ? [['Recto running head', head]] : [])];
+  const list = element('dl', 'change-layout');
+  for (const [name, show] of rows) {
+    const [was, will] = [show(before), show(after)];
+    list.append(element('dt', '', name), element('dd', was === will ? '' : 'changed', was === will ? was : `${was} → ${will}`));
+  }
+  return list;
 }
 
 // Pending changes as line diffs, each with its own decision.
@@ -82,7 +119,8 @@ function changeCards(changeSet, onDecide) {
   const pending = changeSet.changes.filter((change) => change.status === 'pending');
   const box = element('section', 'changes');
   const header = element('div', 'changes-header');
-  header.append(element('span', '', `Suggested change${pending.length === 1 ? '' : 's'} · ${pending.length} piece${pending.length === 1 ? '' : 's'}`));
+  const layoutOnly = pending.every((change) => change.kind === 'set-layout');
+  header.append(element('span', '', layoutOnly ? 'Suggested layout change' : `Suggested change${pending.length === 1 ? '' : 's'} · ${pending.length} piece${pending.length === 1 ? '' : 's'}`));
   if (pending.length > 1) {
     const all = element('span', 'change-actions');
     all.append(button('accept', 'Accept all', () => onDecide(null, 'accept')), button('reject', 'Reject all', () => onDecide(null, 'reject')));
@@ -92,9 +130,10 @@ function changeCards(changeSet, onDecide) {
   box.append(header, ...(terms ? [terms] : []), ...pending.map((change) => {
     const card = element('details', 'change-card'); card.open = true;
     const summary = element('summary');
-    summary.append(element('strong', '', change.title), element('small', '', `manuscript/${change.relativePath}${change.lines ? ` · +${change.lines.added} −${change.lines.removed}` : ''}`));
-    const diff = element('pre', 'change-diff');
-    for (const row of lineDiff(change.before, change.source)) diff.append(element('span', `diff-${row.type}`, row.type === 'skip' ? `… ${row.count} unchanged line${row.count === 1 ? '' : 's'}` : `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
+    const layout = change.kind === 'set-layout';
+    summary.append(element('strong', '', change.title), element('small', '', layout ? `${change.level === 'node' ? 'This piece' : 'This section'}’s own settings` : `manuscript/${change.relativePath}${change.lines ? ` · +${change.lines.added} −${change.lines.removed}` : ''}`));
+    const diff = layout ? layoutDiff(change) : element('pre', 'change-diff');
+    if (!layout) for (const row of lineDiff(change.before, change.source)) diff.append(element('span', `diff-${row.type}`, row.type === 'skip' ? `… ${row.count} unchanged line${row.count === 1 ? '' : 's'}` : `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
     const actions = element('div', 'change-actions');
     actions.append(button('accept', 'Accept', () => onDecide(change.nodeId, 'accept')), button('reject', 'Reject', () => onDecide(change.nodeId, 'reject')));
     card.append(summary, ...(change.summary ? [element('p', 'change-summary', change.summary)] : []), diff, actions);
@@ -204,7 +243,7 @@ function promptCard(part, answer, onAnswer, drafts, busy) {
  * is safe.
  *
  * @param {object} turn  A `changes-decided` or `changes-reverted` system turn.
- * @param {{ contracts?: Map<string, object>, busy: boolean, onRevert?: (contractId: string, nodeId: string) => void }} view
+ * @param {{ contracts?: Map<string, object>, busy: boolean, onRevert?: (contractId: string, nodeId: string | null, options: { layout: boolean }) => void }} view
  * @returns {HTMLElement}
  */
 function decisionNote(turn, { contracts, busy, onRevert }) {
@@ -212,11 +251,15 @@ function decisionNote(turn, { contracts, busy, onRevert }) {
   const contract = contracts?.get(turn.changeSetId);
   for (const decision of turn.decisions) {
     note.append(element('span', `decision ${decision.status}`, `${decisionText[decision.status] || decision.status} · ${decision.title}`));
-    const recorded = contract?.changes.find((change) => change.nodeId === decision.nodeId);
+    // A section's layout change has no piece: both sides are null.
+    const recorded = contract?.changes.find((change) => (change.nodeId ?? null) === (decision.nodeId ?? null));
     if (turn.kind !== 'changes-decided' || decision.status !== 'accepted' || recorded?.status !== 'accepted' || !onRevert) continue;
     // Named only when the recorded proof typeset this piece at exactly its accepted text.
-    if (contract.proof?.sourceHashes?.[decision.nodeId] === recorded.afterHash) note.append(element('span', 'decision-proof', `Typeset in a proof · ${dateAndTime(contract.proof.completedAt)}`));
-    const rollBack = button('quiet-button decision-revert', 'Roll back', () => onRevert(turn.changeSetId, decision.nodeId));
+    const layout = recorded.kind === 'set-layout';
+    // A layout change is proved by a build under the profile it produced; a text change by its piece's hash.
+    const typeset = layout ? contract.proof?.designHash === recorded.afterHash : contract.proof?.sourceHashes?.[decision.nodeId] === recorded.afterHash;
+    if (typeset) note.append(element('span', 'decision-proof', `Typeset in a proof · ${dateAndTime(contract.proof.completedAt)}`));
+    const rollBack = button('quiet-button decision-revert', 'Roll back', () => onRevert(turn.changeSetId, decision.nodeId, { layout }));
     rollBack.setAttribute('aria-label', `Roll back the accepted change to ${decision.title}`);
     rollBack.disabled = busy;
     note.append(rollBack);

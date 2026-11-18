@@ -260,6 +260,16 @@ line to the first offered piece, never to the table of contents. This
 exercises the contract path without a provider. The inference service itself
 does not yet return changes from a real director.
 
+A section's or a piece's conversation can also propose a **layout change**:
+setting or clearing that section's or piece's own size and leading, recto
+opening or (section) running head. The card lists each setting from what it
+follows now to the proposed value. Acceptance and **Roll back** check the
+whole publication profile instead of a piece's text: either is refused if
+the profile changed in between. With the simulator, write
+`Simulate layout: 15pt/18pt`, `recto on`, `recto off`, `recto inherit`,
+`size inherit`, `head <text>`, `head inherit` or `clear`. A contract holds
+either text changes or one layout change.
+
 The Hermes pill reports whether the local fake transport or optional remote
 Hermes boundary is available. A failed turn is saved with a safe reason and
 changes nothing. The legacy v3 endpoint is a compatibility adapter over

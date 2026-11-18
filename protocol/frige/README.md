@@ -83,6 +83,11 @@ additively: a profile without them is unchanged and keeps its hash.
 - Size and leading are set together, with the book's rules: size 8–18pt,
   leading 8–30pt and not below the size. An empty value counts as not set.
   No value is LaTeX.
+- A `PUT` may carry `baseHash`: the profile hash the form was filled from.
+  If the profile has changed since, the save is refused with
+  `409 STALE_DESIGN` and nothing is written, so an outdated form cannot undo
+  an accepted layout change. `baseHash` is never stored. The workstation
+  always sends it; a save without it keeps the earlier behaviour.
 - On `PUT`, overrides merge by key: an object replaces that override, `null`
   or an object that sets nothing clears it, and keys left out are kept. An
   override that is new or changed must name a section folder or a piece in
@@ -129,6 +134,45 @@ through.
 
 Context categories are recorded separately and are never merged: a reference
 or a generated proposal does not become canonical source by being offered.
+
+**Layout changes.** A contract may instead hold exactly one layout change:
+setting or clearing the [override](#layout-overrides) of the conversation's
+own section or piece. A whole-book conversation cannot propose one; the
+book's settings are changed in the Design panel. Its change entry is
+`{kind: "set-layout", level: "section" | "node", target, nodeId, title, before, after, baseHash, afterHash, pieces, inherited, summary, status}`:
+
+- `target` is the section folder or node id, and `nodeId` is the piece, or
+  `null` for a section. A section's settings apply to every run of its folder
+  in the reading order.
+- `before` and `after` are the target's own override, or `null` for none.
+- `baseHash` and `afterHash` are hashes of the whole publication profile.
+- `pieces` lists the pieces the override applied to when proposed.
+- `inherited` is `{fontSize, leading, sizeFrom, opensRecto, headText}`: what
+  applies to the target without its own override (`headText` is `null` for
+  a piece). The recto value assumes the section's first piece prints.
+
+Acceptance writes the profile only if its hash still equals `baseHash` and
+the target is still in the table of contents. A rollback restores `before`
+only if the hash still equals `afterHash`. Otherwise the change is `stale`,
+or the rollback is refused with `409 STALE_SOURCE`, and nothing is written.
+A build proves a layout change only if it typeset every one of its `pieces`
+that is still in the reading order, under exactly the profile the change
+produced. Pieces added to the target after the proposal are not required.
+For a section filed in several places, the conversation's own automatic
+proof may not cover the other places; a whole-book proof does. Conflicts name other
+undecided changes to the same layout target. The record's shape is in
+[the schema](change-contract.v1.schema.json); the settings inside `before`
+and `after` are validated by the publication profile's rules.
+
+A layout proposal reaches Frige as the optional scope-turn reply field
+`layout` (`{set: {...}}` merges into the target's override, a `null` value
+removes that key; `{clear: true}` removes the override), from the
+deterministic simulator or a gateway that sends it. In a gateway reply, a
+`set` of more than eight keys is malformed: the field is ignored and no
+reason is shown. Frige validates every value with the
+profile rules; an invalid proposal, or one that would change nothing, is set
+aside with its reason (at most 1,000 characters). A reply that proposes both text and layout keeps the text changes
+and sets the layout change aside.
 
 Change `status` is `pending`, `accepted`, `rejected`, `stale` (the piece
 changed after the proposal; not written), `failed` (the write failed),

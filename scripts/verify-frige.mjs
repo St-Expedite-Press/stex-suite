@@ -26,8 +26,10 @@ const stub = http.createServer(async (request, response) => {
   if (request.url === '/v1/models/catalog') { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"available":false,"models":[]}'); return; }
   if (request.url !== '/v1/texgraph/scope-turn') { response.writeHead(404); response.end(); return; }
   let raw = ''; for await (const chunk of request) raw += chunk;
-  const source = JSON.parse(raw).scopeSources[0];
+  const turn = JSON.parse(raw); const source = turn.scopeSources[0];
   response.writeHead(200, { 'content-type': 'application/json' });
+  // A layout request gets the optional `layout` reply field, through the real gateway path.
+  if (/^simulate layout:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated layout proposal for this synthetic fixture.', changes: [], layout: { set: { fontSize: '14pt', leading: '17pt' }, summary: 'Synthetic layout' }, parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
   response.end(JSON.stringify({ commentary: 'Simulated editorial proposal for this synthetic fixture.', changes: [{ nodeId: source.nodeId, source: source.source + '\nA proposed synthetic line.\n', summary: 'Synthetic addition' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } }));
 });
 await new Promise((resolve) => stub.listen(4439, '127.0.0.1', resolve));
@@ -126,6 +128,20 @@ try {
   await input('[name="override.fontSize"]', ''); await input('[name="override.leading"]', ''); await click('#design-panel [type="submit"]');
   await until(async () => !(await api('/project/design?book=fixture-book')).design.nodes, 'piece override cleared');
   await click('#design-cancel'); report.workflow.push('a piece override is saved, typeset into a real proof and recorded in its page map, then cleared');
+  // Layout change contract (Wave 3b): proposed in the piece's conversation, accepted, typeset, rolled back.
+  await click('#show-thread'); await input('#message', 'Simulate layout: 14pt/17pt'); await click('#turn-form [type="submit"]');
+  await until(() => evaluate(`!!document.querySelector('.change-layout')`), 'layout change card');
+  assert.match(await evaluate(`document.querySelector('.change-layout').textContent`), /as its section \(13pt \/ 13\.6pt\) → 14pt \/ 17pt/);
+  await capture('layout-proposal.png', { reveal: '.change-layout' });
+  assert.equal((await api('/project/design?book=fixture-book')).design.nodes, undefined, 'the proposal changes nothing');
+  await click('.changes .accept');
+  await until(async () => (await api('/project/design?book=fixture-book')).design.nodes?.[selected.id]?.fontSize === '14pt', 'layout change accepted into the profile');
+  await until(async () => (await api(historyUrl))[0]?.proof?.paginationVerified === true, 'proof under the new profile recorded on the layout contract');
+  await until(() => evaluate(`!!document.querySelector('.decision-revert:not([disabled])')`), 'roll back control for the layout change');
+  await click('.decision-revert');
+  await until(async () => !(await api('/project/design?book=fixture-book')).design.nodes, 'layout change rolled back');
+  await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after layout rollback');
+  report.workflow.push('a layout change is proposed in conversation, accepted into the profile, proved by a real proof, and rolled back');
   await evaluate(`document.querySelector('#settings-menu').open = true`); await click('#configure-models');
   await until(() => evaluate(`!!document.querySelector('.model-settings input')`), 'model settings');
   const dialogStyle = await evaluate(`(() => { const dialog = document.querySelector('.model-settings'); const input = dialog.querySelector('input'); return { scoped: !!dialog.closest('.frige-workstation'), height: input.getBoundingClientRect().height, background: getComputedStyle(input).backgroundColor, border: getComputedStyle(dialog.querySelector('.role-card')).borderTopStyle }; })()`);

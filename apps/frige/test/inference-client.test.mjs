@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { inferenceHealth, requestPageRevision, requestScopeTurn } from '../src/inference-client.mjs';
+import { inferenceHealth, layoutFrom, requestPageRevision, requestScopeTurn } from '../src/inference-client.mjs';
 
 test('Frige alpha deterministic transport returns a labelled no-change response without a gateway', async () => {
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
@@ -41,9 +41,26 @@ test('the deterministic simulator proposes one labelled change only when asked, 
     // 300 characters outside the Basic Multilingual Plane: clipped to 240 whole characters, none cut in half.
     const clipped = (await turn(`Simulate change: ${'𝄞'.repeat(300)}`, [piece])).changes[0].source;
     assert.equal(clipped, `# Piece\n\nA line.\n\n${'𝄞'.repeat(240)}\n`);
+    // Layout requests shape a proposal; the engine validates every value.
+    const layoutOf = async (message) => (await turn(message, [piece])).layout;
+    assert.deepEqual((await layoutOf('Simulate layout: 15pt / 18pt')).set, { fontSize: '15pt', leading: '18pt' });
+    assert.deepEqual((await layoutOf('simulate layout: Recto OFF')).set, { opensRecto: false });
+    assert.deepEqual((await layoutOf('Simulate layout: recto inherit')).set, { opensRecto: null });
+    assert.deepEqual((await layoutOf('Simulate layout: size inherit')).set, { fontSize: null, leading: null });
+    assert.deepEqual((await layoutOf('Simulate layout: head The Northern Poems')).set, { headText: 'The Northern Poems' });
+    assert.equal((await layoutOf('Simulate layout: clear')).clear, true);
+    assert.match((await layoutOf('Simulate layout: clear')).summary, /not a model/);
+    const unknown = await turn('Simulate layout: make it nicer', [piece]);
+    assert.equal(unknown.layout, undefined); assert.match(unknown.commentary, /did not recognise/); assert.equal(unknown.changes.length, 0);
     const page = await requestPageRevision({ book: {}, page: {}, turns: [], message: 'Simulate change: A line.' });
     assert.equal(page.proposal, null); assert.doesNotMatch(page.commentary, /table of contents/, 'the one-page book is not told about scopes it does not have');
   } finally {
     if (previous === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = previous;
   }
+});
+
+test('a gateway layout field is shaped and bounded before the engine sees it', () => {
+  assert.deepEqual(layoutFrom({ set: { fontSize: '12pt', leading: '14pt' }, summary: 'x'.repeat(900) }), { set: { fontSize: '12pt', leading: '14pt' }, summary: 'x'.repeat(500) });
+  assert.deepEqual(layoutFrom({ clear: true }), { clear: true });
+  for (const malformed of [null, 'clear', [], { clear: 'yes' }, { set: [] }, { set: 'x' }, { set: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [String(index), 1])) }]) assert.equal(layoutFrom(malformed), null, JSON.stringify(malformed)?.slice(0, 40));
 });

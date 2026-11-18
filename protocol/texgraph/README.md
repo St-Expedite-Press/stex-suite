@@ -64,6 +64,15 @@ its text become image artifacts. The reply also carries `meta` (`model`,
 unavailable) for provenance. These fields are additive; readers ignore ones
 they do not know.
 
+**Reply `layout`** (optional, added 2026-11-17) — one proposed change to the
+layout override of the conversation's own section or piece:
+`{ set: { fontSize, leading, opensRecto, headText }, summary }`, where a
+`null` value removes that setting, or `{ clear: true, summary }`. Frige
+validates it and records it as a
+[layout change contract](../frige/README.md#change-contracts-v1); it never
+applies it without the author's acceptance. The STEX inference gateway does
+not produce this field yet; readers that do not know it ignore it.
+
 **Request `answer`** — `{ promptId, values }` when the author answers a choice
 or form. The product validates the answer against the stored prompt (known
 option ids, required fields) and sends a readable summary as `message`.

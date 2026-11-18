@@ -277,7 +277,9 @@ async function scopeTurn(store, scopeId, payload) {
       withheld: context.withheld, references: approvedSourceExcerpts.map(({ id, name }) => ({ id, name })),
       designHash: designHash(await store.design()),
     };
-    const { changeSet, dropped } = result.changes.length ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes }, context.sources, provenance) : { changeSet: null, dropped: [] };
+    // A reply proposes text changes, or (from the simulator, until the director can) one layout change.
+    const proposes = result.changes.length || result.layout;
+    const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);
     const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
     return { userTurn, assistantTurn, changeSet, availability: result.availability };
@@ -413,7 +415,7 @@ async function api(request, response, url, store) {
  * @type {Record<string, number>}
  */
 const STATUS_BY_CODE = {
-  STALE_SOURCE: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409,
+  STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409,
   CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
 };
 

@@ -154,6 +154,11 @@ h1, h2, h3, p { margin-top: 0; }
 .change-summary { margin: 0; color: var(--stex-text-secondary); font: 400 13px/1.45 var(--stex-font-sans); }
 .change-diff { margin: 0; max-height: 300px; overflow: auto; padding: var(--stex-space-2); background: var(--stex-bg); border: var(--frige-rule); font: 400 12px/1.55 var(--stex-font-mono); white-space: pre-wrap; }
 .change-diff span { display: block; }
+/* A layout change: each setting from its current value to the proposed one. */
+.change-layout { display: grid; grid-template-columns: max-content 1fr; gap: 4px var(--stex-space-3); margin: 0; padding: var(--stex-space-2); background: var(--stex-bg); border: var(--frige-rule); font: 400 13px/1.45 var(--stex-font-sans); }
+.change-layout dt { color: var(--stex-text-secondary); }
+.change-layout dd { margin: 0; color: var(--stex-text-muted); }
+.change-layout dd.changed { color: var(--stex-text); font-weight: 600; }
 .diff-add { background: color-mix(in srgb, var(--stex-success) 16%, transparent); }
 .diff-del { background: color-mix(in srgb, var(--stex-error) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--stex-error) 70%, transparent); }
 .diff-skip { color: var(--stex-text-muted); }

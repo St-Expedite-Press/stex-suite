@@ -14,10 +14,10 @@ Update this file whenever the state below changes.
 ## State
 
 - **Branch:** `feat/frige-change-contracts` in `stex-suite`, cut from
-  `d96340e`. Local only; nothing is pushed. Waves 2 and 3a and two
+  `d96340e`. Local only; nothing is pushed. Waves 2, 3a and 3b and two
   baseline defect fixes are committed locally on top of `d96340e`.
 - **stex-igor:** untouched, at `d0598d8`.
-- **Current work:** Wave 3b (layout change contracts). See [progress](PROGRESS.md) for package states and the
+- **Current work:** Wave 3c (hierarchical context). See [progress](PROGRESS.md) for package states and the
   [Wave 2 report](../verification/frige-change-contracts-w2.md) for evidence.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts

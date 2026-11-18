@@ -15,6 +15,7 @@ import test from 'node:test';
 import { ProjectStore, sourceHash } from '../src/project-store-vault.mjs';
 import { buildBook } from '../src/book-assembler.mjs';
 import { CHANGE_CONTRACT, conflictsWith, isContractId, lineStats, proofFor } from '../src/change-contract.mjs';
+import { designHash } from '../src/design-settings.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
 
@@ -83,12 +84,26 @@ test('a build proves a contract only when it typeset every accepted change at it
   assert.equal(proofFor(record, { ...build, pageMap: { pagination: { verified: false } } }).paginationVerified, false, 'an unverified page map is recorded as unverified');
 });
 
+test('a layout proof needs every affected piece still in the book, typeset under the resulting profile', () => {
+  const record = { changes: [{ kind: 'set-layout', status: 'accepted', afterHash: 'profile-after', pieces: ['node-a', 'node-b'] }] };
+  const build = (sourceHashes, designHash = 'profile-after') => ({ ok: true, completedAt: '2026-01-01T00:00:00.000Z', targetScope: { id: 'book' }, sourceHashes, pageMap: { mode: 'prefix', designHash, pagination: { verified: true } } });
+  assert.equal(proofFor(record, build({ 'node-a': 'x' })), null, 'one of the two pieces is not enough');
+  assert.equal(proofFor(record, build({ 'node-a': 'x', 'node-b': 'y' }, 'profile-before')), null, 'the right pieces under another profile prove nothing');
+  assert.deepEqual(proofFor(record, build({ 'node-a': 'x', 'node-b': 'y' })).sourceHashes, {}, 'a layout proof records no text hashes');
+  assert.ok(proofFor(record, build({ 'node-a': 'x' }), { readingOrder: ['node-a', 'node-c'] }), 'a piece that has left the book no longer has to be typeset');
+  assert.equal(proofFor(record, build({}), { readingOrder: ['node-c'] }), null, 'with every piece gone, nothing can prove it');
+});
+
 test('conflicts name undecided changes to the same piece in other conversations only', () => {
   const records = [
     { id: 'c1', scopeId: 'scope-x', changes: [{ nodeId: 'node-a', status: 'pending' }, { nodeId: 'node-b', status: 'accepted' }] },
     { id: 'c2', scopeId: 'node-a', changes: [{ nodeId: 'node-a', status: 'pending' }] },
   ];
-  assert.deepEqual(conflictsWith(records, ['node-a', 'node-b'], 'node-a'), [{ contractId: 'c1', scopeId: 'scope-x', nodeId: 'node-a' }]);
+  assert.deepEqual(conflictsWith(records, [{ nodeId: 'node-a' }, { nodeId: 'node-b' }], 'node-a'), [{ contractId: 'c1', scopeId: 'scope-x', nodeId: 'node-a', target: 'node-a' }]);
+  // A layout change conflicts only with another layout change to the same target, never with text.
+  const layout = [{ id: 'c3', scopeId: 'scope-y', changes: [{ kind: 'set-layout', level: 'section', target: '01_A', nodeId: null, status: 'pending' }] }];
+  assert.deepEqual(conflictsWith(layout, [{ kind: 'set-layout', level: 'section', target: '01_A' }], 'node-a'), [{ contractId: 'c3', scopeId: 'scope-y', nodeId: null, target: 'layout:section:01_A' }]);
+  assert.deepEqual(conflictsWith(layout, [{ nodeId: '01_A' }], 'node-a'), []);
 });
 
 test('a proposal is stored as a contract with provenance and writes nothing', async (context) => {
@@ -212,7 +227,7 @@ test('a contract records undecided changes to the same piece from another conver
   const inPiece = await propose(store, first, `${FIRST}\nFrom the piece conversation.\n`);
   const { sources } = await store.scopeContext(section.id);
   const { changeSet: inSection } = await store.createChangeSet(section.id, { changes: [{ nodeId: first, source: `${FIRST}\nFrom the section conversation.\n` }] }, sources);
-  assert.deepEqual(inSection.conflicts, [{ contractId: inPiece.id, scopeId: first, nodeId: first }]);
+  assert.deepEqual(inSection.conflicts, [{ contractId: inPiece.id, scopeId: first, nodeId: first, target: first }]);
   assert.equal((await store.contract(inPiece.id)).changes[0].status, 'pending', 'another conversation does not supersede this one');
   // Whichever is accepted first makes the other stale; neither overwrites.
   await store.decideChanges(section.id, inSection.id, { decision: 'accept' });
@@ -477,7 +492,7 @@ test('provenance from the gateway is stored as short labels or not at all', asyn
 
 // --- The published schema ------------------------------------------------------
 
-const SCHEMA_KEYWORDS = new Set(['$schema', '$id', 'title', 'description', 'type', 'required', 'properties', 'additionalProperties', 'enum', 'const', 'items', 'pattern', 'maxLength', 'minimum']);
+const SCHEMA_KEYWORDS = new Set(['$schema', '$id', 'title', 'description', 'type', 'required', 'properties', 'additionalProperties', 'enum', 'const', 'items', 'pattern', 'maxLength', 'minimum', 'oneOf', 'minItems']);
 
 /**
  * Validates a value against the subset of JSON Schema that the change-contract
@@ -493,6 +508,13 @@ function violations(schema, value, at = '$') {
   for (const keyword of Object.keys(schema)) assert.ok(SCHEMA_KEYWORDS.has(keyword), `the schema uses an unchecked keyword: ${keyword}`);
   const typeOf = (entry) => (entry === null ? 'null' : Array.isArray(entry) ? 'array' : Number.isInteger(entry) ? 'integer' : typeof entry);
   const found = [];
+  // Exactly one alternative must hold; when none does, each alternative's first violation is reported.
+  if (schema.oneOf) {
+    const results = schema.oneOf.map((alternative) => violations(alternative, value, at));
+    const holding = results.filter((result) => !result.length).length;
+    if (holding === 0) found.push(`${at}: matches no alternative: ${results.map((result) => result[0]).join(' | ')}`);
+    if (holding > 1) found.push(`${at}: matches ${holding} alternatives`);
+  }
   if ('const' in schema && value !== schema.const) found.push(`${at}: expected ${JSON.stringify(schema.const)}`);
   if (schema.enum && !schema.enum.includes(value)) found.push(`${at}: not one of ${JSON.stringify(schema.enum)}`);
   if (schema.type && ![schema.type].flat().includes(typeOf(value))) return [...found, `${at}: expected ${schema.type}, got ${typeOf(value)}`];
@@ -501,6 +523,7 @@ function violations(schema, value, at = '$') {
     if (schema.maxLength !== undefined && value.length > schema.maxLength) found.push(`${at}: longer than ${schema.maxLength}`);
   }
   if (typeof value === 'number' && schema.minimum !== undefined && value < schema.minimum) found.push(`${at}: below ${schema.minimum}`);
+  if (Array.isArray(value) && schema.minItems !== undefined && value.length < schema.minItems) found.push(`${at}: fewer than ${schema.minItems} items`);
   if (Array.isArray(value) && schema.items) value.forEach((entry, index) => found.push(...violations(schema.items, entry, `${at}[${index}]`)));
   if (typeOf(value) === 'object') {
     for (const key of schema.required || []) if (!(key in value)) found.push(`${at}: missing ${key}`);
@@ -537,6 +560,160 @@ test('every state of a stored contract conforms to the published schema, and the
   assert.match(refused((copy) => { copy.changes[0].baseHash = 'short'; }), /baseHash: does not match/);
   assert.match(refused((copy) => { copy.context.offered[0].category = 'generated'; }), /category: expected "canonical-source"/);
   assert.match(refused((copy) => { copy.schemaVersion = 2; }), /schemaVersion: expected 3/);
+});
+
+// --- Layout changes (program Wave 3b) --------------------------------------------
+
+/**
+ * Proposes one layout change in a conversation, offering that scope's sources.
+ *
+ * @param {ProjectStore} store
+ * @param {string} scopeId
+ * @param {object} layout  As the simulator shapes it: `{ set }` or `{ clear: true }`.
+ * @param {Array<{ nodeId: string, source: string }>} [changes]  Text changes in the same reply.
+ */
+async function proposeLayout(store, scopeId, layout, changes = []) {
+  const { sources } = await store.scopeContext(scopeId);
+  return store.createChangeSet(scopeId, { commentary: 'A synthetic layout reason.', changes, layout }, sources, { request: 'Change the layout.' });
+}
+
+const SCHEMA = JSON.parse(await readFile(new URL('../../../protocol/frige/change-contract.v1.schema.json', import.meta.url), 'utf8'));
+
+test('a piece conversation proposes its own layout as a contract, accepted and rolled back through the profile hash', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const original = await store.design();
+  const { changeSet: contract } = await proposeLayout(store, first, { set: { fontSize: '15pt', leading: '18pt' } });
+  const [change] = contract.changes;
+  assert.deepEqual({ kind: change.kind, level: change.level, target: change.target, nodeId: change.nodeId, before: change.before, after: change.after },
+    { kind: 'set-layout', level: 'node', target: first, nodeId: first, before: null, after: { fontSize: '15pt', leading: '18pt' } });
+  assert.deepEqual(change.inherited, { fontSize: '11pt', leading: '13.6pt', sizeFrom: 'book', opensRecto: false, headText: null }, 'the author sees what the override replaces');
+  assert.equal(change.baseHash, designHash(original)); assert.match(contract.effects[0].message, /publication profile/);
+  assert.deepEqual(violations(SCHEMA, contract), [], 'a layout contract conforms to the schema');
+  assert.deepEqual(await store.design(), original, 'a proposal changes nothing');
+
+  await store.decideChanges(first, contract.id, { decision: 'accept' });
+  const applied = await store.design();
+  assert.deepEqual(applied.nodes, { [first]: { fontSize: '15pt', leading: '18pt' } }); assert.equal(designHash(applied), change.afterHash);
+  const scope = await store.scope(first);
+  const pieceHash = (await store.node(first)).hash;
+  const build = (profileHash, sourceHashes = { [first]: pieceHash }) => store.recordBuild({ ok: true, targetScope: scope, sourceHashes, pageMap: { schemaVersion: 3, mode: 'prefix', designHash: profileHash, pagination: { verified: true } }, log: '' });
+  assert.deepEqual(change.pieces, [first], 'the override applies to this piece only');
+  assert.deepEqual((await build(change.baseHash)).provedContracts, [], 'a build under the old profile proves nothing');
+  assert.deepEqual((await build(change.afterHash, {})).provedContracts, [], 'a build that did not typeset the piece proves nothing, whatever its profile');
+  assert.deepEqual((await build(change.afterHash)).provedContracts, [contract.id]);
+
+  const reverted = await store.revertChanges(contract.id);
+  assert.equal(reverted.changes[0].status, 'reverted'); assert.equal(reverted.proof, null);
+  assert.deepEqual(await store.design(), original); assert.equal(designHash(await store.design()), change.baseHash);
+  assert.deepEqual(violations(SCHEMA, await store.contract(contract.id)), []);
+  assert.equal((await store.turns(first)).at(-1).kind, 'changes-reverted');
+});
+
+test('a section conversation proposes the section override; rejecting it leaves the profile untouched', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const section = (await store.graph()).book.sections.find((entry) => entry.nodeIds.includes(first));
+  await store.saveDesign({ sections: { [section.folder]: { opensRecto: false } } });
+  const before = await store.design();
+  const { changeSet: contract } = await proposeLayout(store, section.id, { set: { opensRecto: true, headText: 'Section head' } });
+  const [change] = contract.changes;
+  assert.deepEqual([change.level, change.target, change.nodeId], ['section', section.folder, null]);
+  assert.deepEqual(change.before, { opensRecto: false }); assert.deepEqual(change.after, { opensRecto: true, headText: 'Section head' }, 'set merges into the current override');
+  await store.decideChanges(section.id, contract.id, { decision: 'reject' });
+  assert.deepEqual(await store.design(), before);
+  // Clearing is a change too.
+  const { changeSet: clearing } = await proposeLayout(store, section.id, { clear: true });
+  assert.equal(clearing.changes[0].after, null);
+  await store.decideChanges(section.id, clearing.id, { decision: 'accept' });
+  assert.equal((await store.design()).sections, undefined);
+});
+
+test('a layout change is refused, never applied, against a profile that changed after it was proposed or accepted', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const { changeSet: stale } = await proposeLayout(store, first, { set: { opensRecto: true } });
+  await store.saveDesign({ folios: true });
+  const decided = await store.decideChanges(first, stale.id, { decision: 'accept' });
+  assert.equal(decided.changes[0].status, 'stale'); assert.equal((await store.design()).nodes, undefined);
+
+  const { changeSet: accepted } = await proposeLayout(store, first, { set: { opensRecto: true } });
+  await store.decideChanges(first, accepted.id, { decision: 'accept' });
+  await store.saveDesign({ folios: false });
+  const changed = await store.design();
+  await assert.rejects(() => store.revertChanges(accepted.id), { code: 'STALE_SOURCE' });
+  assert.deepEqual(await store.design(), changed, 'the later profile change is not overwritten');
+});
+
+test('layout proposals that cannot be a contract are set aside with a reason', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const book = await proposeLayout(store, 'book', { set: { opensRecto: true } });
+  assert.equal(book.changeSet, null); assert.match(book.dropped[0].reason, /Design panel/);
+  const invalid = await proposeLayout(store, first, { set: { fontSize: '40pt', leading: '50pt' } });
+  assert.equal(invalid.changeSet, null); assert.match(invalid.dropped[0].reason, /not valid: .*Body size/);
+  const notTex = await proposeLayout(store, first, { set: { trimSize: 'A4' } });
+  assert.match(notTex.dropped[0].reason, /trimSize cannot be set for a piece/);
+  const noOp = await proposeLayout(store, first, { set: { opensRecto: null } });
+  assert.equal(noOp.changeSet, null, 'a proposal that changes nothing makes no contract'); assert.match(noOp.dropped[0].reason, /would change nothing/);
+  assert.match((await proposeLayout(store, first, JSON.parse('{"set":{"__proto__":{"opensRecto":true}}}'))).dropped[0].reason, /invalid/, 'a prototype key is not a setting');
+  const flood = Object.fromEntries(Array.from({ length: 5000 }, (_, index) => [`key${index}`, 1]));
+  assert.ok((await proposeLayout(store, first, { set: flood })).dropped[0].reason.length <= 1000, 'a stored reason is bounded');
+  // Text and layout together: the text changes are kept, the layout change set aside.
+  const mixed = await proposeLayout(store, first, { set: { opensRecto: true } }, [{ nodeId: first, source: `${FIRST}\nText.\n` }]);
+  assert.deepEqual(mixed.changeSet.changes.map((change) => change.kind), ['replace-node-source']);
+  assert.match(mixed.dropped[0].reason, /either text changes or one layout change/);
+});
+
+test('a section layout change is proved only by a build of all its pieces, and is refused once its target leaves the book', async (context) => {
+  const { store, first, second } = await syntheticBook(context);
+  const graph = await store.graph();
+  const section = graph.book.sections.find((entry) => entry.nodeIds.includes(first));
+  const { changeSet: contract } = await proposeLayout(store, section.id, { set: { fontSize: '10pt', leading: '12pt' } });
+  const [change] = contract.changes;
+  assert.deepEqual(change.pieces, section.nodeIds);
+  assert.deepEqual([change.inherited.opensRecto, change.inherited.headText], [false, section.title], 'a section shows the recto rule and running head it would otherwise have');
+  await store.decideChanges(section.id, contract.id, { decision: 'accept' });
+  const scope = await store.scope(section.id);
+  const build = (sourceHashes) => store.recordBuild({ ok: true, targetScope: scope, sourceHashes, pageMap: { schemaVersion: 3, mode: 'isolated', designHash: change.afterHash, pagination: { verified: true } }, log: '' });
+  assert.deepEqual((await build({ [second]: 'other' })).provedContracts, [], 'a build of another section under the same profile proves nothing');
+  assert.deepEqual((await build(Object.fromEntries(section.nodeIds.map((id) => [id, 'typeset'])))).provedContracts, [contract.id]);
+  assert.deepEqual(violations(SCHEMA, await store.contract(contract.id)), []);
+
+  // A proposal for a piece that then leaves the table of contents is not applied.
+  const { changeSet: orphan } = await proposeLayout(store, first, { set: { opensRecto: true } });
+  await writeFile(path.join(store.manuscriptDirectory, 'Programme.md'), '# Programme\n\n- [Second](02/Second.md)\n');
+  const decided = await store.decideChanges(first, orphan.id, { decision: 'accept' });
+  assert.equal(decided.changes[0].status, 'stale'); assert.match(decided.changes[0].error, /no longer in the table of contents/);
+  assert.equal((await store.design()).nodes, undefined);
+  assert.deepEqual(violations(SCHEMA, decided), [], 'a stale layout change conforms to the schema');
+});
+
+test('a profile save made from an outdated form cannot undo an accepted layout change', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  // The Design panel is filled in from the profile as it is now ...
+  const formHash = designHash(await store.design());
+  // ... then a layout change is accepted in the conversation beside it.
+  const { changeSet: contract } = await proposeLayout(store, first, { set: { opensRecto: true } });
+  await store.decideChanges(first, contract.id, { decision: 'accept' });
+  // The form still shows no override for the piece; saving it would clear the accepted one.
+  await assert.rejects(() => store.saveDesign({ folios: true, nodes: { [first]: null }, baseHash: formHash }), { code: 'STALE_DESIGN' });
+  assert.deepEqual((await store.design()).nodes, { [first]: { opensRecto: true } }, 'the accepted change is intact');
+  assert.equal((await store.revertChanges(contract.id)).changes[0].status, 'reverted', 'and can still be rolled back');
+  // A save from a current form goes through, and `baseHash` is never stored.
+  const saved = await store.saveDesign({ folios: true, baseHash: designHash(await store.design()) });
+  assert.equal(saved.folios, true); assert.equal('baseHash' in saved, false);
+});
+
+test('a layout proposal supersedes a pending text proposal in the same conversation and conflicts only with layout elsewhere', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const text = await propose(store, first, `${FIRST}\nText.\n`);
+  const { changeSet: layout } = await proposeLayout(store, first, { set: { opensRecto: true } });
+  assert.equal((await store.contract(text.id)).changes[0].status, 'superseded');
+  assert.deepEqual(violations(SCHEMA, await store.contract(text.id)), []);
+  const section = (await store.graph()).book.sections.find((entry) => entry.nodeIds.includes(first));
+  const { changeSet: sectionText } = await proposeLayout(store, section.id, null, [{ nodeId: first, source: `${FIRST}\nFrom the section.\n` }]);
+  assert.deepEqual(sectionText.conflicts, [], 'a text change does not conflict with a pending layout change');
+  const { changeSet: otherPiece } = await (async () => { const graph = await store.graph(); return proposeLayout(store, graph.readingOrder[1], { set: { opensRecto: true } }); })();
+  assert.deepEqual(otherPiece.conflicts, [], 'layout changes to different targets do not conflict');
+  assert.equal(layout.changes[0].status, 'pending');
+  assert.deepEqual(violations(SCHEMA, sectionText), []);
 });
 
 test('a proof records the hash of the text it typeset, not the hash the graph held', async (context) => {

@@ -111,7 +111,8 @@ const MAX_SUMMARY_REQUEST = 280;
  * @typedef {object} ContractConflict
  * @property {string} contractId
  * @property {string} scopeId
- * @property {string} nodeId
+ * @property {string | null} nodeId  The piece, when the other change is to a piece's text or own layout.
+ * @property {string} [target]       What both would change (`changeTarget`); absent in contracts made before layout changes.
  */
 
 /**
@@ -141,7 +142,12 @@ const MAX_SUMMARY_REQUEST = 280;
  * @property {{ userTurnId: string | null, model: string | null, transport: string | null } | null} origin
  * @property {ContractConflict[]} conflicts
  * @property {ContractProof | null} proof
- * @property {Array<{ nodeId: string, relativePath: string, title: string, status: string, baseHash: string, afterHash: string, lines: LineStats | null, decidedAt: string | null, revertedAt: string | null }>} changes
+ * @property {Array<{
+ *   kind: string, nodeId: string | null, title: string, status: string, baseHash: string, afterHash: string,
+ *   decidedAt: string | null, revertedAt: string | null,
+ *   relativePath?: string, lines?: LineStats | null,
+ *   level?: 'section' | 'node', target?: string, before?: object | null, after?: object | null,
+ * }>} changes  A text change carries `relativePath` and `lines`; a layout change carries `level`, `target`, `before` and `after`.
  */
 
 /**
@@ -164,7 +170,7 @@ const MAX_SUMMARY_REQUEST = 280;
  *   designHash: string | null,
  * }} context
  * @property {'pending' | 'resolved'} status
- * @property {ContractChange[]} changes
+ * @property {Array<ContractChange | LayoutChange>} changes  Text changes, or exactly one layout change.
  * @property {Array<{ nodeId: string, reason: string }>} dropped
  * @property {Array<{ code: string, message: string }>} effects
  * @property {ContractConflict[]} conflicts  As found when the contract was proposed; not updated afterwards.
@@ -212,8 +218,60 @@ export function isContractRecord(record, id) {
   const { id: recordId, scopeId, changes } = /** @type {Record<string, unknown>} */ (record);
   if (recordId !== id || typeof scopeId !== 'string' || !Array.isArray(changes)) return false;
   const text = (value) => typeof value === 'string';
-  return changes.every((change) => change && typeof change === 'object'
-    && ['nodeId', 'status', 'baseHash', 'afterHash', 'before', 'source'].every((field) => text(change[field])));
+  const override = (value) => value === null || (typeof value === 'object' && !Array.isArray(value));
+  return changes.every((change) => {
+    if (!change || typeof change !== 'object') return false;
+    // A layout change acts on the profile: its before and after are override objects, or null for none.
+    if (change.kind === LAYOUT_CHANGE) {
+      return ['section', 'node'].includes(change.level) && ['target', 'status', 'baseHash', 'afterHash'].every((field) => text(change[field]))
+        && override(change.before) && override(change.after);
+    }
+    return ['nodeId', 'status', 'baseHash', 'afterHash', 'before', 'source'].every((field) => text(change[field]));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Layout changes (program Wave 3b)
+//
+// A contract may instead hold exactly one layout change: setting or clearing
+// one section's or one piece's override in the publication profile. Its
+// `baseHash` and `afterHash` are hashes of the whole profile, so acceptance
+// and rollback refuse to act on a profile that has changed since, exactly as
+// text changes refuse a piece that has changed.
+// ---------------------------------------------------------------------------
+
+/** The `kind` of a change to the publication profile. */
+export const LAYOUT_CHANGE = 'set-layout';
+
+/**
+ * One proposed change to a section's or a piece's own layout settings.
+ *
+ * @typedef {object} LayoutChange
+ * @property {'set-layout'} kind
+ * @property {'section' | 'node'} level
+ * @property {string} target          Section folder, or node id.
+ * @property {string | null} nodeId   The piece, for a piece's override; `null` for a section.
+ * @property {string} title           What the author sees the change is about.
+ * @property {object | null} before   The target's own override before; `null` for none.
+ * @property {object | null} after    The proposed override; `null` clears it.
+ * @property {string} baseHash        Profile hash the change was proposed against.
+ * @property {string} afterHash       Profile hash once accepted; rollback requires it.
+ * @property {string[]} pieces        Pieces in the reading order the override applies to, when proposed; a proof must typeset all of them.
+ * @property {{ fontSize: string, leading: string, sizeFrom: string, opensRecto: boolean, headText: string | null }} inherited
+ *   What applies to the target without its own override. `headText` is `null` for a piece.
+ * @property {string} summary
+ * @property {ChangeStatus} status
+ */
+
+/**
+ * The thing a change acts on, for conflict detection: a piece's text, or one
+ * target's layout override.
+ *
+ * @param {{ kind?: string, nodeId?: string | null, level?: string, target?: string }} change
+ * @returns {string}
+ */
+export function changeTarget(change) {
+  return change.kind === LAYOUT_CHANGE ? `layout:${change.level}:${change.target}` : String(change.nodeId);
 }
 
 /**
@@ -316,10 +374,9 @@ export function buildContract({ id, createdAt, scope, commentary, changes, dropp
     status: 'pending',
     changes,
     dropped,
-    effects: [{
-      code: 'proof-stale',
-      message: 'Accepting changes canonical source. Any proof that includes these pieces is stale until it is typeset again, and pagination may move.',
-    }],
+    effects: [changes.some((change) => change.kind === LAYOUT_CHANGE)
+      ? { code: 'proof-stale', message: 'Accepting changes the publication profile. Every proof is stale until it is typeset again, and pagination may move.' }
+      : { code: 'proof-stale', message: 'Accepting changes canonical source. Any proof that includes these pieces is stale until it is typeset again, and pagination may move.' }],
     conflicts,
     approval: { required: 'author', granularity: 'per-change' },
     rollback: { strategy: 'restore-before', requires: 'current-hash-equals-after-hash' },
@@ -362,19 +419,19 @@ export function supersede(record, byContractId, at) {
  * A conflict does not block a proposal: whichever is accepted first makes the
  * other stale. It is recorded so the author sees the overlap before deciding.
  *
- * @param {Array<{ id: string, scopeId: string, changes?: Array<{ nodeId: string, status: string }> }>} records
- * @param {string[]} nodeIds       Pieces the new contract would change.
+ * @param {Array<{ id: string, scopeId: string, changes?: Array<{ nodeId?: string | null, status: string }> }>} records
+ * @param {Array<{ kind?: string, nodeId?: string | null, level?: string, target?: string }>} changes  The new contract's changes.
  * @param {string} exceptScopeId   The new contract's own scope, whose earlier proposal is superseded instead.
- * @returns {ContractConflict[]}
+ * @returns {ContractConflict[]}  `target` names what both would change (see `changeTarget`).
  */
-export function conflictsWith(records, nodeIds, exceptScopeId) {
-  const targets = new Set(nodeIds);
+export function conflictsWith(records, changes, exceptScopeId) {
+  const targets = new Set(changes.map(changeTarget));
   const conflicts = [];
   for (const record of records) {
     if (record.scopeId === exceptScopeId) continue;
     for (const change of record.changes || []) {
-      if (change.status === 'pending' && targets.has(change.nodeId)) {
-        conflicts.push({ contractId: record.id, scopeId: record.scopeId, nodeId: change.nodeId });
+      if (change.status === 'pending' && targets.has(changeTarget(change))) {
+        conflicts.push({ contractId: record.id, scopeId: record.scopeId, nodeId: change.nodeId ?? null, target: changeTarget(change) });
       }
     }
   }
@@ -393,21 +450,33 @@ export function conflictsWith(records, nodeIds, exceptScopeId) {
  *   sourceHashes?: Record<string, string>,
  *   pageMap?: { mode?: string, designHash?: string, pagination?: { verified?: boolean } } | null,
  * }} build
+ * @param {{ readingOrder?: string[] }} [book]  The book's current reading order,
+ *   when known: a layout change then requires only its pieces still in the book.
  * @returns {ContractProof | null}  `null` when the build does not prove the contract.
  */
-export function proofFor(record, build) {
+export function proofFor(record, build, { readingOrder = null } = {}) {
   if (!build?.ok || !build.completedAt) return null;
   const accepted = (record.changes || []).filter((change) => change.status === 'accepted');
   if (!accepted.length) return null;
   const typeset = build.sourceHashes || {};
-  if (!accepted.every((change) => typeset[change.nodeId] === change.afterHash)) return null;
+  // A text change is proved by its piece's typeset hash. A layout change is
+  // proved by a build that typeset every piece the override applies to, under
+  // exactly the profile the change produced; a build of other pieces under that
+  // profile proves nothing about this target.
+  // A piece that has since left the table of contents can no longer be typeset,
+  // so it no longer has to be; pieces added since the proposal are not required.
+  const required = (change) => (Array.isArray(change.pieces) ? change.pieces : []).filter((id) => !readingOrder || readingOrder.includes(id));
+  const proved = (change) => (change.kind === LAYOUT_CHANGE
+    ? build.pageMap?.designHash === change.afterHash && required(change).length > 0 && required(change).every((id) => Object.hasOwn(typeset, id))
+    : typeset[change.nodeId] === change.afterHash);
+  if (!accepted.every(proved)) return null;
   return {
     completedAt: build.completedAt,
     scopeId: build.targetScope?.id || null,
     mode: build.pageMap?.mode || null,
     paginationVerified: build.pageMap?.pagination?.verified === true,
     designHash: build.pageMap?.designHash || null,
-    sourceHashes: Object.fromEntries(accepted.map((change) => [change.nodeId, change.afterHash])),
+    sourceHashes: Object.fromEntries(accepted.filter((change) => change.kind !== LAYOUT_CHANGE).map((change) => [change.nodeId, change.afterHash])),
   };
 }
 
@@ -445,15 +514,18 @@ export function summarizeContract(record) {
     conflicts: record.conflicts || [],
     proof: record.proof || null,
     changes: record.changes.map((change) => ({
-      nodeId: change.nodeId,
-      relativePath: change.relativePath,
+      kind: change.kind || 'replace-node-source',
+      nodeId: change.nodeId ?? null,
       title: change.title,
       status: change.status,
       baseHash: change.baseHash,
       afterHash: change.afterHash,
-      lines: change.lines || null,
       decidedAt: change.decidedAt || null,
       revertedAt: change.revertedAt || null,
+      // Settings are not manuscript text, so a layout change is listed in full.
+      ...(change.kind === LAYOUT_CHANGE
+        ? { level: change.level, target: change.target, before: change.before, after: change.after }
+        : { relativePath: change.relativePath, lines: change.lines || null }),
     })),
   };
 }

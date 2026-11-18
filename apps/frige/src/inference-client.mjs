@@ -14,6 +14,30 @@ const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.en
 
 /** A message in this form asks the simulator for one labelled change. */
 const SIMULATED_CHANGE = /^simulate change:\s*(\S[\s\S]*)$/i;
+/** A message in this form asks the simulator for one labelled layout change (see `simulatedLayout`). */
+const SIMULATED_LAYOUT = /^simulate layout:\s*(\S[\s\S]*)$/i;
+
+/**
+ * Reads a simulated layout request. Forms, case-insensitive:
+ * `<size>/<leading>` (for example `15pt/18pt`), `size inherit`,
+ * `recto on|off|inherit`, `head <text>`, `head inherit`, and `clear`.
+ * The engine validates every value; this only shapes the request.
+ *
+ * @param {string} request  The text after `Simulate layout:`.
+ * @returns {{ clear?: boolean, set?: Record<string, unknown> } | null}  `null` for an unrecognised form.
+ */
+function simulatedLayout(request) {
+  const text = request.trim();
+  if (/^clear$/i.test(text)) return { clear: true };
+  const size = /^(\S+)\s*\/\s*(\S+)$/.exec(text);
+  if (size) return { set: { fontSize: size[1], leading: size[2] } };
+  if (/^size inherit$/i.test(text)) return { set: { fontSize: null, leading: null } };
+  const recto = /^recto (on|off|inherit)$/i.exec(text);
+  if (recto) return { set: { opensRecto: { on: true, off: false, inherit: null }[recto[1].toLowerCase()] } };
+  const head = /^head (.+)$/i.exec(text);
+  if (head) return { set: { headText: /^inherit$/i.test(head[1].trim()) ? null : head[1].trim() } };
+  return null;
+}
 
 /**
  * Shortens text to at most 240 characters, counted in code points so a
@@ -35,7 +59,9 @@ const simulatorReceipt = (message) => `Deterministic Igor simulator received: ${
 /**
  * The deterministic simulator's reply to a scope turn. It never calls a model.
  *
- * By default it proposes nothing. A message of the form
+ * By default it proposes nothing. `Simulate layout: <request>` yields one
+ * proposed layout change for the conversation's own section or piece (see
+ * `simulatedLayout`). A message of the form
  * `Simulate change: <line>` yields one proposed change that appends `<line>`
  * as a new closing stanza to the first offered piece, so the path from
  * conversation to change contract can be exercised without a provider. The
@@ -53,6 +79,19 @@ function fakeScopeTurn(message, sources = []) {
   // One line of verse: whitespace folded, leading Markdown markers dropped so the
   // line cannot become a heading (and retitle the piece) or a quotation.
   const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
+  const layoutRequest = SIMULATED_LAYOUT.exec(received)?.[1];
+  if (layoutRequest) {
+    const layout = simulatedLayout(clip(layoutRequest.replace(/\s+/g, ' ')));
+    const text = layout
+      // Frige decides whether the request becomes a suggestion, so the simulator does not claim one.
+      ? 'Deterministic Igor simulator passed a simulated layout request to Frige for this conversation’s section or piece. If it would change anything, it appears below as a suggestion; nothing changes until you accept it.'
+      : 'Deterministic Igor simulator did not recognise that layout request. Try “Simulate layout: 15pt/18pt”, “recto on”, “head <text>” or “clear”.';
+    return {
+      commentary: text, availability: 'available', changes: [], graphSuggestions: [],
+      ...(layout ? { layout: { ...layout, summary: 'Simulated layout change (deterministic simulator, not a model).' } } : {}),
+      parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+    };
+  }
   if (requested) {
     const target = sources.find((entry) => entry.kind !== 'programme');
     if (!target) {
@@ -76,6 +115,24 @@ function fakeScopeTurn(message, sources = []) {
     parts: [{ type: 'text', text: `${text}. Review and source changes remain author-controlled.` }], droppedParts: [],
     meta: meta(text),
   };
+}
+
+/**
+ * Reads the optional `layout` field of a scope-turn reply: one proposed layout
+ * change for the conversation's own section or piece. Only its shape is
+ * checked here; the engine validates every value before it becomes a contract.
+ * The STEX gateway does not produce this field yet (program Wave 4).
+ *
+ * @param {unknown} value
+ * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
+ */
+export function layoutFrom(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const summary = typeof value.summary === 'string' ? { summary: value.summary.slice(0, 500) } : {};
+  if (value.clear === true) return { clear: true, ...summary };
+  // An override has four settings; a reply with many keys is malformed, not a proposal.
+  if (value.set && typeof value.set === 'object' && !Array.isArray(value.set) && Object.keys(value.set).length <= 8) return { set: value.set, ...summary };
+  return null;
 }
 
 export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
@@ -114,7 +171,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     // Models passed over in the director's stack are kept so the reply can say so.
     const skipped = Array.isArray(payload.meta?.skipped) ? payload.meta.skipped.slice(0, 6).map((entry) => String(entry?.model || '').slice(0, 120)).filter(Boolean) : [];
     const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}) } : null;
-    return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta };
+    const layout = layoutFrom(payload.layout);
+    return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta, ...(layout ? { layout } : {}) };
   } catch (error) {
     const reason = error.name === 'AbortError' ? 'the gateway timed out' : 'the gateway is unreachable';
     return { ...assistantResult(`Igor did not reply: ${reason}. Your message was saved, but nothing was changed.`, 'unavailable'), ...empty };

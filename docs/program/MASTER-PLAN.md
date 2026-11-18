@@ -141,20 +141,26 @@ book**: the nearest level that sets a key wins; unset keys inherit.
 
 ### 3b — Layout change contracts
 
-- A contract change may set or clear one override:
-  `{kind: "set-layout", target: {level, id}, key, before, after, baseDesignHash, afterDesignHash}`.
-- Acceptance writes through the profile under the store lock, and only if
-  the profile hash still equals `baseDesignHash`. Rollback restores `before`,
-  only if the profile hash still equals `afterDesignHash`. The same refusal
-  rules as text apply.
-- A change that overrides a value set at a higher level says so in the
-  contract (`overrides: {level, value}`); the author sees it before
-  accepting.
-- The simulator gains `Simulate layout: <key> <value>` for the selected
-  scope.
-- **Contract version:** `stex.frige.change-contract.v1` has not been pushed
-  or consumed outside Frige. If it is still unpublished when 3b lands, the
-  new change kind extends v1. Otherwise 3b introduces v2 and keeps reading v1
+**Done** (as built; see the [Wave 3b evidence](../verification/frige-layout-contracts-w3b.md)
+and the [protocol](../../protocol/frige/README.md#change-contracts-v1)).
+
+- A contract may hold exactly one change that sets or clears the override of
+  the conversation's own section or piece: `{kind: "set-layout", level,
+  target, before, after, baseHash, afterHash, pieces, inherited}`, where
+  `before` and `after` are whole overrides and the hashes are of the whole
+  profile.
+- Acceptance writes through the profile under the store lock, only if the
+  profile hash still equals `baseHash` and the target is still in the table
+  of contents. Rollback restores `before` only if the hash still equals
+  `afterHash`.
+- The contract records what the target inherits without its own override
+  (`inherited`), and the card shows each setting from that to the proposal.
+- A build proves the change only if it typeset every affected piece under
+  the resulting profile.
+- The simulator takes `Simulate layout: 15pt/18pt`, `recto on|off|inherit`,
+  `size inherit`, `head <text>`, `head inherit` or `clear`. A gateway may
+  send the same proposal as the optional scope-turn reply field `layout`.
+- **Contract version:** v1 was still unpublished, so it was extended
   ([D-011](DECISIONS.md)).
 
 ### 3c — Hierarchical context

@@ -4,8 +4,8 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
-import { designHash, normalizeDesign, validateDesign } from './design-settings.mjs';
-import { CONTRACT_SCHEMA_VERSION, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
+import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
+import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
 /** Most contracts a history listing returns; the journal itself is not truncated. */
@@ -67,6 +67,55 @@ const codedError = (message, code) => Object.assign(new Error(message), { code }
  * @param {{ nodeId: string, title: string, status: string, baseHash: string, afterHash: string }} change
  */
 const decisionOf = (change) => ({ nodeId: change.nodeId, title: change.title, status: change.status, beforeHash: change.baseHash, afterHash: change.afterHash });
+
+/** Piece kinds that open on a recto when the book's `rectoOpeners` rule is on. */
+const OPENER_KINDS = ['front-matter', 'section-note', 'cycle-note'];
+
+/**
+ * The layout target of a conversation: a piece in the reading order is its own
+ * target; a section's target is its folder, which covers every run of that
+ * folder in the reading order. The whole book has no target.
+ *
+ * @param {{ readingOrder: string[], book: { sections: Array<{ folder: string, nodeIds: string[], anchorNodeId: string, title: string }> } }} graph
+ * @param {{ id: string, kind: string, folder?: string }} scope
+ * @returns {{ level: 'section' | 'node', field: 'sections' | 'nodes', key: string, nodeId: string | null, sectionKey: string | null, section: object | undefined, pieces: string[] } | null}
+ */
+function layoutTargetOf(graph, scope) {
+  if (scope.kind === 'node' && graph.readingOrder.includes(scope.id)) {
+    const section = graph.book.sections.find((entry) => entry.nodeIds.includes(scope.id));
+    return { level: 'node', field: 'nodes', key: scope.id, nodeId: scope.id, sectionKey: section?.folder || null, section, pieces: [scope.id] };
+  }
+  if (scope.kind !== 'book' && scope.kind !== 'node' && scope.folder) {
+    const runs = graph.book.sections.filter((entry) => entry.folder === scope.folder);
+    return { level: 'section', field: 'sections', key: scope.folder, nodeId: null, sectionKey: scope.folder, section: runs[0], pieces: runs.flatMap((entry) => entry.nodeIds) };
+  }
+  return null;
+}
+
+/**
+ * What applies to a layout target without its own override, as the assembler
+ * would decide it. The recto opening assumes the section's first piece prints;
+ * a note-only first piece hands the opening to the next piece when typeset.
+ *
+ * @param {{ nodes: Array<{ id: string, kind: string, title: string }> }} graph
+ * @param {object} profile  The publication profile without the target's override.
+ * @param {ReturnType<typeof layoutTargetOf>} target
+ * @returns {{ fontSize: string, leading: string, sizeFrom: string, opensRecto: boolean, headText: string | null }}
+ */
+function inheritedLayout(graph, profile, target) {
+  const resolved = resolveLayout(profile, { sectionKey: target.sectionKey, nodeId: target.nodeId });
+  const bookRule = (kind) => Boolean(normalizeDesign(profile).rectoOpeners && OPENER_KINDS.includes(kind));
+  const nodeOf = (id) => graph.nodes.find((node) => node.id === id);
+  const anchor = target.section ? nodeOf(target.section.anchorNodeId) : null;
+  if (target.level === 'node') {
+    const opensSection = target.section?.anchorNodeId === target.nodeId;
+    const opensRecto = (opensSection ? resolved.sectionOpensRecto : undefined) ?? bookRule(nodeOf(target.nodeId)?.kind);
+    return { fontSize: resolved.fontSize, leading: resolved.leading, sizeFrom: resolved.sizeFrom, opensRecto, headText: null };
+  }
+  // A section's head is its opener's own heading when it opens with a section note, else its title.
+  const headText = anchor?.kind === 'section-note' ? anchor.title : target.section?.title || null;
+  return { fontSize: resolved.fontSize, leading: resolved.leading, sizeFrom: resolved.sizeFrom, opensRecto: bookRule(anchor?.kind), headText };
+}
 function safeRelative(value) {
   const normalized = String(value || '').replaceAll('\\', '/').replace(/^\/+/, '');
   if (!normalized || normalized.split('/').some((part) => part === '..' || !part)) throw new Error('Invalid project-relative path.');
@@ -532,14 +581,18 @@ export class ProjectStore {
    * marked superseded and kept.
    *
    * @param {string} scopeId
-   * @param {{ commentary?: string, changes?: Array<{ nodeId: string, source: string, summary?: string }> }} proposal  Untrusted reply content.
+   * @param {{
+   *   commentary?: string,
+   *   changes?: Array<{ nodeId: string, source: string, summary?: string }>,
+   *   layout?: { clear?: boolean, set?: Record<string, unknown>, summary?: string } | null,
+   * }} proposal  Untrusted reply content: text replacements, or one layout change for the scope's own section or piece.
    * @param {import('./change-contract.mjs').OfferedSource[]} offered  The sources this turn offered.
    * @param {import('./change-contract.mjs').ContractProvenance} [provenance]
    * @returns {Promise<{ changeSet: import('./change-contract.mjs').ChangeContract | null, dropped: Array<{ nodeId: string, reason: string }> }>}
    */
   createChangeSet(scopeId, proposal, offered, provenance = {}) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered, provenance)); }
 
-  async #createChangeSet(scopeId, { commentary = '', changes = [] }, offered, provenance) {
+  async #createChangeSet(scopeId, { commentary = '', changes = [], layout }, offered, provenance) {
     const kept = []; const dropped = [];
     for (const change of Array.isArray(changes) ? changes : []) {
       const base = offered.find((entry) => entry.nodeId === change?.nodeId);
@@ -555,11 +608,21 @@ export class ProjectStore {
       if (sameTextIgnoringLineEndings(source, base.source)) continue;
       kept.push(buildChange(base, source, sourceHash(source), change.summary));
     }
+    const scope = await this.scope(scopeId);
+    // A contract holds either text changes or one layout change, so each
+    // decision and rollback acts on one kind of canonical state.
+    if (layout !== undefined && layout !== null) {
+      if (kept.length) dropped.push({ nodeId: '', reason: 'A contract holds either text changes or one layout change; the layout change was set aside.' });
+      else {
+        const result = await this.#layoutChange(scope, layout);
+        if (result.reason) dropped.push({ nodeId: '', reason: result.reason });
+        else if (result.change) kept.push(result.change);
+      }
+    }
     if (!kept.length) return { changeSet: null, dropped };
 
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const scope = await this.scope(scopeId);
     const journal = await this.#journal();
 
     // Undecided earlier proposals for this scope: those in the journal, and a
@@ -575,10 +638,91 @@ export class ProjectStore {
 
     const record = buildContract({
       id, createdAt, scope, commentary, changes: kept, dropped, offered, provenance,
-      conflicts: conflictsWith(journal, kept.map((change) => change.nodeId), scope.id),
+      conflicts: conflictsWith(journal, kept, scope.id),
     });
     await this.#saveContract(record, { current: true });
     return { changeSet: record, dropped };
+  }
+
+  /**
+   * Builds a layout change for the conversation's own scope from an untrusted
+   * proposal. A piece's conversation changes that piece's override and a
+   * section's conversation that section's; the whole book's settings are
+   * changed in the Design panel.
+   *
+   * @param {{ id: string, kind: string, title: string, folder?: string }} scope
+   * @param {{ clear?: boolean, set?: Record<string, unknown>, summary?: string }} proposal
+   *   `set` merges into the target's current override (a `null` value removes
+   *   that key); `clear: true` removes the override.
+   * @returns {Promise<{ change?: import('./change-contract.mjs').LayoutChange, reason?: string }>}
+   *   A change, or the reason none was made (including that it would change nothing).
+   */
+  async #layoutChange(scope, proposal) {
+    const graph = await this.graph({ refresh: true });
+    const target = layoutTargetOf(graph, scope);
+    if (!target) return { reason: 'A layout change applies to a section or a piece in the table of contents; the whole book’s settings are changed in the Design panel.' };
+    if (!proposal || typeof proposal !== 'object') return { reason: 'The proposed layout change is invalid.' };
+
+    const current = await this.design();
+    const own = (map) => (map && Object.hasOwn(map, target.key) ? map[target.key] : null);
+    const before = own(current[target.field]);
+    let after = null;
+    if (!proposal.clear) {
+      if (!proposal.set || typeof proposal.set !== 'object' || Array.isArray(proposal.set)) return { reason: 'The proposed layout change is invalid.' };
+      after = { ...(before || {}) };
+      for (const [key, value] of Object.entries(proposal.set)) {
+        // A JSON key such as `__proto__` would set the object's prototype, not a setting.
+        if (['__proto__', 'constructor', 'prototype'].includes(key)) return { reason: 'The proposed layout change is invalid.' };
+        if (value === null) delete after[key]; else after[key] = value;
+      }
+      if (!Object.keys(after).length) after = null;
+    }
+    const next = { ...current, [target.field]: { ...(current[target.field] || {}) } };
+    if (after) next[target.field][target.key] = after; else delete next[target.field][target.key];
+    const { design, errors } = validateDesign(next);
+    // Bounded: a reply's reasons are stored in the conversation and shown to the author.
+    if (!design) return { reason: `The proposed layout change is not valid: ${errors.join(' ')}`.slice(0, 1000) };
+    const validated = own(design[target.field]);
+    if (JSON.stringify(validated) === JSON.stringify(before)) return { reason: 'The proposed layout change would change nothing.' };
+
+    const without = { ...current, [target.field]: { ...(current[target.field] || {}) } }; delete without[target.field][target.key];
+    return {
+      change: {
+        kind: LAYOUT_CHANGE, level: target.level, target: target.key, nodeId: target.nodeId,
+        title: `Layout · ${scope.title}`, before, after: validated,
+        baseHash: designHash(current), afterHash: designHash(design),
+        pieces: target.pieces, inherited: inheritedLayout(graph, without, target),
+        summary: String(proposal.summary || '').slice(0, 500), status: 'pending',
+      },
+    };
+  }
+
+  /**
+   * Writes one target's override, only if the profile still has the expected
+   * hash. Runs inside the store lock (from a decision or a rollback).
+   *
+   * @param {import('./change-contract.mjs').LayoutChange} change
+   * @param {object | null} override  The override to write; `null` removes it.
+   * @param {string} expectedHash      The profile hash the write is valid against.
+   * @param {{ requireTarget?: boolean }} [options]  `requireTarget` (on acceptance)
+   *   refuses a target that has left the table of contents, as a direct save would;
+   *   a rollback may always restore.
+   * @throws `STALE_SOURCE` when the profile changed since, or the target is gone.
+   */
+  async #writeLayout(change, override, expectedHash, { requireTarget = false } = {}) {
+    const current = await this.design();
+    if (designHash(current) !== expectedHash) throw codedError('The publication profile changed after this suggestion, so it was not applied.', 'STALE_SOURCE');
+    if (requireTarget) {
+      const graph = await this.graph({ refresh: true });
+      const present = change.level === 'node' ? graph.readingOrder.includes(change.target) : graph.book.sections.some((section) => section.folder === change.target);
+      if (!present) throw codedError(`${change.level === 'node' ? 'This piece' : 'This section'} is no longer in the table of contents, so the change was not applied.`, 'STALE_SOURCE');
+    }
+    const field = change.level === 'node' ? 'nodes' : 'sections';
+    const next = { ...current, [field]: { ...(current[field] || {}) } };
+    if (override) next[field][change.target] = override; else delete next[field][change.target];
+    const { design, errors } = validateDesign(next);
+    if (!design) throw codedError(errors.join(' '), 'INVALID_DESIGN');
+    await writeAtomic(path.join(this.stateDirectory, 'design.json'), `${JSON.stringify(design, null, 2)}\n`);
   }
 
   /**
@@ -628,8 +772,11 @@ export class ProjectStore {
         // piece that already holds the proposed text was written by something
         // else (another contract or a hand edit), so this change is stale and
         // can never be rolled back: its `before` would undo that other write.
-        try { await this.#writeNode(change.nodeId, change.source, change.baseHash); change.status = 'accepted'; }
-        catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
+        try {
+          if (change.kind === LAYOUT_CHANGE) await this.#writeLayout(change, change.after, change.baseHash, { requireTarget: true });
+          else await this.#writeNode(change.nodeId, change.source, change.baseHash);
+          change.status = 'accepted';
+        } catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
       }
     } finally {
       // A proof recorded before this decision did not typeset a piece accepted now.
@@ -644,10 +791,11 @@ export class ProjectStore {
 
   /**
    * Rolls back accepted changes of a contract by restoring the exact prior
-   * text. Each piece must still hold the text the contract wrote; if any has
-   * changed since, nothing is restored, so a later edit is never overwritten.
-   * The node keeps its identity and its restored hash equals the contract's
-   * base hash.
+   * text, or for a layout change the prior override. Each piece must still
+   * hold the text the contract wrote (the profile, the hash the change
+   * produced); if any has changed since, nothing is restored, so a later edit
+   * is never overwritten. The node keeps its identity and its restored hash
+   * equals the contract's base hash.
    *
    * @param {string} contractId
    * @param {{ nodeId?: string | null }} [options]  `nodeId` limits the rollback to one piece.
@@ -663,8 +811,13 @@ export class ProjectStore {
     if (!targets.length) throw codedError('This contract has no accepted change to roll back.', 'NOTHING_TO_REVERT');
 
     // Check every piece before writing any, so a rollback of several pieces is
-    // not left half done because one of them was edited afterwards.
+    // not left half done because one of them was edited afterwards. A layout
+    // change is checked against the whole profile.
     for (const change of targets) {
+      if (change.kind === LAYOUT_CHANGE) {
+        if (designHash(await this.design()) !== change.afterHash) throw codedError('The publication profile changed after this change was accepted. Rolling back would overwrite that change, so nothing was restored.', 'STALE_SOURCE');
+        continue;
+      }
       const node = await this.node(change.nodeId).catch(() => null);
       if (!node) throw codedError(`“${change.title}” is no longer in the manuscript, so it cannot be rolled back.`, 'STALE_SOURCE');
       if (node.hash !== change.afterHash) throw codedError(`“${change.title}” changed after this change was accepted. Rolling back would overwrite that edit, so nothing was restored.`, 'STALE_SOURCE');
@@ -674,7 +827,8 @@ export class ProjectStore {
     const reverted = [];
     try {
       for (const change of targets) {
-        await this.#writeNode(change.nodeId, change.before, change.afterHash);
+        if (change.kind === LAYOUT_CHANGE) await this.#writeLayout(change, change.before, change.afterHash);
+        else await this.#writeNode(change.nodeId, change.before, change.afterHash);
         change.status = 'reverted'; change.revertedAt = revertedAt;
         reverted.push(change);
       }
@@ -713,8 +867,9 @@ export class ProjectStore {
   async #linkProof(build) {
     const provedContracts = [];
     try {
+      const { readingOrder } = await this.graph();
       for (const record of await this.#journal()) {
-        const proof = proofFor(record, build);
+        const proof = proofFor(record, build, { readingOrder });
         if (!proof) continue;
         provedContracts.push(record.id);
         // A proof of equal strength replaces the recorded one only when it was typeset
@@ -768,15 +923,23 @@ export class ProjectStore {
    * cannot create a setting nothing will ever read. An override whose target
    * has since been renamed is kept until it is cleared.
    *
-   * @param {object} input
+   * @param {object} input  Settings to change, and optionally `baseHash`: the
+   *   profile hash the form was filled from.
    * @returns {Promise<object>}  The saved profile.
-   * @throws `INVALID_DESIGN` with every validation message.
+   * @throws `INVALID_DESIGN` with every validation message; `STALE_DESIGN` when
+   *   `baseHash` is given and the profile has changed since.
    */
   saveDesign(input) {
     return this.exclusive(async () => {
       const invalid = (message) => codedError(message, 'INVALID_DESIGN');
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('A design profile must be an object of settings.');
       const current = await this.design();
+      // A save that names the profile it was edited from is refused if the profile
+      // has changed since (an accepted layout change, another window), so it can
+      // never silently undo that change. Saves without it keep the old behaviour.
+      const { baseHash, ...settings } = input;
+      if (baseHash !== undefined && baseHash !== designHash(current)) throw codedError('The saved profile changed after this form was filled in, so it was not saved. Close and reopen the panel to edit the saved settings.', 'STALE_DESIGN');
+      input = settings;
       const merged = { ...current, ...input, margins: { ...current.margins, ...(input.margins && typeof input.margins === 'object' ? input.margins : {}) } };
       const errors = [];
       // Checked against the table of contents as it is now, not a cached reading of it.

@@ -319,6 +319,10 @@ function fillDesign() {
   for (const side of ['top', 'bottom', 'inner', 'outer']) designField(form, `margins.${side}`).value = design.margins[side];
   for (const name of ['runningHeads', 'folios', 'rectoOpeners']) designField(form, name).checked = design[name];
   fillOverride();
+  // The panel now shows the saved profile; any edit after this is unsaved.
+  state.designDirty = false;
+  // The profile this form shows; a save names it, so the engine refuses it if the profile has moved on.
+  state.panelDesignHash = state.designHash;
 }
 function readDesign() {
   const form = $('#design-panel');
@@ -333,10 +337,26 @@ function toggleDesign(open = $('#design-panel').classList.contains('hidden')) {
   if (open) { fillDesign(); $('#design-state').textContent = ''; }
   $('#design-panel').classList.toggle('hidden', !open); $('#open-design').setAttribute('aria-expanded', String(open));
 }
+/**
+ * Reloads the publication profile after a decision or rollback changed it, so
+ * the Design panel, the status bar and the proof's currency show what is saved.
+ */
+async function refreshDesign() {
+  try {
+    const profile = await request('/api/project/design');
+    state.design = profile.design; state.designHash = profile.hash;
+    const open = !$('#design-panel').classList.contains('hidden');
+    // Unsaved edits in the open panel are never overwritten; the author is told the saved profile moved.
+    if (open && state.designDirty) $('#design-state').textContent = 'The saved profile changed while you were editing. Saving now is refused so it cannot undo that change; note your edits, then Close and reopen the panel.';
+    else if (open) fillDesign();
+    renderStatus(); renderLiveBuild();
+  } catch (error) { $('#design-state').textContent = `The profile could not be reloaded: ${error.message}`; }
+}
+
 async function saveDesign(event) {
   event.preventDefault();
   try {
-    const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify(readDesign()) });
+    const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify({ ...readDesign(), baseHash: state.panelDesignHash }) });
     state.design = saved.design; state.designHash = saved.hash; fillDesign();
     $('#design-state').textContent = 'Saved.';
     renderStatus(); renderLiveBuild(); refreshPreflight();
@@ -461,7 +481,8 @@ async function sendTurn(event) {
 // the scope again so the change is visible on the page.
 async function decide(nodeId, decision) {
   const scope = state.scope; const changeSet = state.changeSet;
-  const touchesOpen = changeSet.changes.some((change) => change.status === 'pending' && change.nodeId === state.node.id && (!nodeId || nodeId === change.nodeId));
+  // Only a text change rewrites the open piece; a layout change leaves its source alone.
+  const touchesOpen = changeSet.changes.some((change) => change.kind !== 'set-layout' && change.status === 'pending' && change.nodeId === state.node.id && (!nodeId || nodeId === change.nodeId));
   if (decision === 'accept' && touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the accepted change. Continue?')) return;
   $('#turns').querySelectorAll('.changes button').forEach((button) => { button.disabled = true; });
   try {
@@ -470,6 +491,7 @@ async function decide(nodeId, decision) {
     // Reload the open page only when its own change was written; a stale one leaves the author's text alone.
     const openAccepted = touchesOpen && state.changeSet.changes.some((change) => change.nodeId === state.node.id && change.status === 'accepted');
     state.graph = await request('/api/project/graph');
+    if (state.changeSet.changes.some((change) => change.kind === 'set-layout' && change.status === 'accepted')) await refreshDesign();
     if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
     [state.turns, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]); state.notice = '';
     // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
@@ -480,20 +502,23 @@ async function decide(nodeId, decision) {
 }
 
 /**
- * Rolls back an accepted change through the engine, which refuses if the piece
- * has been edited since. The workspace then reloads from the manuscript and
- * typesets the scope again, so the proof on screen matches the restored text.
+ * Rolls back a contract's accepted change through the engine, which refuses if
+ * what it changed has changed since. The workspace then reloads and typesets
+ * the scope again, so the proof on screen matches what was restored.
  *
- * @param {string} contractId  The contract whose accepted change is undone.
- * @param {string} nodeId      The piece to restore.
+ * @param {string} contractId
+ * @param {string | null} nodeId  The piece whose change is rolled back; `null` for a section's layout change.
+ * @param {{ layout?: boolean }} [options]  `layout` when the change was to the publication profile.
  */
-async function revert(contractId, nodeId) {
-  const scope = state.scope; const touchesOpen = state.node?.id === nodeId;
+async function revert(contractId, nodeId, { layout = false } = {}) {
+  // Rolling back a layout change restores the profile, not the open piece's text.
+  const scope = state.scope; const touchesOpen = !layout && state.node?.id === nodeId;
   if (touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the restored text. Continue?')) return;
   $('#turns').querySelectorAll('.decision-revert').forEach((button) => { button.disabled = true; });
   try {
     await request(`/api/contracts/${contractId}/revert`, { method: 'POST', body: JSON.stringify({ nodeId }) });
     state.graph = await request('/api/project/graph');
+    if (layout) await refreshDesign();
     // The author may open another conversation while any of these requests runs.
     // Each result is applied only if its conversation is still the one on screen.
     const stillOpen = () => state.scope?.id === scope.id;
@@ -569,7 +594,7 @@ async function bootstrap() {
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
   renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor();
-  $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign);
+  $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign); $('#design-panel').addEventListener('input', () => { state.designDirty = true; });
   $('#turn-form').addEventListener('submit', sendTurn);
   const modelSettings = createModelSettings({ request, onSaved: refreshIgor });
   $('#configure-models').addEventListener('click', () => { $('#settings-menu').open = false; modelSettings.open(); });

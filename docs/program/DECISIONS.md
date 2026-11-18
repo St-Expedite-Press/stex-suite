@@ -115,7 +115,9 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 
 ## D-011 — Layout changes extend the contract while it is unpublished
 
-- **Status:** Proposed.
+- **Status:** Applied in Wave 3b (2026-11-17). The contract was still
+  unpushed with no consumer outside Frige, so `set-layout` was added to v1
+  and its schema.
 - **Decision:** `stex.frige.change-contract.v1` is consumed only by Frige and
   its own workstation, and has not been pushed. If that is still true when
   layout contracts (Wave 3b) land, they add a `set-layout` change kind to v1

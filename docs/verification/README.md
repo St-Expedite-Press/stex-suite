@@ -9,6 +9,7 @@ then use a report here to inspect the command output and limits behind it.
 | Area | Report | Current limit |
 | --- | --- | --- |
 | Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Local branch only; simulator and stub proposals; element scope in the browser; Chrome only |
+| Frige layout change contracts (program Wave 3b) | [Wave 3b evidence](frige-layout-contracts-w3b.md) | Local branch only; simulator and stub proposals; Chrome only |
 | Frige layout overrides (program Wave 3a) | [Wave 3a evidence](frige-layout-overrides-w3a.md) | Local branch only; author-set overrides only; Chrome only |
 | Engineering program baseline | [2026-11-13 baseline](program-baseline-2026-11-13.md) | Read-only audit; no browser or live verification |
 | Platform release / instruction reconciliation | [Release audit and evidence](platform-release.md) | BLOCKED on permitted CI access; preparation verified, no main merge/deployment or post-merge acceptance claimed |
