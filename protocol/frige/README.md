@@ -16,7 +16,7 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 | GET | `/project/graph`, `/project/artifacts`, `/project/reference-map`, `/project/page-map` | Read the selected book's graph and derived artifacts/maps |
 | POST | `/project/refresh` | Refresh the selected book's derived graph |
 | GET / PUT | `/nodes/<id>` | Read a source node / explicitly save `{source,baseHash}` |
-| GET / PUT | `/project/design` | Read or validate/save the publication profile |
+| GET / PUT | `/project/design` | Read or validate/save the publication profile, including section and piece overrides (below) |
 | GET / POST | `/project/build` | Read build state / compile `{scopeId,mode}` with LuaLaTeX |
 | GET | `/project/preview`, `/project/preflight` | Read the existing PDF / diagnostic preflight |
 | GET / POST | `/project/live-build` | Read staging state / explicitly stage a current verified book-order proof |
@@ -62,6 +62,40 @@ engine files. The old unversioned APIs stay available for compatibility, with
 no meaning changed in place. Engine UI entries redirect to the configured
 loopback Pantheon `/frige/`, preserving project queries. A breaking publishing
 API change requires a parallel v2 and consumer migration.
+
+### Layout overrides
+
+The publication profile may carry overrides for a section or a piece,
+additively: a profile without them is unchanged and keeps its hash.
+
+| Field | Keys | Allowed settings |
+| --- | --- | --- |
+| `sections` | A section's top-level folder name (at most 255 characters), as in the graph's `book.sections[].folder` | `fontSize` with `leading`, `opensRecto`, `headText` (the recto running head: 1–120 characters on one line) |
+| `nodes` | A piece's node id | `fontSize` with `leading`, `opensRecto` |
+
+- The nearest level that sets a value wins: the piece, then its section, then
+  the book.
+- A section's `opensRecto` applies to the first of its pieces that prints. A
+  folder that appears in separate runs of the reading order forms a separate
+  section each time, and its override applies to each run.
+- Trim, margins, body font, folios and running heads stay book-wide.
+  Footnotes keep the book's note size whatever size their piece is set in.
+- Size and leading are set together, with the book's rules: size 8–18pt,
+  leading 8–30pt and not below the size. An empty value counts as not set.
+  No value is LaTeX.
+- On `PUT`, overrides merge by key: an object replaces that override, `null`
+  or an object that sets nothing clears it, and keys left out are kept. An
+  override that is new or changed must name a section folder or a piece in
+  the current reading order; otherwise `400`. An override resent unchanged
+  is kept even if its target has since left the reading order, and can
+  always be cleared.
+- A stored invalid override is dropped on read without affecting the rest
+  of the profile.
+- The profile hash covers overrides. Changing any override changes the
+  profile, so every proof made under the previous profile is reported stale.
+- Each page-map node for a piece that prints records the settings it was
+  typeset with as
+  `layout: {fontSize, leading, sizeFrom: "book" | "section" | "element", opensRecto}`.
 
 ## Change contracts v1
 

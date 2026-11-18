@@ -758,13 +758,50 @@ export class ProjectStore {
   }
   // The book's publication profile is product state, kept beside the proofs, not in the vault.
   async design() { try { return normalizeDesign(JSON.parse(await readFile(path.join(this.stateDirectory, 'design.json'), 'utf8'))); } catch { return normalizeDesign({}); } }
+  /**
+   * Validates and saves the publication profile.
+   *
+   * Fields left out keep their saved values. Overrides merge by key:
+   * `sections: { <folder>: {...} }` or `nodes: { <id>: {...} }` replaces that
+   * one override, and `null` clears it. A new or changed override must name a
+   * section folder or piece in the book's current reading order, so a typo
+   * cannot create a setting nothing will ever read. An override whose target
+   * has since been renamed is kept until it is cleared.
+   *
+   * @param {object} input
+   * @returns {Promise<object>}  The saved profile.
+   * @throws `INVALID_DESIGN` with every validation message.
+   */
   saveDesign(input) {
     return this.exclusive(async () => {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) { const error = new Error('A design profile must be an object of settings.'); error.code = 'INVALID_DESIGN'; throw error; }
-      // Fields left out keep their saved values.
+      const invalid = (message) => codedError(message, 'INVALID_DESIGN');
+      if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('A design profile must be an object of settings.');
       const current = await this.design();
-      const { design, errors } = validateDesign({ ...current, ...input, margins: { ...current.margins, ...(input.margins && typeof input.margins === 'object' ? input.margins : {}) } });
-      if (!design) { const error = new Error(errors.join(' ')); error.code = 'INVALID_DESIGN'; throw error; }
+      const merged = { ...current, ...input, margins: { ...current.margins, ...(input.margins && typeof input.margins === 'object' ? input.margins : {}) } };
+      const errors = [];
+      // Checked against the table of contents as it is now, not a cached reading of it.
+      const graph = (input.sections !== undefined || input.nodes !== undefined) ? await this.graph({ refresh: true }) : null;
+      const pieceTitle = (key) => graph.nodes.find((node) => node.id === key)?.title || key;
+      for (const [level, field, exists, name] of [
+        ['section', 'sections', (key) => graph.book.sections.some((section) => section.folder === key), (key) => key],
+        ['piece', 'nodes', (key) => graph.readingOrder.includes(key), pieceTitle],
+      ]) {
+        if (input[field] === undefined) continue;
+        if (!input[field] || typeof input[field] !== 'object' || Array.isArray(input[field])) { errors.push(`${level === 'piece' ? 'Piece' : 'Section'} overrides must be an object.`); continue; }
+        const next = { ...(current[field] || {}) };
+        for (const [key, value] of Object.entries(input[field])) {
+          if (value === null) { delete next[key]; continue; }
+          // Resending an override unchanged is not setting it, so a kept override
+          // whose target has left the table of contents does not block other saves.
+          const unchanged = Object.hasOwn(next, key) && JSON.stringify(next[key]) === JSON.stringify(value);
+          if (!unchanged && !exists(key)) { errors.push(`“${name(key)}” is not a ${level} in this book's table of contents.`); continue; }
+          next[key] = value;
+        }
+        merged[field] = next;
+      }
+      const { design, errors: found } = validateDesign(merged);
+      errors.push(...found);
+      if (errors.length || !design) throw invalid(errors.join(' '));
       await writeAtomic(path.join(this.stateDirectory, 'design.json'), `${JSON.stringify(design, null, 2)}\n`);
       return design;
     });

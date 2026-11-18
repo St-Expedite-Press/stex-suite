@@ -5,10 +5,11 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 
 ## Current wave
 
-**Wave 2 — Frige vertical slice at element scope.** Implemented and tested on
-the local branch `feat/frige-change-contracts`; two rounds of
-independent review are complete. Evidence:
-[Wave 2 report](../verification/frige-change-contracts-w2.md).
+**Wave 3 — section and book intelligence.** Wave 2 is committed; 3a (typed
+layout overrides) is implemented, reviewed and committed on the local branch
+`feat/frige-change-contracts`. Evidence:
+[Wave 2 report](../verification/frige-change-contracts-w2.md),
+[Wave 3a report](../verification/frige-layout-overrides-w3a.md).
 
 ## Work packages
 
@@ -24,11 +25,13 @@ independent review are complete. Evidence:
 | W2-5 | Independent review | 2 | Two rounds done (the charter budget); all confirmed findings fixed; round-2 fixes verified by tests only | [Review section](../verification/frige-change-contracts-w2.md#independent-review) |
 | W2-6 | Local commit of Wave 2 | 2 | Done | `git log` on the branch |
 | W3-0 | Wave 3 specification | 3 | Drafted; open to owner review | [Master plan](MASTER-PLAN.md#wave-3-specification) |
-| W3-a | Typed layout overrides (book → section → element) | 3 | Next | — |
-| W3-b | Layout change contracts | 3 | Planned | — |
+| W3-a | Typed layout overrides (book → section → element) | 3 | Done; one review round, findings fixed | [Wave 3a report](../verification/frige-layout-overrides-w3a.md) |
+| W3-b | Layout change contracts | 3 | Next | — |
 | W3-c | Hierarchical context with categories | 3 | Planned | — |
 | W3-d | All-or-nothing application across pieces | 3 | Planned | — |
 | W3-e | Stable section identity | 3 | Planned | — |
+| D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
+| D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 
 ## Blocked or waiting
 
@@ -43,6 +46,6 @@ independent review are complete. Evidence:
 
 1. Owner: review the Wave 3 specification and the open decisions in the
    [handoff](HANDOFF.md#decisions-waiting-on-the-owner).
-2. Start Wave 3a (typed layout overrides).
-3. Then Waves 3b–3e: layout change contracts, hierarchical context,
-   all-or-nothing application, stable section identity.
+2. Wave 3b: layout change contracts.
+3. Then Waves 3c–3e: hierarchical context, all-or-nothing application,
+   stable section identity.

@@ -133,6 +133,16 @@ book in table-of-contents order through the selected scope.
   their title, folios and recto openers, and drives the LuaLaTeX preamble.
   The defaults reproduce proofs made before profiles existed. A proof
   records its profile hash; changing the profile makes the proof stale.
+- With a section or piece selected, the Design panel also shows that
+  scope's own settings: body size and leading (set together), whether it
+  opens on a recto, and, for a section, the recto running-head text. Blank
+  fields follow the level above: a piece follows its section, a section
+  follows the book. Page size, margins, body font, folios and running heads
+  stay book-wide. The assembler sets an override inside a group around that
+  piece only, and the page-map entry of each piece that prints records the
+  size, leading and recto setting it was typeset with. Only pieces in the
+  table of contents offer their own settings
+  ([layout overrides](../../protocol/frige/README.md#layout-overrides)).
 - Preflight (`GET /api/project/preflight`) checks the proof on screen: the
   source-to-page map, PDF page count, trim size of every page, font
   embedding (via `pdffonts` when installed, otherwise reported as not

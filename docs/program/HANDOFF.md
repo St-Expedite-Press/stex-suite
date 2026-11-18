@@ -14,10 +14,10 @@ Update this file whenever the state below changes.
 ## State
 
 - **Branch:** `feat/frige-change-contracts` in `stex-suite`, cut from
-  `d96340e`. Local only; nothing is pushed. Wave 2 is committed
-  locally (one commit on top of `d96340e`).
+  `d96340e`. Local only; nothing is pushed. Waves 2 and 3a and two
+  baseline defect fixes are committed locally on top of `d96340e`.
 - **stex-igor:** untouched, at `d0598d8`.
-- **Current work:** Wave 3, starting with 3a (typed layout overrides). See [progress](PROGRESS.md) for package states and the
+- **Current work:** Wave 3b (layout change contracts). See [progress](PROGRESS.md) for package states and the
   [Wave 2 report](../verification/frige-change-contracts-w2.md) for evidence.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
@@ -45,10 +45,9 @@ corepack pnpm run verify:frige        # Chrome workflow against a synthetic book
 corepack pnpm test                    # every suite
 ```
 
-On this Windows machine `corepack pnpm test` stops at `test:platform`, because
-Application Control blocks the `mypy` launcher. Run the remaining steps as
-`uv run --frozen python -m mypy`, `uv run --frozen python -m pytest` and
-`corepack pnpm run test:stex-igor-sync`.
+`test:platform` runs mypy and pytest as Python modules (`python -m`), because
+Windows Application Control on the owner's machine blocks their launchers in
+`.venv`. Keep that form.
 
 ## Decisions waiting on the owner
 

@@ -263,12 +263,62 @@ async function refreshPreflight() { try { state.preflight = await request('/api/
 
 // Each control is one saved profile setting; saving makes the current proof stale until it is typeset again.
 const designField = (form, name) => form.elements.namedItem(name);
+/**
+ * Where the selected scope's own settings are stored in the profile: a section
+ * by its top-level folder, a piece by its node id. The whole book has no
+ * override; its settings are the profile itself.
+ *
+ * @param {object | null} scope
+ * @returns {{ field: 'sections' | 'nodes', key: string, label: string } | null}
+ */
+function overrideTarget(scope) {
+  // Only a piece in the reading order is typeset, so only such a piece can have its own settings.
+  if (scope?.kind === 'node') return state.graph.readingOrder.includes(scope.id) ? { field: 'nodes', key: scope.id, label: 'This piece' } : null;
+  if (scope && scope.kind !== 'book' && scope.folder) return { field: 'sections', key: scope.folder, label: 'This section' };
+  return null;
+}
+
+/** Shows the selected scope's own settings, with the book's values as the placeholders they fall back to. */
+function fillOverride() {
+  const form = $('#design-panel'); const target = overrideTarget(state.scope); const box = $('#scope-override');
+  box.hidden = !target; if (!target) return;
+  const own = state.design[target.field]?.[target.key] || {};
+  $('#override-legend').textContent = `${target.label} · ${state.scope.title}`;
+  $('#override-head').hidden = target.field !== 'sections';
+  designField(form, 'override.fontSize').value = own.fontSize || ''; designField(form, 'override.fontSize').placeholder = state.design.fontSize;
+  designField(form, 'override.leading').value = own.leading || ''; designField(form, 'override.leading').placeholder = state.design.leading;
+  designField(form, 'override.opensRecto').value = own.opensRecto === undefined ? '' : String(own.opensRecto);
+  // The blank choice follows the level above: a piece's section, or a section's book rule.
+  designField(form, 'override.opensRecto').options[0].textContent = target.field === 'nodes' ? 'As its section' : 'As the book';
+  designField(form, 'override.headText').value = own.headText || ''; designField(form, 'override.headText').placeholder = state.scope.title;
+  $('#override-note').textContent = target.field === 'nodes'
+    ? 'Blank fields follow this piece’s section, then the book. Size and leading are set together.'
+    : 'Blank fields follow the book. A piece’s own settings take precedence. Size and leading are set together.';
+}
+
+/**
+ * The selected scope's override as the profile API takes it: the values set
+ * replace its override, and nothing set clears it (`null`).
+ *
+ * @returns {object}  `{}` for the whole book.
+ */
+function readOverride() {
+  const target = overrideTarget(state.scope); if (!target) return {};
+  const form = $('#design-panel'); const value = (name) => designField(form, `override.${name}`).value.trim();
+  const override = {};
+  if (value('fontSize') || value('leading')) { override.fontSize = value('fontSize'); override.leading = value('leading'); }
+  if (value('opensRecto')) override.opensRecto = value('opensRecto') === 'true';
+  if (target.field === 'sections' && value('headText')) override.headText = value('headText');
+  return { [target.field]: { [target.key]: Object.keys(override).length ? override : null } };
+}
+
 function fillDesign() {
   const form = $('#design-panel'); const design = state.design;
   designField(form, 'trimSize').replaceChildren(...state.trimSizes.map((size) => new Option(size, size)));
   for (const name of ['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle']) designField(form, name).value = design[name];
   for (const side of ['top', 'bottom', 'inner', 'outer']) designField(form, `margins.${side}`).value = design.margins[side];
   for (const name of ['runningHeads', 'folios', 'rectoOpeners']) designField(form, name).checked = design[name];
+  fillOverride();
 }
 function readDesign() {
   const form = $('#design-panel');
@@ -276,6 +326,7 @@ function readDesign() {
     ...Object.fromEntries(['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle'].map((name) => [name, designField(form, name).value.trim()])),
     margins: Object.fromEntries(['top', 'bottom', 'inner', 'outer'].map((side) => [side, designField(form, `margins.${side}`).value.trim()])),
     ...Object.fromEntries(['runningHeads', 'folios', 'rectoOpeners'].map((name) => [name, designField(form, name).checked])),
+    ...readOverride(),
   };
 }
 function toggleDesign(open = $('#design-panel').classList.contains('hidden')) {
@@ -338,6 +389,7 @@ async function loadNode(id, scopeId = id) {
   state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
   if (changedScope) state.notice = '';
   renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
+  if (changedScope && !$('#design-panel').classList.contains('hidden')) fillOverride();
   return true;
 }
 

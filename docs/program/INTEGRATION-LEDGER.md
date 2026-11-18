@@ -16,7 +16,7 @@ must keep compatible.
 
 | Repository | Branch | Base | Contents | Pushed | Merge needs |
 | --- | --- | --- | --- | --- | --- |
-| stex-suite | `feat/frige-change-contracts` | `d96340e` | Program records; Wave 2 Frige change contracts (committed locally) | No | Owner authorization to push; PR 5 merge order |
+| stex-suite | `feat/frige-change-contracts` | `d96340e` | Program records; Wave 2 change contracts; Wave 3a layout overrides; two baseline defect fixes (all committed locally) | No | Owner authorization to push; PR 5 merge order |
 | stex-igor | — | — | No program change yet | — | — |
 
 ## Compatibility requirements
@@ -24,6 +24,7 @@ must keep compatible.
 | Boundary | Requirement | Verified by |
 | --- | --- | --- |
 | `stex.frige.publishing.v1` | Wave 2 adds routes and fields only; existing response bodies keep their meaning. Two protective refusals: a source save without `baseHash` ([D-004](DECISIONS.md)), and any write to a file that is not valid UTF-8 ([D-009](DECISIONS.md)) | `test:frige`, `verify:frige` |
+| Profile overrides under `stex.frige.publishing.v1` | Additive `sections` and `nodes` in the profile and `layout` on page-map nodes; a profile without overrides keeps its hash | `test:frige` |
 | `stex.frige.change-contract.v1` | New. Record schema in `protocol/frige/change-contract.v1.schema.json`; stored records are validated against it in `test:frige` | `test:frige` |
 | `stex.texgraph.scope-turn.v3` | Unchanged. Frige still accepts `changes: []` from the deployed adapter | `test:frige`, `test:inference` |
 | `stex.hermes.turn.v1` | Unchanged in Wave 2 | `test:inference` |
@@ -35,3 +36,5 @@ must keep compatible.
 | Change | Local tests | Browser | Independent review | CI |
 | --- | --- | --- | --- | --- |
 | Wave 2 Frige change contracts | 187 Node tests pass; Python checks pass via `python -m` | `verify:frige` PASS (Chrome) | Two rounds; findings fixed; round-2 fixes not re-reviewed | Not pushed |
+| Wave 3a layout overrides | `corepack pnpm test` passes as one command (196 Node tests) | `verify:frige` PASS (Chrome) | One round; findings fixed; not re-reviewed | Not pushed |
+| Seaxneat simulator input fix | `test:seaxneat` (24) | `verify:platform` PASS (real Next build) | Not independently reviewed (small defect fix) | Not pushed |

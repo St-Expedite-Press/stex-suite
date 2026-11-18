@@ -51,9 +51,11 @@ try {
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
-  const capture = async (name) => {
+  // `reveal` names an element to scroll into view after the resize, when the layout is final.
+  const capture = async (name, { reveal = null } = {}) => {
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    if (reveal) await evaluate(`document.querySelector(${JSON.stringify(reveal)}).scrollIntoView({ block: 'center' })`);
     const shot = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(out, name), Buffer.from(shot.data, 'base64'));
     await tab.send('Emulation.clearDeviceMetricsOverride');
   };
@@ -110,6 +112,20 @@ try {
   await until(() => evaluate(`document.querySelector('#design-state').textContent === 'Saved.'`), 'profile save');
   const preflight = await api('/project/preflight?book=fixture-book'); assert.equal(preflight.checks.find((entry) => entry.id === 'freshness').status, 'warn');
   await click('#design-cancel'); report.workflow.push('profile change marks the proof stale in diagnostic preflight');
+  // Layout override (Wave 3a): the selected piece gets its own size; a real proof records it; clearing it restores the book size.
+  await click('#open-design');
+  assert.equal(await evaluate(`document.querySelector('#scope-override').hidden`), false, 'a piece shows its own settings');
+  assert.match(await evaluate(`document.querySelector('#override-legend').textContent`), /This piece · Morning/);
+  await input('[name="override.fontSize"]', '15pt'); await input('[name="override.leading"]', '18pt');
+  await capture('design-override.png', { reveal: '#scope-override' });
+  await click('#design-panel [type="submit"]');
+  await until(async () => (await api('/project/design?book=fixture-book')).design.nodes?.[selected.id]?.fontSize === '15pt', 'piece override saved');
+  await click('#build');
+  await until(async () => (await api('/project/page-map?book=fixture-book'))?.nodes?.find((entry) => entry.nodeId === selected.id)?.layout?.sizeFrom === 'element', 'proof typeset with the piece override');
+  await until(() => evaluate(`!document.querySelector('#build').disabled`), 'build finished');
+  await input('[name="override.fontSize"]', ''); await input('[name="override.leading"]', ''); await click('#design-panel [type="submit"]');
+  await until(async () => !(await api('/project/design?book=fixture-book')).design.nodes, 'piece override cleared');
+  await click('#design-cancel'); report.workflow.push('a piece override is saved, typeset into a real proof and recorded in its page map, then cleared');
   await evaluate(`document.querySelector('#settings-menu').open = true`); await click('#configure-models');
   await until(() => evaluate(`!!document.querySelector('.model-settings input')`), 'model settings');
   const dialogStyle = await evaluate(`(() => { const dialog = document.querySelector('.model-settings'); const input = dialog.querySelector('input'); return { scoped: !!dialog.closest('.frige-workstation'), height: input.getBoundingClientRect().height, background: getComputedStyle(input).backgroundColor, border: getComputedStyle(dialog.querySelector('.role-card')).borderTopStyle }; })()`);

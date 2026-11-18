@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { designDocument, designHash } from './design-settings.mjs';
+import { designDocument, designHash, resolveLayout } from './design-settings.mjs';
 import { compilerFindings } from './preflight.mjs';
 import { sourceHash, writeAtomic } from './project-store.mjs';
 import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
@@ -131,14 +131,31 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
     units.push(unit);
     // A node without print content occupies no page, so it gets no markers.
     if (!unit.printable) { sections.push(`% texgraph-node:${node.id} (no print content)`); continue; }
-    // Each unit starts a new page; openers start on a recto when the profile asks, decided in TeX from the folio.
-    const opensRecto = settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note');
-    // The recto running head names the section a page belongs to.
-    // The recto head uses the section opener's own heading when it has one, so head and opener agree.
+    const section = sectionOf(node.id);
+    const layout = resolveLayout(settings, { sectionKey: section?.folder || null, nodeId: node.id });
+    // Each unit starts a new page. Whether it opens on a recto is decided by the
+    // nearest setting: the piece's own, else its section's if it opens the
+    // section, else the book rule for openers. TeX then decides from the folio.
+    // The first piece of a section that prints opens it: an anchor with nothing to
+    // print (a note-only piece) has already been skipped above. A folder split into
+    // separate runs in the reading order is a separate section each time.
+    const opensSection = Boolean(section) && section !== markedSection;
+    const opensRecto = layout.nodeOpensRecto ?? (opensSection ? layout.sectionOpensRecto : undefined)
+      ?? (settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note'));
+    // The page map records the settings each piece was typeset with.
+    unit.layout = { fontSize: layout.fontSize, leading: layout.leading, sizeFrom: layout.sizeFrom, opensRecto };
+    // The recto running head names the section a page belongs to: the section's
+    // override text if set, else the section opener's own heading (so head and
+    // opener agree), else the section title.
     const opener = node.kind === 'section-note' ? blocks.find((block) => block.type === 'heading')?.text : null;
-    const section = sectionOf(node.id); const mark = section && section !== markedSection ? `\\markright{${opener ? inlineTeX(opener) : escapeTeX(section.title)}}` : '';
+    const headText = layout.headText ? escapeTeX(layout.headText) : opener ? inlineTeX(opener) : section ? escapeTeX(section.title) : '';
+    const mark = section && section !== markedSection ? `\\markright{${headText}}` : '';
     if (section) markedSection = section;
-    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${manuscriptBody(blocks, node.kind)}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
+    // A size set by a section or the piece applies inside a group around that
+    // piece only. Values come from the validated profile, never from text.
+    const body = manuscriptBody(blocks, node.kind);
+    const typeset = layout.sizeFrom === 'book' ? body : `{\\fontsize{${layout.fontSize}}{${layout.leading}}\\selectfont\n${body}\n\\par}`;
+    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${typeset}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
   }
   const headTitle = await resolveHeadTitle(store, graph, settings);
   const document = designDocument(settings, { title: headTitle }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
