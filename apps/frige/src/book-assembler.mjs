@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { designDocument, designHash } from './design-settings.mjs';
 import { compilerFindings } from './preflight.mjs';
-import { writeAtomic } from './project-store.mjs';
+import { sourceHash, writeAtomic } from './project-store.mjs';
 import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
 
 // Typographic spaces are authorial spacing; Latin Modern has no glyphs for them, so they become explicit space.
@@ -107,7 +107,15 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
   const settings = await store.design(); const designId = designHash(settings);
   const sections = []; const units = []; let numbering = { startPage: 1, basis: 'book-order', footnotes: 0 };
   const parsed = new Map();
-  for (const node of nodes) parsed.set(node.id, parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
+  // The proof's source hashes are taken from the text that is actually typeset,
+  // not from the graph read a moment earlier: a save landing between the two
+  // would otherwise record a hash for text this proof never contained.
+  const typesetHashes = new Map();
+  for (const node of nodes) {
+    const source = await readFile(store.sourcePath(node.relativePath), 'utf8');
+    typesetHashes.set(node.id, sourceHash(source));
+    parsed.set(node.id, parseManuscript(source).blocks);
+  }
   if (isolated) {
     let footnotes = 0;
     for (const node of preceding) footnotes += footnoteCount(parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
@@ -134,7 +142,7 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
   }
   const headTitle = await resolveHeadTitle(store, graph, settings);
   const document = designDocument(settings, { title: headTitle }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
-  const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, node.hash]));
+  const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, typesetHashes.get(node.id)]));
   return { document, units, graph, settings, headTitle, designHash: designId, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
 }
 

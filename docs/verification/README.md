@@ -8,6 +8,8 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
+| Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Local branch only; simulator and stub proposals; element scope in the browser; Chrome only |
+| Engineering program baseline | [2026-11-13 baseline](program-baseline-2026-11-13.md) | Read-only audit; no browser or live verification |
 | Platform release / instruction reconciliation | [Release audit and evidence](platform-release.md) | BLOCKED on permitted CI access; preparation verified, no main merge/deployment or post-merge acceptance claimed |
 | Pantheon consumes the platform API M2a | [M2a report](platform-m2a-pantheon-consumption.md) | Project pages only; browser fallback retained; Chrome only |
 | Python platform foundation M1 | [M1 report](platform-m1-python-foundation.md) | Additive FastAPI service beside Node; read-only project list; CI step unrun |

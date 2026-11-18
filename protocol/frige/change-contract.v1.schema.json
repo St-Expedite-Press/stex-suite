@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/frige/change-contract.v1.schema.json",
+  "title": "Frige change contract v1",
+  "description": "The stored record of one proposed change to canonical manuscript source (record schema 3). Frige is the only producer and writer. A change set from before contracts (record schema 2) is not described here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "contract", "id", "scopeId", "scope", "createdAt", "request", "commentary", "origin", "context", "status", "changes", "dropped", "effects", "conflicts", "approval", "rollback", "proof"],
+  "properties": {
+    "schemaVersion": {"const": 3},
+    "contract": {"const": "stex.frige.change-contract.v1"},
+    "id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "scopeId": {"type": "string", "pattern": "^(book|[a-z][a-z0-9-]{5,80})$"},
+    "scope": {
+      "description": "The conversation that proposed the change.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^(book|[a-z][a-z0-9-]{5,80})$"},
+        "kind": {"enum": ["book", "section", "front-matter", "back-matter", "node"]},
+        "title": {"type": "string"}
+      }
+    },
+    "createdAt": {"type": "string", "maxLength": 40},
+    "request": {"description": "The proposed action, in the author's words.", "type": "string", "maxLength": 12000},
+    "commentary": {"description": "The director's reason.", "type": "string", "maxLength": 12000},
+    "origin": {
+      "description": "The turn that produced the proposal. Values are recorded as reported, not interpreted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userTurnId", "model", "transport"],
+      "properties": {
+        "userTurnId": {"type": ["string", "null"], "maxLength": 120},
+        "model": {"type": ["string", "null"], "maxLength": 120},
+        "transport": {"type": ["string", "null"], "maxLength": 120}
+      }
+    },
+    "context": {
+      "description": "What the director was shown, by category. Categories are never merged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offered", "withheld", "references", "designHash"],
+      "properties": {
+        "offered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nodeId", "relativePath", "hash", "category"],
+            "properties": {
+              "nodeId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{5,80}$"},
+              "relativePath": {"type": "string"},
+              "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "category": {"const": "canonical-source"}
+            }
+          }
+        },
+        "withheld": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nodeId", "title"],
+            "properties": {"nodeId": {"type": "string"}, "title": {"type": "string"}}
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "category"],
+            "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "category": {"const": "approved-reference"}}
+          }
+        },
+        "designHash": {"type": ["string", "null"], "maxLength": 120}
+      }
+    },
+    "status": {"description": "Pending while any change is pending.", "enum": ["pending", "resolved"]},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "nodeId", "relativePath", "title", "baseHash", "afterHash", "before", "source", "summary", "lines", "status"],
+        "properties": {
+          "kind": {"const": "replace-node-source"},
+          "nodeId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{5,80}$"},
+          "relativePath": {"type": "string"},
+          "title": {"type": "string"},
+          "baseHash": {"description": "SHA-256 of `before`.", "type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "afterHash": {"description": "SHA-256 of `source`.", "type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "before": {"description": "The exact prior text.", "type": "string", "maxLength": 400000},
+          "source": {"description": "The exact proposed text.", "type": "string", "maxLength": 400000},
+          "summary": {"type": "string", "maxLength": 500},
+          "lines": {
+            "description": "A summary only: lines compared as multisets, ignoring line endings.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["before", "after", "added", "removed"],
+            "properties": {
+              "before": {"type": "integer", "minimum": 0},
+              "after": {"type": "integer", "minimum": 0},
+              "added": {"type": "integer", "minimum": 0},
+              "removed": {"type": "integer", "minimum": 0}
+            }
+          },
+          "status": {"enum": ["pending", "accepted", "rejected", "stale", "failed", "superseded", "reverted"]},
+          "decidedAt": {"type": "string", "maxLength": 40},
+          "revertedAt": {"type": "string", "maxLength": 40},
+          "supersededBy": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+          "error": {"description": "Why an acceptance or rollback did not write.", "type": "string"}
+        }
+      }
+    },
+    "dropped": {
+      "description": "Proposed changes that were refused before the contract was stored.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["nodeId", "reason"],
+        "properties": {"nodeId": {"type": "string"}, "reason": {"type": "string"}}
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {"code": {"enum": ["proof-stale"]}, "message": {"type": "string"}}
+      }
+    },
+    "conflicts": {
+      "description": "Undecided changes to the same piece in another conversation, as found when this contract was proposed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contractId", "scopeId", "nodeId"],
+        "properties": {"contractId": {"type": "string"}, "scopeId": {"type": "string"}, "nodeId": {"type": "string"}}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "granularity"],
+      "properties": {"required": {"const": "author"}, "granularity": {"const": "per-change"}}
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "requires"],
+      "properties": {"strategy": {"const": "restore-before"}, "requires": {"const": "current-hash-equals-after-hash"}}
+    },
+    "proof": {
+      "description": "The strongest successful build that typeset every accepted change at its accepted text, or null.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["completedAt", "scopeId", "mode", "paginationVerified", "designHash", "sourceHashes"],
+      "properties": {
+        "completedAt": {"type": "string", "maxLength": 40},
+        "scopeId": {"type": ["string", "null"]},
+        "mode": {"enum": ["prefix", "isolated", null]},
+        "paginationVerified": {"type": "boolean"},
+        "designHash": {"type": ["string", "null"]},
+        "sourceHashes": {"description": "Accepted pieces and the hashes that were typeset.", "type": "object"}
+      }
+    }
+  }
+}

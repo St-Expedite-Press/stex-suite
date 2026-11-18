@@ -5,14 +5,68 @@ import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, validateDesign } from './design-settings.mjs';
+import { CONTRACT_SCHEMA_VERSION, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
+/** Most contracts a history listing returns; the journal itself is not truncated. */
+const MAX_LISTED_CONTRACTS = 200;
 const SCOPE_SOURCE_BUDGET = 60_000;
 const NODE_ID = /^[a-z][a-z0-9-]{5,80}$/;
 export const sourceHash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const nodeIdFor = (relativePath) => `node-${sourceHash(relativePath.replaceAll('\\', '/').toLowerCase()).slice(0, 20)}`;
 
 async function exists(file) { try { await access(file, constants.F_OK); return true; } catch { return false; } }
+
+/**
+ * Reads a JSON state file.
+ *
+ * @param {string} file
+ * @returns {Promise<any | null>}  `null` when the file does not exist. A file that
+ *   exists but cannot be read or parsed throws, so damage is never mistaken for absence.
+ */
+async function readJson(file) {
+  try {
+    return JSON.parse(await readFile(file, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+/**
+ * Reads a JSON state file whose damage the caller can safely treat as
+ * absence: a missing file and unparsable content both return `null`. Any
+ * other failure (a lock held by a sync client or scanner, a permission error)
+ * throws, because acting on a file that exists but could not be read can
+ * orphan the record it holds.
+ *
+ * @param {string} file
+ * @returns {Promise<any | null>}
+ */
+async function readJsonIfUsable(file) {
+  try {
+    return await readJson(file);
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+/**
+ * Builds an error the HTTP layer can classify by `code` without parsing messages.
+ *
+ * @param {string} message  Safe to show to the author.
+ * @param {string} code
+ * @returns {Error & { code: string }}
+ */
+const codedError = (message, code) => Object.assign(new Error(message), { code });
+
+/**
+ * The line a thread shows for one decided, superseded or rolled-back change.
+ *
+ * @param {{ nodeId: string, title: string, status: string, baseHash: string, afterHash: string }} change
+ */
+const decisionOf = (change) => ({ nodeId: change.nodeId, title: change.title, status: change.status, beforeHash: change.baseHash, afterHash: change.afterHash });
 function safeRelative(value) {
   const normalized = String(value || '').replaceAll('\\', '/').replace(/^\/+/, '');
   if (!normalized || normalized.split('/').some((part) => part === '..' || !part)) throw new Error('Invalid project-relative path.');
@@ -173,6 +227,8 @@ export class ProjectStore {
     this.graphPath = path.join(this.stateDirectory, 'graph.json');
     this.conversationsDirectory = path.join(this.stateDirectory, 'conversations');
     this.proposalsDirectory = path.join(this.stateDirectory, 'proposals');
+    // Every change contract, one file per contract, kept after it is decided.
+    this.contractsDirectory = path.join(this.stateDirectory, 'contracts');
     this.buildsDirectory = path.join(this.stateDirectory, 'builds');
     this.liveBuildsDirectory = path.join(this.stateDirectory, 'live-builds');
     this.refreshing = null;
@@ -180,7 +236,7 @@ export class ProjectStore {
     this.answering = new Set();
   }
 
-  // Manuscript writes and change-set decisions run one at a time, so a hash check
+  // Manuscript writes, contract decisions, rollbacks and proof links run one at a time, so a hash check
   // and the write it guards can never interleave with another write.
   exclusive(task) {
     const run = this.writes.then(task, task);
@@ -197,7 +253,7 @@ export class ProjectStore {
 
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
-    await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
+    await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.contractsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
     const graph = await this.graph();
     return graph.schemaVersion >= 4 ? graph : this.refreshGraph();
   }
@@ -269,8 +325,16 @@ export class ProjectStore {
   updateNode(id, source, baseHash) { return this.exclusive(() => this.#writeNode(id, source, baseHash)); }
   async #writeNode(id, source, baseHash) {
     if (typeof source !== 'string' || source.length > MAX_SOURCE) throw new Error('Source must be Markdown under 400 KB.');
+    // Every write names the text it replaces. A save without a base hash could
+    // overwrite an edit its author never saw, so it is refused, not trusted.
+    if (typeof baseHash !== 'string' || !baseHash) throw codedError('A save must carry the base hash of the text it replaces. Reload this piece and save again.', 'BASE_HASH_REQUIRED');
     const node = await this.node(id);
-    if (baseHash && baseHash !== node.hash) { const error = new Error('This manuscript node changed on disk. Reload it before saving.'); error.code = 'STALE_SOURCE'; throw error; }
+    if (baseHash !== node.hash) { const error = new Error('This manuscript node changed on disk. Reload it before saving.'); error.code = 'STALE_SOURCE'; throw error; }
+    // Hashes are taken over decoded text, so they cannot see bytes that are not
+    // valid UTF-8: those decode to a replacement character and would be lost on
+    // the first write, beyond any rollback. Refuse rather than destroy them.
+    const bytes = await readFile(this.sourcePath(node.relativePath));
+    if (!Buffer.from(bytes.toString('utf8'), 'utf8').equals(bytes)) throw codedError(`“${node.title}” is not valid UTF-8 text, so Frige will not overwrite it: its original bytes could not be restored. Convert the file to UTF-8 first.`, 'SOURCE_NOT_UTF8');
     await writeAtomic(this.sourcePath(node.relativePath), source);
     await this.refreshGraph();
     return this.node(id);
@@ -361,32 +425,195 @@ export class ProjectStore {
     }
     return { graph, scope, sources, withheld };
   }
-  // Records the director's proposed replacements as one pending change set for the
-  // scope. A change may only replace a node whose exact text was offered.
-  createChangeSet(scopeId, proposal, offered) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered)); }
-  async #createChangeSet(scopeId, { commentary = '', changes = [] }, offered) {
+  // ---------------------------------------------------------------------------
+  // Change contracts (stex.frige.change-contract.v1)
+  //
+  // A proposal from the director is stored as a contract and changes nothing
+  // until the author accepts it. Each contract lives in its own file under
+  // .texgraph/contracts and is kept after it is decided, so the history of what
+  // was proposed, accepted, refused and rolled back stays readable. The
+  // per-scope file under .texgraph/proposals only points at the scope's current
+  // contract. Record rules are in change-contract.mjs; this class owns the
+  // files, the lock and every manuscript write.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @param {string} id
+   * @returns {string}  The contract's file. Throws for a malformed id, which could otherwise name any path.
+   */
+  contractPath(id) {
+    if (!isContractId(id)) throw codedError('Change contract not found.', 'CONTRACT_NOT_FOUND');
+    return path.join(this.contractsDirectory, `${id}.json`);
+  }
+
+  /**
+   * Reads one contract in full, including the prior and proposed text. This is
+   * the only reader of contract files. A file that is missing, cannot be
+   * parsed, is stored under another id, or lacks the fields a decision or
+   * rollback acts on is treated as absent: a rollback writes a record's prior
+   * text into the manuscript, so a record is never trusted merely for existing.
+   *
+   * @param {string} id
+   * @returns {Promise<import('./change-contract.mjs').ChangeContract | null>}
+   *   The record (schema 3, or a schema-2 change set that was journaled), or `null`.
+   * @throws `CONTRACT_NOT_FOUND` for a malformed id; the file system's error when
+   *   the file exists but cannot be read, so a transient lock is never taken for absence.
+   */
+  async contract(id) {
+    const record = await readJsonIfUsable(this.contractPath(id));
+    return isContractRecord(record, id) ? record : null;
+  }
+
+  /**
+   * Reads every usable stored contract. A damaged record is skipped, so it
+   * does not hide the rest of the history. A file that cannot be read at all
+   * makes the whole read fail: a proposal that missed an undecided contract
+   * would leave it pending and undecidable. Every file is parsed on each
+   * call; the journal has no index yet.
+   *
+   * @returns {Promise<import('./change-contract.mjs').ChangeContract[]>}
+   */
+  async #journal() {
+    const names = await readdir(this.contractsDirectory).catch((error) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    const records = [];
+    for (const name of names) {
+      const id = name.endsWith('.json') ? name.slice(0, -'.json'.length) : '';
+      if (!isContractId(id)) continue;
+      const record = await this.contract(id);
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
+  /**
+   * Writes a contract, and optionally makes it its scope's current proposal.
+   * The contract file is written first: if the process stops between the two
+   * writes the record still exists in the journal, and the next proposal for
+   * the scope supersedes it.
+   *
+   * @param {{ id: string, scopeId: string }} record  A record that passed `isContractRecord`.
+   * @param {{ current?: boolean }} [options]
+   */
+  async #saveContract(record, { current = false } = {}) {
+    const body = `${JSON.stringify(record, null, 2)}\n`;
+    await writeAtomic(this.contractPath(record.id), body);
+    if (current) {
+      const pointer = { schemaVersion: CONTRACT_SCHEMA_VERSION, contractId: record.id };
+      await writeAtomic(this.changeSetPath(record.scopeId), `${JSON.stringify(pointer, null, 2)}\n`);
+    }
+  }
+
+  /**
+   * Lists contracts, newest first, without manuscript text.
+   *
+   * @param {{ scopeId?: string | null, nodeId?: string | null }} [filter]
+   *   `scopeId` keeps contracts proposed in that conversation; `nodeId` keeps
+   *   contracts that change that piece, whichever conversation proposed them.
+   * @returns {Promise<object[]>}  At most {@link MAX_LISTED_CONTRACTS} summaries.
+   */
+  async contracts({ scopeId = null, nodeId = null } = {}) {
+    const scope = scopeId ? this.scopeKey(scopeId) : null;
+    const node = nodeId ? this.nodePath(nodeId) : null;
+    return (await this.#journal())
+      .filter((record) => !scope || record.scopeId === scope)
+      .filter((record) => !node || record.changes.some((change) => change.nodeId === node))
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+      .slice(0, MAX_LISTED_CONTRACTS)
+      .map(summarizeContract);
+  }
+
+  /**
+   * Records the director's proposed replacements as one pending contract for
+   * the scope. A change is kept only if it replaces a node whose exact text
+   * was offered this turn. An undecided earlier proposal for the same scope is
+   * marked superseded and kept.
+   *
+   * @param {string} scopeId
+   * @param {{ commentary?: string, changes?: Array<{ nodeId: string, source: string, summary?: string }> }} proposal  Untrusted reply content.
+   * @param {import('./change-contract.mjs').OfferedSource[]} offered  The sources this turn offered.
+   * @param {import('./change-contract.mjs').ContractProvenance} [provenance]
+   * @returns {Promise<{ changeSet: import('./change-contract.mjs').ChangeContract | null, dropped: Array<{ nodeId: string, reason: string }> }>}
+   */
+  createChangeSet(scopeId, proposal, offered, provenance = {}) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered, provenance)); }
+
+  async #createChangeSet(scopeId, { commentary = '', changes = [] }, offered, provenance) {
     const kept = []; const dropped = [];
     for (const change of Array.isArray(changes) ? changes : []) {
       const base = offered.find((entry) => entry.nodeId === change?.nodeId);
       if (!base) { dropped.push({ nodeId: String(change?.nodeId || '').slice(0, 100), reason: 'This node was not offered in the conversation scope.' }); continue; }
-      if (typeof change.source !== 'string' || change.source.length > MAX_SOURCE) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is invalid.' }); continue; }
+      // Text that is not well-formed Unicode (a lone surrogate) cannot be stored exactly as proposed.
+      if (typeof change.source !== 'string' || !change.source.isWellFormed()) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is invalid.' }); continue; }
       if (kept.some((entry) => entry.nodeId === base.nodeId)) { dropped.push({ nodeId: base.nodeId, reason: 'Only one change per node is kept.' }); continue; }
       // Keep the file's own line endings; a reply in another convention would otherwise rewrite every line unseen.
       const source = base.source.includes('\r\n') ? change.source.replace(/\r?\n/g, '\r\n') : change.source.replace(/\r\n/g, '\n');
-      if (source === base.source) continue;
-      kept.push({ nodeId: base.nodeId, relativePath: base.relativePath, title: base.title, baseHash: base.hash, afterHash: sourceHash(source), before: base.source, source, summary: String(change.summary || '').slice(0, 500), status: 'pending' });
+      // Checked after line endings are converted: that is the text an acceptance would write.
+      if (source.length > MAX_SOURCE) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is longer than 400 KB.' }); continue; }
+      // A reply that differs only in line endings proposes nothing the author asked for.
+      if (sameTextIgnoringLineEndings(source, base.source)) continue;
+      kept.push(buildChange(base, source, sourceHash(source), change.summary));
     }
     if (!kept.length) return { changeSet: null, dropped };
-    const record = { schemaVersion: 2, id: randomUUID(), scopeId, createdAt: new Date().toISOString(), commentary: String(commentary).slice(0, 12000), status: 'pending', changes: kept, dropped };
-    await writeAtomic(this.changeSetPath(scopeId), `${JSON.stringify(record, null, 2)}\n`);
+
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    const scope = await this.scope(scopeId);
+    const journal = await this.#journal();
+
+    // Undecided earlier proposals for this scope: those in the journal, and a
+    // current change set from before contracts that was never journaled.
+    const earlier = new Map(journal.filter((record) => record.scopeId === scope.id && hasPending(record)).map((record) => [record.id, record]));
+    const current = await this.changeSet(scopeId);
+    if (hasPending(current) && !earlier.has(current.id)) earlier.set(current.id, current);
+    for (const prior of earlier.values()) {
+      const replaced = supersede(prior, id, createdAt);
+      await this.#saveContract(prior);
+      await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId: prior.id, decisions: replaced.map(decisionOf) });
+    }
+
+    const record = buildContract({
+      id, createdAt, scope, commentary, changes: kept, dropped, offered, provenance,
+      conflicts: conflictsWith(journal, kept.map((change) => change.nodeId), scope.id),
+    });
+    await this.#saveContract(record, { current: true });
     return { changeSet: record, dropped };
   }
+
+  /**
+   * The scope's current contract, or `null` when it has none. A missing or
+   * damaged pointer or contract counts as none: the conversation still opens,
+   * and the next proposal replaces the pointer. A file that exists but cannot
+   * be read throws instead, so a passing lock never orphans a contract.
+   *
+   * @param {string} scopeId
+   * @returns {Promise<import('./change-contract.mjs').ChangeContract | null>}
+   *   A schema-3 contract, or a schema-2 change set from before contracts.
+   * @throws For a malformed scope id.
+   */
   async changeSet(scopeId) {
-    // A file without changes is a single-page proposal from before change sets; it cannot be reviewed as a diff.
-    try { const record = JSON.parse(await readFile(this.changeSetPath(scopeId), 'utf8')); return Array.isArray(record?.changes) ? record : null; } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    const pointer = await readJsonIfUsable(this.changeSetPath(scopeId));
+    if (isContractId(pointer?.contractId)) return this.contract(pointer.contractId);
+    // A full record here is a change set from before contracts. A file without
+    // changes is an older single-page proposal, which cannot be reviewed as a diff.
+    return isContractRecord(pointer, pointer?.id) ? pointer : null;
   }
-  // Accepting writes through updateNode, so a node that changed since the proposal is marked stale, never overwritten.
-  decideChanges(scopeId, changeSetId, decision) { return this.exclusive(() => this.#decideChanges(scopeId, changeSetId, decision)); }
+
+  /**
+   * Applies the author's decision to the scope's current contract. Accepting
+   * writes through the base-hash check, so a node edited since the proposal is
+   * marked stale, never overwritten. Pieces are decided independently: with
+   * several pending, some may be accepted while others turn out stale.
+   *
+   * @param {string} scopeId
+   * @param {string} changeSetId  Must be the scope's current contract.
+   * @param {{ nodeId?: string | null, decision: 'accept' | 'reject' }} choice  `nodeId` limits the decision to one piece.
+   * @returns {Promise<import('./change-contract.mjs').ChangeContract>}
+   * @throws When the contract is no longer the scope's current one, or nothing is pending.
+   */
+  decideChanges(scopeId, changeSetId, choice) { return this.exclusive(() => this.#decideChanges(scopeId, changeSetId, choice)); }
+
   async #decideChanges(scopeId, changeSetId, { nodeId = null, decision }) {
     if (!['accept', 'reject'].includes(decision)) throw new Error('Decision must be accept or reject.');
     const record = await this.changeSet(scopeId);
@@ -397,16 +624,113 @@ export class ProjectStore {
       for (const change of targets) {
         change.decidedAt = new Date().toISOString();
         if (decision === 'reject') { change.status = 'rejected'; continue; }
+        // A change is recorded as accepted only when this decision wrote it. A
+        // piece that already holds the proposed text was written by something
+        // else (another contract or a hand edit), so this change is stale and
+        // can never be rolled back: its `before` would undo that other write.
         try { await this.#writeNode(change.nodeId, change.source, change.baseHash); change.status = 'accepted'; }
         catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
       }
     } finally {
-      record.status = record.changes.some((change) => change.status === 'pending') ? 'pending' : 'resolved';
-      await writeAtomic(this.changeSetPath(scopeId), `${JSON.stringify(record, null, 2)}\n`);
+      // A proof recorded before this decision did not typeset a piece accepted now.
+      if (targets.some((change) => change.status === 'accepted')) record.proof = null;
+      // Saved even if a write threw, so the record never claims less than what reached the manuscript.
+      record.status = hasPending(record) ? 'pending' : 'resolved';
+      await this.#saveContract(record, { current: true });
     }
-    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: targets.map((change) => ({ nodeId: change.nodeId, title: change.title, status: change.status, beforeHash: change.baseHash, afterHash: change.afterHash })) });
+    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: targets.map(decisionOf) });
     return record;
   }
+
+  /**
+   * Rolls back accepted changes of a contract by restoring the exact prior
+   * text. Each piece must still hold the text the contract wrote; if any has
+   * changed since, nothing is restored, so a later edit is never overwritten.
+   * The node keeps its identity and its restored hash equals the contract's
+   * base hash.
+   *
+   * @param {string} contractId
+   * @param {{ nodeId?: string | null }} [options]  `nodeId` limits the rollback to one piece.
+   * @returns {Promise<import('./change-contract.mjs').ChangeContract>}
+   * @throws `CONTRACT_NOT_FOUND`, `NOTHING_TO_REVERT`, or `STALE_SOURCE` when a piece changed after acceptance.
+   */
+  revertChanges(contractId, options = {}) { return this.exclusive(() => this.#revertChanges(contractId, options)); }
+
+  async #revertChanges(contractId, { nodeId = null } = {}) {
+    const record = await this.contract(contractId);
+    if (!record) throw codedError('Change contract not found.', 'CONTRACT_NOT_FOUND');
+    const targets = record.changes.filter((change) => change.status === 'accepted' && (!nodeId || change.nodeId === nodeId));
+    if (!targets.length) throw codedError('This contract has no accepted change to roll back.', 'NOTHING_TO_REVERT');
+
+    // Check every piece before writing any, so a rollback of several pieces is
+    // not left half done because one of them was edited afterwards.
+    for (const change of targets) {
+      const node = await this.node(change.nodeId).catch(() => null);
+      if (!node) throw codedError(`“${change.title}” is no longer in the manuscript, so it cannot be rolled back.`, 'STALE_SOURCE');
+      if (node.hash !== change.afterHash) throw codedError(`“${change.title}” changed after this change was accepted. Rolling back would overwrite that edit, so nothing was restored.`, 'STALE_SOURCE');
+    }
+
+    const revertedAt = new Date().toISOString();
+    const reverted = [];
+    try {
+      for (const change of targets) {
+        await this.#writeNode(change.nodeId, change.before, change.afterHash);
+        change.status = 'reverted'; change.revertedAt = revertedAt;
+        reverted.push(change);
+      }
+    } catch (error) {
+      // The pre-check makes this unlikely (a disk failure, or an edit made
+      // outside Frige in the moment between check and write). Record why.
+      const failed = targets[reverted.length];
+      if (failed) failed.error = error.message;
+      throw error;
+    } finally {
+      // A proof of the accepted text no longer describes the manuscript.
+      if (reverted.length) record.proof = null;
+      await this.#saveContract(record);
+      // The thread note is a convenience; the contract is the record. A section
+      // conversation can disappear when its first piece changes, so do not fail on it.
+      const scopeExists = await this.scope(record.scopeId).then(() => true, () => false);
+      if (reverted.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-reverted', changeSetId: record.id, decisions: reverted.map(decisionOf) });
+    }
+    return record;
+  }
+
+  /**
+   * Records a successful build on every contract it proves: one whose accepted
+   * changes were all typeset at exactly their accepted text. A contract keeps
+   * its strongest proof, so a later build replaces the recorded one only if it
+   * is stronger (see `proofStrength`), or as strong but typeset under a
+   * different publication profile; a repeat build of the same text under the
+   * same profile rewrites nothing, and a piece typeset alone never displaces a verified book-order
+   * proof. Linking never fails the build: a problem is returned as
+   * `proofLinkError` and stored in the build record.
+   *
+   * @param {object} build  A build record as written by `recordBuild`.
+   * @returns {Promise<{ provedContracts: string[], proofLinkError?: string }>}
+   *   Ids of every contract this build proves, whether or not its record changed.
+   */
+  async #linkProof(build) {
+    const provedContracts = [];
+    try {
+      for (const record of await this.#journal()) {
+        const proof = proofFor(record, build);
+        if (!proof) continue;
+        provedContracts.push(record.id);
+        // A proof of equal strength replaces the recorded one only when it was typeset
+        // under a different profile, so the record names the settings now in force.
+        const stronger = proofStrength(proof) > proofStrength(record.proof);
+        const resettled = proofStrength(proof) === proofStrength(record.proof) && proof.designHash !== record.proof?.designHash;
+        if (!stronger && !resettled) continue;
+        record.proof = proof;
+        await this.#saveContract(record);
+      }
+      return { provedContracts };
+    } catch (error) {
+      return { provedContracts, proofLinkError: error.message };
+    }
+  }
+
   async approvedSourceExcerpts() {
     try {
       const documents = JSON.parse(await readFile(path.join(this.stateDirectory, 'documents.json'), 'utf8'));
@@ -418,7 +742,20 @@ export class ProjectStore {
   previewPath() { return path.join(this.buildsDirectory, 'current.pdf'); }
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
-  async recordBuild(result) { const record = { completedAt: new Date().toISOString(), lastSuccessful: await exists(this.previewPath()), ...result, log: String(result.log || '').slice(-60000) }; await writeAtomic(path.join(this.buildsDirectory, 'last.json'), `${JSON.stringify(record, null, 2)}\n`); return record; }
+  /**
+   * Records the outcome of a build as the project's latest, and links a
+   * successful one to the change contracts it proves.
+   *
+   * @param {object} result  The result of `buildBook`.
+   * @returns {Promise<object>}  The stored record, with `provedContracts` when the build succeeded.
+   */
+  async recordBuild(result) {
+    const record = { completedAt: new Date().toISOString(), lastSuccessful: await exists(this.previewPath()), ...result, log: String(result.log || '').slice(-60000) };
+    // Linking takes the write lock: it must not interleave with a decision or a rollback.
+    if (record.ok) Object.assign(record, await this.exclusive(() => this.#linkProof(record)));
+    await writeAtomic(path.join(this.buildsDirectory, 'last.json'), `${JSON.stringify(record, null, 2)}\n`);
+    return record;
+  }
   // The book's publication profile is product state, kept beside the proofs, not in the vault.
   async design() { try { return normalizeDesign(JSON.parse(await readFile(path.join(this.stateDirectory, 'design.json'), 'utf8'))); } catch { return normalizeDesign({}); } }
   saveDesign(input) {

@@ -7,7 +7,7 @@ const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/igor/new?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Discuss with Igor'; document.querySelector('.publishing-toolbar').append(link); }
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/graph/?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Project knowledge'; document.querySelector('.publishing-toolbar').append(link); }
-const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
+const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -102,7 +102,7 @@ function renderTurns({ follow = false } = {}) {
   const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
-    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, drafts: state.drafts, onDecide: decide, onAnswer: sendAnswer,
+    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, contracts: state.contracts, drafts: state.drafts, onDecide: decide, onRevert: revert, onAnswer: sendAnswer,
     artifactUrl: (id, { download = false } = {}) => apiUrl(`/api/artifacts/${id}/content${download ? '?download=1' : ''}`),
     empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
@@ -308,12 +308,34 @@ function renderLiveBuild() {
   }
 }
 
+/**
+ * The change contracts proposed in one conversation, by contract id. The
+ * thread uses them to show which accepted changes can still be rolled back.
+ * An engine without contract history yields an empty map: the thread still
+ * renders, without rollback controls.
+ *
+ * @param {string} scopeId
+ * @returns {Promise<Map<string, object>>}
+ */
+async function contractsFor(scopeId) {
+  try { return new Map((await request(`/api/project/contracts?scope=${encodeURIComponent(scopeId)}`)).map((entry) => [entry.id, entry])); }
+  catch { return new Map(); }
+}
+
+/**
+ * A comparable summary of which contracts have a recorded proof, and when.
+ *
+ * @param {Map<string, object>} contracts
+ * @returns {string}
+ */
+const proofsOf = (contracts) => JSON.stringify([...contracts.values()].map((entry) => [entry.id, entry.proof?.completedAt || null]));
+
 async function loadNode(id, scopeId = id) {
   if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return false;
   const scope = scopeFor(scopeId) || scopeFor(id);
-  const [node, turns, changeSet] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+  const [node, turns, changeSet, contracts] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
   const changedScope = state.scope?.id !== scope.id;
-  state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.sourceDirty = false;
+  state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
   if (changedScope) state.notice = '';
   renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
   return true;
@@ -358,6 +380,7 @@ async function sendAnswer(promptId, values) {
   } finally {
     // Reload either way: a 409 means it was answered elsewhere, and the thread should show that.
     if (state.scope?.id === scope.id) [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
+    if (state.scope?.id === scope.id) state.contracts = await contractsFor(scope.id);
     state.thinking = false;
     if (state.scope?.id === scope.id) renderTurns({ follow: true });
   }
@@ -373,7 +396,7 @@ async function sendTurn(event) {
     const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
     if (result.availability !== 'available') refreshIgor();
     if (state.scope?.id !== scope.id) return;
-    [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+    [state.turns, state.changeSet, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
   } catch (error) {
     if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1); state.notice = `Not sent: ${error.message}`;
   } finally {
@@ -396,12 +419,41 @@ async function decide(nodeId, decision) {
     const openAccepted = touchesOpen && state.changeSet.changes.some((change) => change.nodeId === state.node.id && change.status === 'accepted');
     state.graph = await request('/api/project/graph');
     if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
-    state.turns = await request(`/api/scopes/${scope.id}/turns`); state.notice = '';
+    [state.turns, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]); state.notice = '';
     // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
     if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
     renderTurns();
     if (accepted) await build();
   } catch (error) { state.notice = error.message; renderTurns(); }
+}
+
+/**
+ * Rolls back an accepted change through the engine, which refuses if the piece
+ * has been edited since. The workspace then reloads from the manuscript and
+ * typesets the scope again, so the proof on screen matches the restored text.
+ *
+ * @param {string} contractId  The contract whose accepted change is undone.
+ * @param {string} nodeId      The piece to restore.
+ */
+async function revert(contractId, nodeId) {
+  const scope = state.scope; const touchesOpen = state.node?.id === nodeId;
+  if (touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the restored text. Continue?')) return;
+  $('#turns').querySelectorAll('.decision-revert').forEach((button) => { button.disabled = true; });
+  try {
+    await request(`/api/contracts/${contractId}/revert`, { method: 'POST', body: JSON.stringify({ nodeId }) });
+    state.graph = await request('/api/project/graph');
+    // The author may open another conversation while any of these requests runs.
+    // Each result is applied only if its conversation is still the one on screen.
+    const stillOpen = () => state.scope?.id === scope.id;
+    if (!stillOpen()) { renderNodes(); return; }
+    const [node, turns, contracts] = await Promise.all([touchesOpen ? request(`/api/nodes/${nodeId}`) : null, request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]);
+    if (!stillOpen()) { renderNodes(); return; }
+    if (node) { state.node = node; state.sourceDirty = false; }
+    state.turns = turns; state.contracts = contracts; state.notice = '';
+    if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
+    renderTurns();
+    await build();
+  } catch (error) { if (state.scope?.id === scope.id) { state.notice = error.message; renderTurns(); } }
 }
 
 async function uploadAttachments(files) {
@@ -423,6 +475,11 @@ async function build({ wholeBook = false } = {}) {
     state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id, mode: plan.mode }) });
     [state.pageMap, state.referenceMap] = await Promise.all([request('/api/project/page-map'), request('/api/project/reference-map')]);
     renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild(); refreshPreflight();
+    // A successful proof is recorded on the contracts it typeset; show that beside the accepted change.
+    // Re-render the thread only if a proof record changed, so a proof finishing does not
+    // discard an answer the author is typing, and never into a conversation opened meanwhile.
+    const shown = state.scope; const contracts = shown ? await contractsFor(shown.id) : null;
+    if (contracts && state.scope?.id === shown.id && proofsOf(contracts) !== proofsOf(state.contracts)) { state.contracts = contracts; renderTurns(); }
   } catch (error) {
     $('#build-state').textContent = error.message; $('#build-log').textContent = 'Showing the previous proof.';
   } finally {

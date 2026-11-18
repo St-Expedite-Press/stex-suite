@@ -1,0 +1,212 @@
+# Program master plan
+
+This plan sequences the engineering program the owner directed on 2026-11-12:
+complete Frige as a contract-governed editorial studio, make Igor useful to it
+within tested safety bounds, and continue the incremental platform work.
+
+It adds sequencing only. Existing authorities keep their roles:
+
+- [`AGENTS.md`](../../AGENTS.md) — engineering charter and authorization rules.
+- [`docs/STATUS.md`](../STATUS.md) — what is implemented, tested and deployed.
+- [`docs/PLATFORM-TRANSITION.md`](../PLATFORM-TRANSITION.md) — ownership, the
+  Python migration gate, the Obsidian gate, and milestones P0–P4 and M0–M6.
+- [`docs/verification/`](../verification/README.md) — acceptance evidence.
+
+Companion records: [progress](PROGRESS.md), [decisions](DECISIONS.md),
+[integration ledger](INTEGRATION-LEDGER.md), [risks](RISKS.md) and the
+[handoff](HANDOFF.md) a new session should read first. The starting point is
+the [2026-11-13 baseline](../verification/program-baseline-2026-11-13.md).
+
+## Scope
+
+In scope: `stex-suite` and `stex-igor`. The Press website is out of scope by
+owner decision (see [D-001](DECISIONS.md)).
+
+## Target architecture
+
+Confirmed requirements, from the charter and the owner's directive:
+
+- Pantheon owns presentation. Each engine owns its canonical state.
+- Frige conversations exist at three scopes — book, section, element — and
+  change canonical material only through an inspectable **change contract**
+  that the author approves.
+- LuaLaTeX remains the typesetting authority; layout is typed configuration,
+  not free generated LaTeX.
+- Igor is the single human-facing director. Specialists return findings to
+  Igor and never hold canonical state. No Claude models in the runtime.
+- Runtime tools stay off until an isolation boundary passes executable
+  negative tests and the owner approves.
+- Python/FastAPI is the backend destination, one slice at a time through the
+  migration gate.
+- The User Graph is portable, provenance-bearing and Obsidian-interoperable,
+  and never overrides engine records.
+
+Proposals, to be confirmed as each wave is specified:
+
+- The change contract is the existing Frige change set extended in place, kept
+  in an append-only journal, with rollback as a first-class operation
+  ([D-003](DECISIONS.md)).
+- Frige reaches the director through the inference service, as today. A
+  Frige-scoped Igor conversation is a later, additive contract
+  ([D-006](DECISIONS.md)).
+- Section and element layout settings are overrides on the existing typed
+  book profile, resolved book → section → element.
+
+## Waves
+
+Each wave maps to the milestones already defined in the transition plan. A
+wave is accepted only with evidence under `docs/verification/`.
+
+| Wave | Objective | Depends on | Existing milestone |
+| --- | --- | --- | --- |
+| 0 | Audit and baseline | — | — |
+| 1 | Reconcile contracts: change-contract protocol, conversation hierarchy, migration and Igor boundaries | 0 | P2, P3 |
+| 2 | Frige vertical slice at element scope: proposal → contract → approval → change → proof → rollback | 1 | P2 |
+| 3 | Section and book scopes: hierarchical context, typed overrides, conflict detection, atomic multi-piece apply | 2 | P2 |
+| 4 | Igor integration for Frige: proposals through `stex.hermes.turn.v1`, usage records, bounded specialist investigation | 2; owner authorization for any `stex-igor` push or paid call | P3, M6 |
+| 5 | Backend modernization, one slice at a time | Migration gate | M3–M5 |
+| 6 | Knowledge slice (Frige project to selected Obsidian notes, read-only), remaining Pantheon and Seaxneat interface work | Obsidian gate hardening | P4, M6 |
+| 7 | Release readiness: full regression, browser acceptance, release and rollback plan | All accepted waves | M0 |
+
+Waves 5 and 6 do not block Waves 2–4. Wave 4's local work (fake transport,
+contract design) can proceed before authorization; its deployment cannot.
+
+## Wave 2 acceptance criteria
+
+The first end-to-end workflow, using synthetic manuscripts only:
+
+1. Open a book, select one piece, and send a message in its conversation.
+2. The reply carries a change contract: the request, the director's reason,
+   the exact before and after text with hashes, what context was offered and
+   from which category, expected effects, conflicts, and rollback terms.
+3. Nothing in the manuscript changes until the author accepts.
+4. Rejecting leaves the manuscript byte-identical and records the decision.
+5. Accepting writes through the serialized, base-hash-checked path; a piece
+   edited since the proposal is refused, not overwritten.
+6. A LuaLaTeX proof is built from the accepted text, with a compiler-verified
+   page map, and the contract records that proof.
+7. Rolling back restores the exact prior bytes and hash, keeps the piece's
+   identity, and is refused if the piece changed after acceptance.
+8. Every contract remains readable afterwards; a newer proposal supersedes an
+   undecided one without erasing it.
+9. Evidence: store tests, HTTP tests through `stex.frige.publishing.v1`, and
+   the Chrome workflow in `verify:frige`, each failing without the change.
+
+## Wave 3 specification
+
+**Status:** draft for owner review; increments 3a–3e are ordered so each one
+ships with its own evidence. Starting state is the Wave 2 engine.
+
+### What exists to build on
+
+- Sections are derived, not declared: consecutive reading-order pieces that
+  share a top-level folder. A section's id is `scope-<first piece id>`, so it
+  changes when the first piece changes, and its conversation is orphaned.
+- The publication profile (`apps/frige/src/design-settings.mjs`) is typed and
+  validated, but book-level only: trim, four margins, body font, size,
+  leading, running heads, folios, recto openers, running-head title.
+- A book conversation is offered only the table of contents. A section or
+  piece conversation is offered its pieces' full text within a 60,000-character
+  budget, with nothing from the levels above.
+- Contracts change piece text only (`replace-node-source`). Several pieces in
+  one contract are accepted independently.
+
+### 3a — Typed layout overrides
+
+Extend the profile with optional overrides, resolved **element → section →
+book**: the nearest level that sets a key wins; unset keys inherit.
+
+| Key | Book | Section | Element | Why that level |
+| --- | --- | --- | --- | --- |
+| Trim size, margins, body font, folios, running heads | Yes | No | No | Physical page and book-wide apparatus: one value per book |
+| Body size, leading | Yes | Yes | Yes | A long poem or a section of notes may be set smaller |
+| Opens on a recto | Yes (for openers) | Yes | Yes | Section and piece openings are editorial decisions |
+| Recto running-head text | — | Yes | No | Replaces the section title in the head |
+
+- Stored in `.texgraph/design.json` as `{ ...book, sections: { <key>: {…} },
+  nodes: { <nodeId>: {…} } }`. Every value passes the same validation rules
+  as the book profile. **No raw LaTeX is accepted at any level.**
+- The profile hash covers overrides, so any override change makes affected
+  proofs stale, as a book change does today.
+- The assembler applies a piece's resolved size and leading inside a TeX
+  group around that piece only, and records the resolved values per piece in
+  the page map, so a proof states which settings it used.
+- **Acceptance** (real LuaLaTeX, synthetic book):
+  - a book size change reaches every piece;
+  - a section override reaches only its pieces;
+  - a piece override beats its section;
+  - clearing an override restores inheritance;
+  - pagination stays compiler-verified;
+  - an invalid override is refused with the rule's message.
+
+### 3b — Layout change contracts
+
+- A contract change may set or clear one override:
+  `{kind: "set-layout", target: {level, id}, key, before, after, baseDesignHash, afterDesignHash}`.
+- Acceptance writes through the profile under the store lock, and only if
+  the profile hash still equals `baseDesignHash`. Rollback restores `before`,
+  only if the profile hash still equals `afterDesignHash`. The same refusal
+  rules as text apply.
+- A change that overrides a value set at a higher level says so in the
+  contract (`overrides: {level, value}`); the author sees it before
+  accepting.
+- The simulator gains `Simulate layout: <key> <value>` for the selected
+  scope.
+- **Contract version:** `stex.frige.change-contract.v1` has not been pushed
+  or consumed outside Frige. If it is still unpublished when 3b lands, the
+  new change kind extends v1. Otherwise 3b introduces v2 and keeps reading v1
+  ([D-011](DECISIONS.md)).
+
+### 3c — Hierarchical context
+
+Each turn is offered only what its scope needs. Every item carries its
+category and revision, and categories are never merged.
+
+| Scope | Offered |
+| --- | --- |
+| Book | Table of contents (canonical source); an outline of every piece (title, path, hash, line count, verified page range; no text); the resolved profile (document settings); the last approved book-level contracts (approved contracts) |
+| Section | Its pieces' text within the budget (canonical source); its place in the outline; the profile values in force for it and where each comes from; approved book- and section-level contracts |
+| Element | The piece's text; its section's titles and order; the values in force; approved contracts at all three levels that touched it |
+
+- The contract records every item offered, with its category, as Wave 2
+  already does for pieces and references.
+- New categories: `outline`, `document-settings` and `approved-contract`.
+  Historical conversation keeps its existing recent-turn bound.
+- Knowledge (User Graph) material is not offered until Wave 6.
+- **Acceptance:** for each scope, a test asserts the exact categories and
+  hashes offered, and that no piece text outside the scope is sent.
+
+### 3d — All-or-nothing application across pieces
+
+- **Accept all** checks every piece's base hash under the lock before writing
+  any piece.
+- Before the first write, the contract records an `applying` intent listing
+  the pieces. If a write fails, the pieces already written are restored, and
+  the contract records the failure.
+- On start, a contract left `applying` by a crash is completed or restored
+  from its stored texts, and the outcome is recorded.
+- Per-piece acceptance stays available.
+- **Acceptance:** an injected failure on the second of three pieces leaves
+  all three unchanged; a simulated crash mid-apply is recovered on restart.
+
+### 3e — Stable section identity
+
+- A section's id derives from its folder, not from its first piece.
+- Threads and contracts under the old id stay readable, as the existing
+  legacy-anchor turns are.
+- **Acceptance:** reordering or renaming a section's first piece keeps the
+  section's conversation and contracts.
+
+### Not in Wave 3
+
+- Proposals from a real director (Wave 4).
+- Knowledge material in context (Wave 6).
+- Free-form LaTeX at any level.
+- Section boundaries that are not folders.
+
+## Standards
+
+All code is structured to each language's professional conventions and
+annotated for tooling and for readers: typed Python, JSDoc-typed JavaScript,
+real TypeScript types, JSON Schema for contracts, and comments that explain
+intent, invariants and failure behaviour ([D-002](DECISIONS.md)).

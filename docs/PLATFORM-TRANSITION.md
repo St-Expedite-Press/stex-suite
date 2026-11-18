@@ -267,7 +267,7 @@ a destination, not a reorganization to perform in one step.
 
 | Milestone | Objective | Status |
 | --- | --- | --- |
-| M0 | Merge both repositories with effective CI; record production state, backup and rollback | BLOCKED on owner-run CI access (see [release report](verification/platform-release.md)); local baseline committed |
+| M0 | Merge both repositories with effective CI; record production state, backup and rollback | Igor merged and deployed; suite PR 5 CI passing, its merge awaiting owner authorization (see [STATUS](STATUS.md); the [release report](verification/platform-release.md) records the earlier blocked state) |
 | M1 | Python foundation beside Node: `backend/stex` FastAPI app, typed settings, `/health`, read-only `stex.platform.projects.v1` over studio summaries; uv, Ruff, mypy, pytest in `corepack pnpm test` and CI | Implemented and tested locally ([evidence](verification/platform-m1-python-foundation.md)) |
 | M2a | Pantheon consumes the platform API: read-only `/api/platform/v1/projects` route, project pages render from it with the per-studio browser path as fallback, `dev:alpha` starts it | Implemented and tested locally ([evidence](verification/platform-m2a-pantheon-consumption.md)) |
 | M2b | Identity boundary | Awaiting owner decision: changes the splash's local single-user entry and needs an identity milestone under the charter |

@@ -23,9 +23,12 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 | GET / POST | `/project/attachments` | Read source manifest / upload bounded source documents |
 | POST | `/project/attachments/<id>/approve` | Explicitly approve an available extraction |
 | GET | `/artifacts/<id>` or `/artifacts/<id>/content` | Read artifact metadata / inert content, optionally `?download=1` |
-| GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread / proposal |
+| GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread / current change contract |
 | POST | `/scopes/<id>/turn` | Offer selected sources and a message or validated answer to inference |
 | POST | `/scopes/<id>/changes/decide` | Explicit `{changeSetId,nodeId,decision}` acceptance/rejection |
+| GET | `/project/contracts` | List change contracts, newest first, without manuscript text; optional `?scope=<id>` or `?node=<id>` |
+| GET | `/contracts/<id>` | Read one change contract in full |
+| POST | `/contracts/<id>/revert` | Roll back the contract's accepted changes; optional `{nodeId}` |
 | GET | `/inference/health` | Read the labelled inference availability |
 | GET / PUT | `/settings/models` | Read/save existing server-side role/model settings |
 | GET | `/settings/model-catalog` | Read the gateway's model catalog |
@@ -59,6 +62,96 @@ engine files. The old unversioned APIs stay available for compatibility, with
 no meaning changed in place. Engine UI entries redirect to the configured
 loopback Pantheon `/frige/`, preserving project queries. A breaking publishing
 API change requires a parallel v2 and consumer migration.
+
+## Change contracts v1
+
+`stex.frige.change-contract.v1` is the record a proposal to change canonical
+manuscript source is stored as. It is additive under publishing v1: the
+`changeSet` returned by `/scopes/<id>/turn`, `/scopes/<id>/changes` and
+`/scopes/<id>/changes/decide` keeps every earlier field (`id`, `scopeId`,
+`status`, `commentary`, `changes[]`, `dropped`) and gains those below. Frige is
+the only producer and the only writer; Pantheon displays it. The record is
+described by [`change-contract.v1.schema.json`](change-contract.v1.schema.json),
+which Frige's test suite checks against every state a stored contract passes
+through.
+
+| Field | Meaning |
+| --- | --- |
+| `contract`, `schemaVersion` | `stex.frige.change-contract.v1`, record schema `3`. A schema `2` record is a change set from before contracts and has none of the fields below |
+| `scope` | `{id, kind, title}` of the conversation that proposed it: `book`, a section, or a `node` |
+| `request` | The proposed action in the author's words (at most 12,000 characters) |
+| `commentary` | The director's reason |
+| `origin` | `{userTurnId, model, transport}` of the turn that produced it, each a short string or `null`. `model` and `transport` are recorded as the gateway reported them (for example `fake` or `remote`) and are not interpreted |
+| `context.offered[]` | `{nodeId, relativePath, hash, category: "canonical-source"}` for every source the director was shown |
+| `context.references[]` | `{id, name, category: "approved-reference"}` for author-approved excerpts shown |
+| `context.withheld[]` | `{nodeId, title}` for pieces in scope that were too long to show |
+| `context.designHash` | Publication profile in force when proposed |
+| `changes[]` | `{kind: "replace-node-source", nodeId, relativePath, title, baseHash, afterHash, before, source, summary, lines, status}`. `before` and `source` are the exact texts; `lines` is `{before, after, added, removed}` |
+| `effects[]` | `{code, message}`; currently `proof-stale` |
+| `conflicts[]` | `{contractId, scopeId, nodeId}` for undecided changes to the same piece in another conversation, as found when this contract was proposed. It is not updated afterwards |
+| `approval` | `{required: "author", granularity: "per-change"}` |
+| `rollback` | `{strategy: "restore-before", requires: "current-hash-equals-after-hash"}` |
+| `proof` | `null`, or `{completedAt, scopeId, mode, paginationVerified, designHash, sourceHashes}` for the strongest successful build that typeset every accepted change at its accepted text. `sourceHashes` names exactly the pieces it covers |
+
+Context categories are recorded separately and are never merged: a reference
+or a generated proposal does not become canonical source by being offered.
+
+Change `status` is `pending`, `accepted`, `rejected`, `stale` (the piece
+changed after the proposal; not written), `failed` (the write failed),
+`superseded` (a newer proposal in the same conversation replaced it before a
+decision) or `reverted`. A contract is `pending` while any change is pending,
+otherwise `resolved`. Contracts are kept after they are decided.
+
+Rules the engine enforces:
+
+- A proposal writes nothing. Only an explicit decision or rollback writes.
+- A change is kept only for a node whose exact text was offered in that turn.
+- Acceptance writes through the base hash; a piece edited since is `stale`.
+  With several pieces pending, each is decided independently. A change is
+  `accepted` only when its own decision wrote it: if the piece already holds
+  the proposed text because something else wrote it, the change is `stale`
+  and cannot be rolled back, so its `before` can never undo another write.
+- `POST /contracts/<id>/revert` restores `before` for each accepted change,
+  only if every targeted piece still holds `afterHash`. Otherwise it returns
+  `409 STALE_SOURCE` and writes nothing. The node id is unchanged and the
+  restored hash equals `baseHash`. If a write itself fails part-way through a
+  rollback of several pieces, the pieces already restored stay restored and
+  each change records its own outcome. A contract with no accepted change
+  returns `409 NOTHING_TO_REVERT`; an unknown contract returns
+  `404 CONTRACT_NOT_FOUND`. An id that is not a UUID does not match the
+  facade's route and returns its plain `404`.
+- Frige never overwrites a piece that is not valid UTF-8: a save, acceptance
+  or rollback of one is refused with `400 SOURCE_NOT_UTF8` (an acceptance
+  records the change as `failed`). Hashes are taken over decoded text, so
+  such a file's bytes could not be restored. For valid UTF-8, restoration is
+  byte-exact, including a byte-order mark, line endings and a missing final
+  newline.
+- A successful build is recorded as `proof` on every contract it proves. A
+  contract keeps its strongest proof: a compiler-verified page map outranks
+  an unverified one, and a book-order proof outranks a piece typeset alone.
+  A weaker build changes nothing; an equally strong one replaces the record
+  only when it was typeset under a different publication profile. Accepting a further change of the
+  contract, or rolling one back, clears the proof. `proof` records that such
+  a build happened; whether the proof on screen is current is reported by
+  the build status and preflight.
+- A contract file that is missing, unparsable, stored under another id, or
+  lacks the fields a decision acts on is treated as absent. The conversation
+  still opens, and the next proposal replaces the pointer. A file that exists
+  but cannot be read (a lock or permission error) is an error, not absence:
+  the request fails and nothing is replaced, so a passing lock cannot orphan
+  a pending contract.
+- A proposed text must be well-formed Unicode and at most 400 KB after it is
+  converted to the piece's own line endings; otherwise that change is
+  dropped. A reply that differs from the offered text only in line endings
+  proposes nothing.
+- `PUT /nodes/<id>` requires `baseHash`. A save without one returns
+  `400 BASE_HASH_REQUIRED`. This closes a gap in the stale-write guard; the
+  documented save body has always been `{source, baseHash}`.
+
+`GET /project/contracts` returns at most 200 summaries and omits `before` and
+`source`. Section- and book-scope conversations already produce contracts in
+this form; hierarchical context, typed layout changes and all-or-nothing
+application across pieces are not part of v1.
 
 ## Legacy books compatibility v1
 

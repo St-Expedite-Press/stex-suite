@@ -166,3 +166,75 @@ test('redirects presentation to Pantheon and creates an isolated book through pu
   assert.equal((await fetch(`${prefix}/books`, { method: 'DELETE' })).status, 405);
   assert.equal((await fetch(`${prefix}/stex/legacy-books/v1`)).status, 404);
 });
+
+test('publishing v1 carries a change contract from proposal through acceptance, history and rollback', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-contract-'));
+  // The deterministic simulator stands in for the director: no gateway, no provider.
+  await startFrige(root, 4417, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: 'fake' });
+  const prefix = 'http://127.0.0.1:4417/frige/api/stex/publishing/v1';
+  const call = async (route, { method = 'GET', payload } = {}) => {
+    const response = await fetch(`${prefix}${route}`, { method, headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) });
+    return { status: response.status, contract: response.headers.get('x-stex-contract'), body: await response.json().catch(() => null) };
+  };
+  const project = (await call('/books', { method: 'POST', payload: { title: 'Contract Fixture', author: 'A. Author' } })).body;
+  const book = `?book=${project.id}`;
+  const graph = (await call(`/project/graph${book}`)).body;
+  const nodeId = graph.readingOrder[0];
+  const file = path.join(root, 'books', project.id, 'manuscript', graph.nodes.find((entry) => entry.id === nodeId).relativePath);
+  const original = await readFile(file);
+  const node = (await call(`/nodes/${nodeId}${book}`)).body;
+
+  // A save must name the text it replaces.
+  const unguarded = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: 'Overwritten.\n' } });
+  assert.equal(unguarded.status, 400); assert.equal(unguarded.body.code, 'BASE_HASH_REQUIRED');
+
+  const turn = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate change: A synthetic closing line.' } });
+  assert.equal(turn.status, 200); assert.equal(turn.contract, 'stex.frige.publishing.v1');
+  const proposed = turn.body.changeSet;
+  assert.equal(proposed.contract, 'stex.frige.change-contract.v1'); assert.equal(proposed.request, 'Simulate change: A synthetic closing line.');
+  assert.equal(proposed.origin.userTurnId, turn.body.userTurn.id); assert.equal(proposed.origin.transport, 'fake');
+  assert.deepEqual(proposed.context.offered, [{ nodeId, relativePath: node.relativePath, hash: node.hash, category: 'canonical-source' }]);
+  assert.match(proposed.context.designHash, /^[a-f0-9]{8,}$/);
+  assert.ok((await readFile(file)).equals(original), 'the proposal is inert');
+
+  const accepted = await call(`/scopes/${nodeId}/changes/decide${book}`, { method: 'POST', payload: { changeSetId: proposed.id, nodeId, decision: 'accept' } });
+  assert.equal(accepted.status, 200); assert.equal(accepted.body.changes[0].status, 'accepted');
+  assert.match(await readFile(file, 'utf8'), /A synthetic closing line\./);
+
+  const history = await call(`/project/contracts${book}&node=${nodeId}`);
+  assert.equal(history.status, 200); assert.equal(history.body.length, 1); assert.equal(history.body[0].id, proposed.id);
+  assert.equal('source' in history.body[0].changes[0], false, 'a history listing carries no manuscript text');
+  const full = await call(`/contracts/${proposed.id}${book}`);
+  assert.equal(full.status, 200); assert.equal(full.body.changes[0].before, node.source);
+
+  const reverted = await call(`/contracts/${proposed.id}/revert${book}`, { method: 'POST', payload: {} });
+  assert.equal(reverted.status, 200); assert.equal(reverted.body.changes[0].status, 'reverted');
+  assert.ok((await readFile(file)).equals(original), 'rollback restores the exact bytes');
+  assert.equal((await call(`/nodes/${nodeId}${book}`)).body.hash, node.hash);
+
+  const again = await call(`/contracts/${proposed.id}/revert${book}`, { method: 'POST', payload: {} });
+  assert.equal(again.status, 409); assert.equal(again.body.code, 'NOTHING_TO_REVERT');
+
+  // A piece edited after acceptance: the rollback is refused over HTTP and the edit survives.
+  const second = (await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate change: Another closing line.' } })).body.changeSet;
+  await call(`/scopes/${nodeId}/changes/decide${book}`, { method: 'POST', payload: { changeSetId: second.id, nodeId, decision: 'accept' } });
+  const afterAccept = (await call(`/nodes/${nodeId}${book}`)).body;
+  const byHand = `${afterAccept.source}Edited by hand.\n`;
+  assert.equal((await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: byHand, baseHash: afterAccept.hash } })).status, 200);
+  const refused = await call(`/contracts/${second.id}/revert${book}`, { method: 'POST', payload: {} });
+  assert.equal(refused.status, 409); assert.equal(refused.body.code, 'STALE_SOURCE');
+  assert.doesNotMatch(refused.body.error, /[A-Za-z]:\\|\/tmp\//, 'the refusal names the piece, not a path');
+  assert.equal(await readFile(file, 'utf8'), byHand);
+  // A body of `null` is a request with no piece named, not a server error.
+  const nullBody = await fetch(`${prefix}/contracts/${second.id}/revert${book}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'null' });
+  assert.equal(nullBody.status, 409); assert.equal((await nullBody.json()).code, 'STALE_SOURCE');
+  // The unversioned compatibility path reaches the same operations and the same refusals.
+  const unversioned = await fetch(`http://127.0.0.1:4417/frige/api/contracts/${second.id}${book}`);
+  assert.equal(unversioned.status, 200); assert.equal((await unversioned.json()).id, second.id);
+  const missing = await call(`/contracts/00000000-0000-4000-8000-000000000000${book}`);
+  assert.equal(missing.status, 404); assert.equal(missing.body.code, 'CONTRACT_NOT_FOUND');
+  assert.equal((await call(`/contracts/00000000-0000-4000-8000-000000000000/revert${book}`, { method: 'POST', payload: {} })).status, 404);
+  assert.equal((await call(`/project/contracts${book}`, { method: 'DELETE' })).status, 405);
+  assert.equal((await call(`/contracts/${proposed.id}/revert${book}`)).status, 405, 'rollback is never a GET');
+  assert.equal((await call(`/contracts/not-a-contract${book}`)).status, 404);
+});

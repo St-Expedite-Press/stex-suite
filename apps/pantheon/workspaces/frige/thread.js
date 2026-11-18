@@ -45,7 +45,37 @@ export function richText(text) {
 
 const time = (at) => (at ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
 const size = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1_048_576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1_048_576).toFixed(1)} MB`);
-const decisionText = { accepted: 'Accepted', rejected: 'Rejected', stale: 'Not applied — edited since the suggestion', failed: 'Not applied' };
+const decisionText = { accepted: 'Accepted', rejected: 'Rejected', stale: 'Not applied — edited since the suggestion', failed: 'Not applied', superseded: 'Replaced by a newer suggestion', reverted: 'Rolled back' };
+const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+// A proof may be from another day, so its note carries the date as well as the time.
+const dateAndTime = (at) => new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+/**
+ * The terms of a change contract in plain sentences: what Igor was shown, what
+ * accepting affects, and how an accepted change is undone. What Igor was
+ * shown, the effects and the conflicts are read from the record; the approval
+ * and rollback sentences restate the record's fixed terms in words.
+ *
+ * @param {object} changeSet  The scope's current contract.
+ * @returns {HTMLElement | null}  `null` for a change set from before contracts, which records no terms.
+ */
+function contractTerms(changeSet) {
+  if (!changeSet.contract) return null;
+  const terms = element('details', 'change-terms');
+  terms.append(element('summary', '', 'Terms of this change'));
+  const list = element('ul');
+  const { offered = [], references = [], withheld = [] } = changeSet.context || {};
+  list.append(element('li', '', `Igor was shown ${plural(offered.length, 'manuscript piece')}${references.length ? ` and ${plural(references.length, 'approved reference')}` : ''}${withheld.length ? `; ${plural(withheld.length, 'piece')} in this scope ${withheld.length === 1 ? 'was' : 'were'} too long to show` : ''}.`));
+  list.append(element('li', '', 'A piece is written only when you accept it, and only if it has not changed since this suggestion.'));
+  for (const effect of changeSet.effects || []) list.append(element('li', '', effect.message));
+  if (changeSet.rollback) list.append(element('li', '', 'An accepted change can be rolled back, restoring the previous text exactly, for as long as the piece is not edited again.'));
+  if (changeSet.conflicts?.length) {
+    const pieces = new Set(changeSet.conflicts.map((conflict) => conflict.nodeId)).size;
+    list.append(element('li', 'change-conflict', `Another conversation has an undecided suggestion for ${plural(pieces, 'piece')} here. Whichever is accepted first makes the other out of date.`));
+  }
+  terms.append(list);
+  return terms;
+}
 
 // Pending changes as line diffs, each with its own decision.
 function changeCards(changeSet, onDecide) {
@@ -58,10 +88,11 @@ function changeCards(changeSet, onDecide) {
     all.append(button('accept', 'Accept all', () => onDecide(null, 'accept')), button('reject', 'Reject all', () => onDecide(null, 'reject')));
     header.append(all);
   }
-  box.append(header, ...pending.map((change) => {
+  const terms = contractTerms(changeSet);
+  box.append(header, ...(terms ? [terms] : []), ...pending.map((change) => {
     const card = element('details', 'change-card'); card.open = true;
     const summary = element('summary');
-    summary.append(element('strong', '', change.title), element('small', '', `manuscript/${change.relativePath}`));
+    summary.append(element('strong', '', change.title), element('small', '', `manuscript/${change.relativePath}${change.lines ? ` · +${change.lines.added} −${change.lines.removed}` : ''}`));
     const diff = element('pre', 'change-diff');
     for (const row of lineDiff(change.before, change.source)) diff.append(element('span', `diff-${row.type}`, row.type === 'skip' ? `… ${row.count} unchanged line${row.count === 1 ? '' : 's'}` : `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
     const actions = element('div', 'change-actions');
@@ -106,10 +137,21 @@ function artifactCard(part, artifactUrl) {
   return card;
 }
 
-// A choice or form; once answered it shows the answer and can no longer be sent. An
-// unsent draft refills it after a re-render, and it cannot be sent while Igor replies.
-function promptCard(part, answer, onAnswer, draft, busy) {
-  const shown = answer || draft;
+/**
+ * A choice or form; once answered it shows the answer and can no longer be
+ * sent. What the author enters is kept as a draft as they type, so a
+ * re-render (a reply arriving, a proof finishing) refills it rather than
+ * discarding it. It cannot be sent while Igor replies.
+ *
+ * @param {object} part        The stored prompt part.
+ * @param {object | undefined} answer  The recorded answer, if any.
+ * @param {(promptId: string, values: object) => void} onAnswer
+ * @param {Map<string, object> | undefined} drafts  Unsent values by prompt id, kept across renders.
+ * @param {boolean} busy
+ * @returns {HTMLFormElement}
+ */
+function promptCard(part, answer, onAnswer, drafts, busy) {
+  const shown = answer || drafts?.get(part.promptId);
   const form = element('form', `prompt prompt-${part.type}${answer ? ' answered' : ''}`);
   const status = element('p', 'prompt-status');
   form.append(element('p', 'prompt-title', part.type === 'choice' ? part.prompt : part.title || 'A few details'));
@@ -143,23 +185,47 @@ function promptCard(part, answer, onAnswer, draft, busy) {
   if (answer) { status.textContent = 'Answered'; form.append(status); return form; }
   const submit = element('button', 'prompt-submit', part.type === 'form' ? part.submitLabel || 'Send' : 'Answer'); submit.type = 'submit'; submit.disabled = busy;
   form.append(submit, status);
+  const valuesOf = () => (part.type === 'choice'
+    ? { selected: [...form.querySelectorAll('.prompt-option input:checked')].map((input) => input.value), ...(form.elements.namedItem('other')?.value.trim() ? { other: form.elements.namedItem('other').value.trim() } : {}) }
+    : Object.fromEntries(part.fields.map((field) => { const input = form.elements.namedItem(field.id); return [field.id, field.kind === 'checkbox' ? input.checked : input.value]; })));
+  form.addEventListener('input', () => drafts?.set(part.promptId, valuesOf()));
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const values = part.type === 'choice'
-      ? { selected: [...form.querySelectorAll('.prompt-option input:checked')].map((input) => input.value), ...(form.elements.namedItem('other')?.value.trim() ? { other: form.elements.namedItem('other').value.trim() } : {}) }
-      : Object.fromEntries(part.fields.map((field) => { const input = form.elements.namedItem(field.id); return [field.id, field.kind === 'checkbox' ? input.checked : input.value]; }));
     submit.disabled = true;
-    onAnswer(part.promptId, values);
+    onAnswer(part.promptId, valuesOf());
   });
   return form;
 }
 
-function message(turn, { changeSet, answers, drafts, busy, onDecide, onAnswer, artifactUrl }) {
-  if (turn.kind === 'changes-decided') {
-    const note = element('div', 'msg from-system');
-    for (const decision of turn.decisions) note.append(element('span', `decision ${decision.status}`, `${decisionText[decision.status] || decision.status} · ${decision.title}`));
-    return note;
+/**
+ * The note a thread shows where changes were decided or rolled back. An
+ * accepted change carries a Roll back control while its contract still records
+ * it as accepted; the engine, not this control, decides whether the rollback
+ * is safe.
+ *
+ * @param {object} turn  A `changes-decided` or `changes-reverted` system turn.
+ * @param {{ contracts?: Map<string, object>, busy: boolean, onRevert?: (contractId: string, nodeId: string) => void }} view
+ * @returns {HTMLElement}
+ */
+function decisionNote(turn, { contracts, busy, onRevert }) {
+  const note = element('div', 'msg from-system');
+  const contract = contracts?.get(turn.changeSetId);
+  for (const decision of turn.decisions) {
+    note.append(element('span', `decision ${decision.status}`, `${decisionText[decision.status] || decision.status} · ${decision.title}`));
+    const recorded = contract?.changes.find((change) => change.nodeId === decision.nodeId);
+    if (turn.kind !== 'changes-decided' || decision.status !== 'accepted' || recorded?.status !== 'accepted' || !onRevert) continue;
+    // Named only when the recorded proof typeset this piece at exactly its accepted text.
+    if (contract.proof?.sourceHashes?.[decision.nodeId] === recorded.afterHash) note.append(element('span', 'decision-proof', `Typeset in a proof · ${dateAndTime(contract.proof.completedAt)}`));
+    const rollBack = button('quiet-button decision-revert', 'Roll back', () => onRevert(turn.changeSetId, decision.nodeId));
+    rollBack.setAttribute('aria-label', `Roll back the accepted change to ${decision.title}`);
+    rollBack.disabled = busy;
+    note.append(rollBack);
   }
+  return note;
+}
+
+function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, onRevert, onAnswer, artifactUrl }) {
+  if (turn.kind === 'changes-decided' || turn.kind === 'changes-reverted') return decisionNote(turn, { contracts, busy, onRevert });
   const fromUser = turn.role === 'user';
   const item = element('article', `msg ${fromUser ? 'from-user' : 'from-hermes'}${turn.kind === 'answer' ? ' is-answer' : ''}${turn.availability && turn.availability !== 'available' ? ' failed' : ''}`);
   const label = fromUser ? (turn.kind === 'answer' ? 'You · answer' : 'You') : `Igor${turn.meta?.model ? ` · ${turn.meta.model}` : ''}`;
@@ -173,7 +239,7 @@ function message(turn, { changeSet, answers, drafts, busy, onDecide, onAnswer, a
     for (const part of turn.parts || []) {
       if (part.type === 'text') { if (part.text !== turn.commentary) body.append(richText(part.text)); }
       else if (part.type === 'artifact') body.append(artifactCard(part, artifactUrl));
-      else if (part.type === 'choice' || part.type === 'form') body.append(promptCard(part, answers.get(part.promptId), onAnswer, drafts?.get(part.promptId), busy));
+      else if (part.type === 'choice' || part.type === 'form') body.append(promptCard(part, answers.get(part.promptId), onAnswer, drafts, busy));
     }
   }
   item.append(body);
@@ -191,14 +257,14 @@ function message(turn, { changeSet, answers, drafts, busy, onDecide, onAnswer, a
 }
 
 // Renders the whole thread; returns the element a new reply should scroll to.
-export function renderThread(box, { turns, thinking, notice, changeSet, empty, drafts, onDecide, onAnswer, artifactUrl }) {
+export function renderThread(box, { turns, thinking, notice, changeSet, contracts, empty, drafts, onDecide, onRevert, onAnswer, artifactUrl }) {
   if (!turns.length && !thinking && !notice) {
     const intro = element('div', 'thread-empty');
     intro.append(element('strong', '', empty.title), element('p', '', empty.text));
     box.replaceChildren(intro); return null;
   }
   const answers = new Map(turns.filter((turn) => turn.kind === 'answer').map((turn) => [turn.promptId, turn.values]));
-  const items = turns.map((turn) => message(turn, { changeSet, answers, drafts, busy: thinking, onDecide, onAnswer, artifactUrl }));
+  const items = turns.map((turn) => message(turn, { changeSet, contracts, answers, drafts, busy: thinking, onDecide, onRevert, onAnswer, artifactUrl }));
   // Pending changes whose reply is no longer in view still need a decision.
   if (changeSet?.changes.some((change) => change.status === 'pending') && !turns.some((turn) => turn.changeSetId === changeSet.id)) items.push(changeCards(changeSet, onDecide));
   if (thinking) { const typing = element('article', 'msg from-hermes thinking'); typing.append(element('div', 'msg-meta', 'Igor'), element('div', 'typing', '')); typing.lastChild.append(element('i'), element('i'), element('i')); items.push(typing); }

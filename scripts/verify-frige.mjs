@@ -50,6 +50,13 @@ try {
   const evaluate = tab.evaluate;
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
+  const capture = async (name) => {
+    await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    const shot = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(out, name), Buffer.from(shot.data, 'base64'));
+    await tab.send('Emulation.clearDeviceMetricsOverride');
+  };
   const ready = () => until(() => evaluate(`!!document.querySelector('#book-tree .tree-book') && document.querySelector('#conversation-title').textContent !== 'Choose a node'`), 'publishing workspace');
   await tab.go(base + '/frige/'); await until(() => evaluate(`!!document.querySelector('.project-list')`), 'library');
   assert.equal(await evaluate(`document.querySelectorAll('.masthead').length`), 1);
@@ -76,6 +83,29 @@ try {
   await until(async () => (await api('/project/build?book=fixture-book'))?.ok, 'real LuaLaTeX proof');
   const pageMap = await api('/project/page-map?book=fixture-book'); assert.equal(pageMap.pagination.verified, true); assert.ok(pageMap.nodes.some((entry) => entry.nodeId === selected.id && entry.firstPage));
   await until(() => evaluate(`document.querySelectorAll('#proof-viewer canvas').length > 0`), 'rendered PDF canvas'); report.workflow.push('proposal inert until acceptance; real compiler-mapped PDF renders');
+  // Change contract: the accepted change is recorded with the proof that typeset it, rolls back
+  // to the exact prior text, and a rejected proposal changes nothing.
+  const beforeAccept = changed + '\nConcurrent synthetic edit.\n'; const historyUrl = `/project/contracts?book=fixture-book&scope=${selected.id}`;
+  await until(async () => (await api(historyUrl))[0]?.proof?.paginationVerified === true, 'proof recorded on the contract');
+  const [contract] = await api(historyUrl);
+  assert.equal(contract.contract, 'stex.frige.change-contract.v1'); assert.equal(contract.changes[0].status, 'accepted'); assert.equal(contract.request, 'Prepare a synthetic proposal');
+  await until(() => evaluate(`!!document.querySelector('.decision-revert:not([disabled])')`), 'roll back control beside the accepted change');
+  assert.match(await evaluate(`document.querySelector('.decision-proof')?.textContent || ''`), /Typeset in a proof/);
+  await until(() => evaluate(`/[1-9]\\d* pass/.test(document.querySelector('#preflight-state').textContent)`), 'preflight of the new proof'); await capture('contract-accepted.png');
+  await click('.decision-revert');
+  await until(async () => (await readFile(poemPath, 'utf8')) === beforeAccept, 'rollback restores the prior text exactly');
+  assert.equal((await api(`/nodes/${selected.id}?book=fixture-book`)).hash, contract.changes[0].baseHash);
+  await until(() => evaluate(`document.querySelectorAll('.decision.reverted').length === 1 && !document.querySelector('.decision-revert')`), 'rollback shown in the thread');
+  await until(async () => { const build = await api('/project/build?book=fixture-book'); return build?.ok && build.sourceHashes?.[selected.id] === contract.changes[0].baseHash; }, 'proof typeset again from the restored text');
+  await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after rollback');
+  report.workflow.push('accepted change records its proof and rolls back to the exact prior text; proof typeset again');
+  await input('#message', 'Prepare another synthetic proposal'); await click('#turn-form [type="submit"]');
+  await until(() => evaluate(`!!document.querySelector('.changes .reject')`), 'second proposal');
+  assert.match(await evaluate(`document.querySelector('.change-terms')?.textContent || ''`), /Igor was shown 1 manuscript piece/);
+  await evaluate(`document.querySelector('.change-terms').open = true`); await capture('contract-proposal.png');
+  await click('.changes .reject');
+  await until(async () => (await api(historyUrl))[0]?.changes[0].status === 'rejected', 'rejection recorded on the contract');
+  assert.equal(await readFile(poemPath, 'utf8'), beforeAccept); report.workflow.push('contract terms shown; rejection leaves the manuscript unchanged');
   await click('#open-design'); await input('[name="fontSize"]', '13pt'); await click('#design-panel [type="submit"]');
   await until(() => evaluate(`document.querySelector('#design-state').textContent === 'Saved.'`), 'profile save');
   const preflight = await api('/project/preflight?book=fixture-book'); assert.equal(preflight.checks.find((entry) => entry.id === 'freshness').status, 'warn');

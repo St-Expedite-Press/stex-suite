@@ -12,17 +12,74 @@ const empty = { changes: [], parts: [], droppedParts: [], meta: null };
 const gatewayHeaders = () => ({ 'content-type': 'application/json', ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}) });
 const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.env.TEXGRAPH_INFERENCE_MODE) === 'fake';
 
-function fakeScopeTurn(message) {
-  const text = `Deterministic Igor simulator received: ${String(message || '').trim().slice(0, 240)}`;
+/** A message in this form asks the simulator for one labelled change. */
+const SIMULATED_CHANGE = /^simulate change:\s*(\S[\s\S]*)$/i;
+
+/**
+ * Shortens text to at most 240 characters, counted in code points so a
+ * character outside the Basic Multilingual Plane is never cut in half.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+const clip = (text) => [...text].slice(0, 240).join('');
+
+/**
+ * The simulator's plain acknowledgement of a message. It proposes nothing.
+ *
+ * @param {string} message
+ * @returns {string}
+ */
+const simulatorReceipt = (message) => `Deterministic Igor simulator received: ${clip(String(message || '').trim())}`;
+
+/**
+ * The deterministic simulator's reply to a scope turn. It never calls a model.
+ *
+ * By default it proposes nothing. A message of the form
+ * `Simulate change: <line>` yields one proposed change that appends `<line>`
+ * as a new closing stanza to the first offered piece, so the path from
+ * conversation to change contract can be exercised without a provider. The
+ * proposal is labelled as simulated and, like any proposal, is inert until
+ * the author accepts it. The table of contents is never the target: appending
+ * prose to it would not be a meaningful editorial change.
+ *
+ * @param {string} message
+ * @param {Array<{ nodeId: string, title: string, kind?: string, source: string }>} [sources]  Sources offered this turn.
+ * @returns {object}  A reply in the shape `requestScopeTurn` returns.
+ */
+function fakeScopeTurn(message, sources = []) {
+  const received = String(message || '').trim();
+  const meta = (output) => ({ model: 'stex/hermes-fake', usage: { inputChars: received.length, outputChars: output.length, transport: 'fake' } });
+  // One line of verse: whitespace folded, leading Markdown markers dropped so the
+  // line cannot become a heading (and retitle the piece) or a quotation.
+  const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
+  if (requested) {
+    const target = sources.find((entry) => entry.kind !== 'programme');
+    if (!target) {
+      const text = 'Deterministic Igor simulator: this conversation offered no piece to change (a whole-book conversation offers only its table of contents), so no change was simulated. Select a section or a piece and ask again.';
+      return { commentary: text, availability: 'available', changes: [], graphSuggestions: [], parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text) };
+    }
+    const lineEnd = target.source.includes('\r\n') ? '\r\n' : '\n';
+    // A new closing stanza: a blank line, then the line. An empty piece gets the line alone.
+    const lead = target.source === '' ? '' : `${target.source.endsWith('\n') ? '' : lineEnd}${lineEnd}`;
+    const source = `${target.source}${lead}${requested}${lineEnd}`;
+    const text = `Deterministic Igor simulator prepared one simulated change to “${target.title}”: a closing line is added. Nothing changes until you accept it.`;
+    return {
+      commentary: text, availability: 'available', graphSuggestions: [],
+      changes: [{ nodeId: target.nodeId, source, summary: 'Simulated addition of a closing line (deterministic simulator, not a model).' }],
+      parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+    };
+  }
+  const text = simulatorReceipt(received);
   return {
     commentary: `${text}. No canonical source was changed.`, availability: 'available', changes: [], graphSuggestions: [],
     parts: [{ type: 'text', text: `${text}. Review and source changes remain author-controlled.` }], droppedParts: [],
-    meta: { model: 'stex/hermes-fake', usage: { inputChars: String(message || '').length, outputChars: text.length, transport: 'fake' } },
+    meta: meta(text),
   };
 }
 
 export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
-  if (deterministic()) return fakeScopeTurn(message);
+  if (deterministic()) return fakeScopeTurn(message, sources);
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
   const controller = new AbortController();
@@ -93,7 +150,8 @@ export async function gatewaySettings(method, pathname, payload) {
 }
 
 export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {
-  if (deterministic()) return assistantResult(`${fakeScopeTurn(message).commentary}\n\nNo source proposal was generated by the deterministic simulator.`, 'available');
+  // The one-page book has no simulated changes; it only acknowledges the message.
+  if (deterministic()) return assistantResult(`${simulatorReceipt(message)}. No canonical source was changed.\n\nNo source proposal was generated by the deterministic simulator.`, 'available');
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) {
     return assistantResult('The inference gateway is not configured. Your message was saved, but no revision was proposed.', 'unconfigured');

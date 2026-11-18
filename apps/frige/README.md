@@ -195,10 +195,60 @@ Hermes replies in typed parts:
 - **Choices and forms** are interactive. An answer is validated against the
   stored prompt (known options, required fields, value types), recorded once,
   and sent back to Hermes as the next turn; the prompt then shows the answer.
-- **Changes** to offered nodes become one pending change set per scope
-  (`.texgraph/proposals/<scope>.json`), shown as line diffs. Accepting writes
-  the node only if it is unchanged since the suggestion (otherwise it is
-  marked stale), refreshes the graph and editor, and typesets the scope again.
+- **Changes** to offered nodes become one pending change contract per scope,
+  shown as line diffs (next section). Accepting writes the node only if it is
+  unchanged since the suggestion (otherwise it is marked stale), refreshes
+  the graph and editor, and typesets the scope again.
+
+### Change contracts
+
+A proposal is stored as a change contract
+([`stex.frige.change-contract.v1`](../../protocol/frige/README.md#change-contracts-v1)).
+The contract is the whole record of one proposed change:
+
+- **What was asked and why:** the author's request and the director's reason.
+- **The exact change:** each piece's prior and proposed text with their
+  SHA-256 hashes, plus line counts.
+- **What the director was shown,** by category: manuscript pieces offered
+  (canonical source), author-approved references, pieces withheld as too
+  long, and the publication profile in force.
+- **Effects and conflicts:** proofs that include the pieces become stale;
+  undecided proposals to the same piece from another conversation are named.
+- **Approval and rollback terms,** and the proof that typeset the accepted
+  text once one is built.
+
+Each contract is one file in `.texgraph/contracts/` and is kept after it is
+decided. `.texgraph/proposals/<scope>.json` only points at the scope's current
+contract. A newer proposal in the same conversation marks an undecided one
+*superseded*; it is never erased. A change set written before contracts that
+is still undecided stays decidable, and joins the history when it is decided
+or superseded. One already decided before contracts existed is not in the
+history and cannot be rolled back.
+
+**Roll back** (beside an accepted change in the thread) restores the exact
+prior text and hash and keeps the piece's identity. It is refused, and nothing
+is written, if the piece changed after it was accepted. The workstation then
+typesets the scope again.
+
+Restoration is byte-exact for valid UTF-8, including a byte-order mark, line
+endings and a missing final newline. A piece that is not valid UTF-8 is never
+overwritten at all — by a save, an acceptance or a rollback — because its
+bytes could not be restored (`400 SOURCE_NOT_UTF8`).
+
+A contract keeps the strongest proof that typeset all its accepted text: a
+compiler-verified book-order proof is not displaced by a piece typeset alone.
+Accepting another piece of the same contract clears the proof until one
+covers that piece too.
+
+A source save must carry the base hash of the text it replaces; one without is
+refused with `400 BASE_HASH_REQUIRED`.
+
+The deterministic simulator (`STEX_FRIGE_INFERENCE_MODE=fake`, the `dev:alpha`
+default) proposes nothing unless the message begins `Simulate change:`. It then
+proposes one labelled change that appends the rest of the message as a closing
+line to the first offered piece, never to the table of contents. This
+exercises the contract path without a provider. The inference service itself
+does not yet return changes from a real director.
 
 The Hermes pill reports whether the local fake transport or optional remote
 Hermes boundary is available. A failed turn is saved with a safe reason and
@@ -235,13 +285,15 @@ compatibility. The platform consumes
 Push-Location apps/frige
 corepack pnpm test
 Pop-Location
-corepack pnpm verify:frige   # Chrome: platform create/save/stale-save/accept/proof/profile, 5 widths
+corepack pnpm verify:frige   # Chrome: platform create/save/stale-save/accept/proof/rollback/reject/profile, 5 widths
 ```
 
 Proof tests compile synthetic books with LuaLaTeX and skip when it is absent.
 `verify:frige` requires LuaLaTeX for its real PDF evidence. It starts Pantheon,
 Frige and a labelled local inference stub with disposable books. It covers
 creation, Unicode/indentation-preserving save, stale-write refusal, visible
-proposal/explicit acceptance, rendered compiler-mapped PDF, profile freshness,
+proposal/explicit acceptance, rendered compiler-mapped PDF, the proof recorded
+on the change contract, rollback to the exact prior text, a rejected proposal,
+profile freshness,
 model-settings styling, keyboard focus, tablet drawer and five widths. It
 saves screenshots/report outside the repository (`--out <directory>`).
