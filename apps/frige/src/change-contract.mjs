@@ -440,14 +440,15 @@ export function supersede(record, byContractId, at) {
  *
  * @param {Array<{ id: string, scopeId: string, changes?: Array<{ nodeId?: string | null, status: string }> }>} records
  * @param {Array<{ kind?: string, nodeId?: string | null, level?: string, target?: string }>} changes  The new contract's changes.
- * @param {string} exceptScopeId   The new contract's own scope, whose earlier proposal is superseded instead.
+ * @param {string | string[]} exceptScopeId  The new contract's own scope (with any earlier ids it had), whose proposals are superseded instead.
  * @returns {ContractConflict[]}  `target` names what both would change (see `changeTarget`).
  */
 export function conflictsWith(records, changes, exceptScopeId) {
   const targets = new Set(changes.map(changeTarget));
+  const own = new Set([exceptScopeId].flat());
   const conflicts = [];
   for (const record of records) {
-    if (record.scopeId === exceptScopeId) continue;
+    if (own.has(record.scopeId)) continue;
     for (const change of record.changes || []) {
       if (change.status === 'pending' && targets.has(changeTarget(change))) {
         conflicts.push({ contractId: record.id, scopeId: record.scopeId, nodeId: change.nodeId ?? null, target: changeTarget(change) });

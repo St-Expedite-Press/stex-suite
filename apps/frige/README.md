@@ -191,7 +191,9 @@ credentials. A0 defaults to a deterministic no-change transport.
 
 In a manuscript book, the conversation belongs to the selected scope: the
 whole book, a section, or a page each keep their own thread in
-`.texgraph/conversations/<scope>.jsonl`. A turn calls
+`.texgraph/conversations/<scope>.jsonl`. A section is identified by its folder,
+so renaming or reordering its first piece keeps its conversation and
+contracts; threads recorded under its earlier ids are still read with it. A turn calls
 `STEX_INFERENCE_URL/v1/texgraph/scope-turn` (`protocol/texgraph`, scope turn
 v3) with the scope's offered sources and at most ten recent turns.
 

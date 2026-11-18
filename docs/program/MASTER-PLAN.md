@@ -217,6 +217,14 @@ category and revision, and categories are never merged.
   legacy-anchor turns are.
 - **Acceptance:** reordering or renaming a section's first piece keeps the
   section's conversation and contracts.
+- **Done:** see the [Wave 3e evidence](../verification/frige-section-identity-w3e.md).
+  Ids are `section-<hash of folder>`, case-insensitive, with run suffixes
+  matched by shared pieces (largest overlap first, against the previous graph
+  and then every id the folder has had, remembered durably with its last
+  pieces); a run of wholly new pieces inherits only a one-for-one vanished
+  run, and otherwise gets an id never issued before. Old-form ids are derived
+  from each section's pieces and remembered durably once they carry data.
+  Renaming the folder itself changes the id.
 
 ### Not in Wave 3
 

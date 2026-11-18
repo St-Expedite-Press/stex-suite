@@ -35,6 +35,28 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 
 Book selection is explicit in `?book=<id>`. Stable node ids, source hashes,
 compiler-derived page maps and profile hashes keep their existing semantics.
+A section's scope id is `section-<16 hex>`, derived from its top-level folder
+without regard to case, so it survives renaming or reordering the section's
+first piece. A folder that appears in several places in the reading order
+gets `-2`, `-3`…. Each run keeps the id of the run it shares the most pieces
+with: first the previous graph's runs, then every id the folder has had,
+which `.texgraph/section-aliases.json` keeps with the pieces it last held (so
+a run that leaves the book and returns, or a graph that is rebuilt, gets its
+id back). A run whose pieces were all replaced keeps the id of a run whose
+pieces all left, only when that pairing is one for one. Any other run gets an
+id never issued before. Ids are matched by pieces, so a run can take over the
+id, and the conversation and proposals, of a run whose pieces it now holds;
+when runs merge, the larger overlap wins and the other id's records stay
+unattached until a run holding its pieces returns. Each
+section in the graph lists `legacyIds`: the earlier `scope-<node id>` form
+for every piece it now holds, plus any such id with recorded data that
+`.texgraph/section-aliases.json` remembers for it (the first section to claim
+an id keeps it). Any of them is accepted wherever a scope id is, including
+proof and live-build matching, and conversations, proposals, contracts and
+artifacts recorded under them belong to the section; new records are written
+under the current id. An acceptance refuses, as `stale`, a change to a piece
+outside its conversation's scope: for a section, its current pieces; for the
+book, the reading order and the table of contents.
 Frige validates selections and paths, serializes accepted source writes, and
 rejects stale saves/proposals with `409`. A response is not a press-readiness
 claim. Source lineation, stanza/indentation, Unicode, provenance and review

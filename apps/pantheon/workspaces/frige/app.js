@@ -23,7 +23,8 @@ function scopes() {
   return [canonical, ...(canonical.sections || [])];
 }
 function scopeFor(id) {
-  const found = scopes().find((scope) => scope.id === id);
+  // A section is also found by an earlier id (its `legacyIds`), as the engine resolves it.
+  const found = scopes().find((scope) => scope.id === id) || scopes().find((scope) => scope.legacyIds?.includes(id));
   if (found) return found;
   const node = state.graph.nodes.find((entry) => entry.id === id);
   return node ? { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id } : null;
@@ -206,7 +207,7 @@ const isStale = (staleness) => Boolean(staleness && (staleness.changed || stalen
 
 function proofIsCurrent() {
   const staleness = proofStaleness();
-  return Boolean(state.build?.ok && state.build.targetScope?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
+  return Boolean(state.build?.ok && scopeFor(state.build.targetScope?.id)?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
 }
 
 function statusItem(name, value, tone = '', detail = '') {
@@ -366,7 +367,7 @@ async function saveDesign(event) {
 function renderLiveBuild() {
   const button = $('#send-live-build');
   if (!button) return;
-  const matchingHandoff = state.liveBuild?.targetScope?.id === state.scope?.id ? state.liveBuild : null;
+  const matchingHandoff = scopeFor(state.liveBuild?.targetScope?.id)?.id === state.scope?.id ? state.liveBuild : null;
   button.disabled = !proofIsCurrent();
   if (matchingHandoff?.status === 'queued-locally') {
     $('#live-build-state').textContent = `Staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}; not sent to a remote build.`;

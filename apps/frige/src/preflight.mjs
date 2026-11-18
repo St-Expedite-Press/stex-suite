@@ -45,7 +45,10 @@ const check = (id, title, status, detail, items = []) => ({ id, title, status, d
 // last piece for a book-order proof, only the scope's own pieces for an isolated one.
 function currentIncluded(graph, manifest) {
   const order = graph.readingOrder; const id = manifest.targetScope?.id;
-  const scope = id === 'book' ? { nodeIds: order, buildThroughNodeId: order.at(-1) } : graph.book?.sections?.find((section) => section.id === id) || (order.includes(id) ? { nodeIds: [id], buildThroughNodeId: id } : null);
+  // A proof made under a section's earlier id still describes that section.
+  const sections = graph.book?.sections || [];
+  const section = sections.find((entry) => entry.id === id) || sections.find((entry) => entry.legacyIds?.includes(id));
+  const scope = id === 'book' ? { nodeIds: order, buildThroughNodeId: order.at(-1) } : section || (order.includes(id) ? { nodeIds: [id], buildThroughNodeId: id } : null);
   if (!scope || !scope.nodeIds.length) return null;
   const end = order.indexOf(scope.buildThroughNodeId) + 1;
   return manifest.mode === 'isolated' ? order.slice(order.indexOf(scope.nodeIds[0]), end) : order.slice(0, end);

@@ -233,7 +233,95 @@ function answerFor(prompt, values) {
   return { normalized, summary: `${prompt.title || 'Form'} — ${lines.join('; ') || 'no answers'}` };
 }
 
-function canonicalBook(root, nodes, readingOrder) {
+/**
+ * A section's stable id for a top-level folder. Folder names are compared
+ * without case, as node ids are, so a case-only rename keeps the id. `slot` is
+ * 1 for a folder's first id and 2, 3… for further runs of the same folder.
+ *
+ * @param {string} folder
+ * @param {number} slot
+ * @returns {string}
+ */
+const sectionId = (folder, slot) => `section-${createHash('sha256').update(folder.toLowerCase(), 'utf8').digest('hex').slice(0, 16)}${slot > 1 ? `-${slot}` : ''}`;
+
+/**
+ * Gives each run of one folder its id, keeping the ids earlier graphs gave.
+ * Runs keep the ids of the runs they share the most pieces with, largest
+ * overlaps first: the previous graph's runs, then runs remembered from before
+ * (so a run that left the book and returns gets its id back, and a lost graph
+ * recovers every id). A run of entirely new pieces keeps the id of a previous
+ * run whose pieces have all left the book, only when they pair one for one,
+ * which keeps a section's id when every piece in it is replaced. Any other run
+ * gets an id never issued before, so it never inherits a retired run's
+ * conversation or proposals. When runs merge, the records of the runs that
+ * lose their id stay with that id until a run holding its pieces returns.
+ *
+ * @param {string} folder
+ * @param {Array<{ nodeIds: string[] }>} runs   This graph's runs of the folder, in reading order.
+ * @param {Array<{ id: string, nodeIds: string[] }>} earlier  The previous graph's runs of the folder.
+ * @param {Array<{ id: string, nodeIds: string[] }>} [past]  Other ids issued for the folder, with their last pieces.
+ * @returns {string[]}  One id per run, in the same order.
+ */
+function assignRunIds(folder, runs, earlier, past = []) {
+  const ids = runs.map(() => null);
+  const claimed = new Set();
+  const shares = (left, right) => left.nodeIds.filter((id) => right.nodeIds.includes(id)).length;
+  // 1. Shared pieces, largest overlaps first across all pairs, so one run's
+  //    order in the book cannot let it take a better match from another. On a
+  //    tie the previous graph's run wins over a remembered one.
+  const pairs = [];
+  runs.forEach((run, index) => {
+    for (const [rank, candidates] of [earlier, past].entries()) {
+      for (const candidate of candidates) { const shared = shares(run, candidate); if (shared) pairs.push({ index, candidate, shared, rank }); }
+    }
+  });
+  pairs.sort((left, right) => right.shared - left.shared || left.rank - right.rank || left.index - right.index);
+  for (const { index, candidate } of pairs) {
+    if (ids[index] || claimed.has(candidate.id)) continue;
+    ids[index] = candidate.id; claimed.add(candidate.id);
+  }
+  // 2. Runs whose pieces were all replaced: only between runs that share no
+  //    pieces with anything on the other side, one for one, in order. A run
+  //    whose pieces moved elsewhere is never given to a run of new pieces.
+  const freshRuns = runs.map((_, index) => index).filter((index) => !ids[index] && [...earlier, ...past].every((candidate) => !shares(runs[index], candidate)));
+  const goneRuns = earlier.filter((candidate) => !claimed.has(candidate.id) && runs.every((run) => !shares(run, candidate)));
+  if (freshRuns.length && freshRuns.length === goneRuns.length && freshRuns.length === runs.filter((_, index) => !ids[index]).length) {
+    freshRuns.forEach((index, order) => { ids[index] = goneRuns[order].id; claimed.add(goneRuns[order].id); });
+  }
+  // 3. Fresh ids, never one issued before, so a new run inherits no records.
+  const taken = new Set([...earlier, ...past].map((candidate) => candidate.id).concat(ids.filter(Boolean)));
+  let slot = 1;
+  return ids.map((id) => {
+    if (id) return id;
+    while (taken.has(sectionId(folder, slot))) slot += 1;
+    const fresh = sectionId(folder, slot);
+    taken.add(fresh);
+    return fresh;
+  });
+}
+
+/**
+ * Derives the book and its sections from the reading order.
+ *
+ * A section's id comes from its folder (see `sectionId` and `assignRunIds`),
+ * so renaming, reordering or replacing its first piece keeps it. Each section
+ * also lists `legacyIds`: `scope-<node id>` for every piece it contains, which
+ * is the form section ids had before stable ids (named after a section's first
+ * piece). Records made under such an id attach to the section that now holds
+ * that piece. They are derived each time, so nothing is lost when the graph is
+ * rebuilt, and no two sections can share one.
+ *
+ * @param {string} root
+ * @param {Array<{ id: string, relativePath: string, kind: string }>} nodes
+ * @param {string[]} readingOrder
+ * @param {{ sections?: Array<{ id: string, folder: string, nodeIds?: string[] }> } | null} [prior]
+ *   The previous graph's book. Only its stable (`section-…`) ids are carried
+ *   forward; without it (and without `remembered`), runs take ids in reading order.
+ * @param {Record<string, string[]>} [remembered]  Every section id issued before, with the
+ *   pieces it last held, from `.texgraph/section-aliases.json` (see `assignRunIds`).
+ * @returns {object}  The book: `{ id: 'book', kind, title, tableOfContentsNodeId, programmeNodeId, nodeIds, anchorNodeId, buildThroughNodeId, sections }`.
+ */
+function canonicalBook(root, nodes, readingOrder, prior = null, remembered = {}) {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const ordered = readingOrder.map((id) => byId.get(id)).filter(Boolean);
   const programme = nodes.find((node) => node.kind === 'programme');
@@ -243,20 +331,33 @@ function canonicalBook(root, nodes, readingOrder) {
     const folder = node.relativePath.split('/')[0] || 'Manuscript';
     return folder.replace(/^\d+[_-]?/, '').replaceAll('_', ' ').replaceAll('-', ' ').trim() || 'Manuscript';
   };
-  const startSection = (node, title, kind = 'section', folder = '') => {
-    current = { id: `scope-${node.id}`, kind, title, folder, anchorNodeId: node.id, nodeIds: [], buildThroughNodeId: node.id };
-    sections.push(current);
-  };
   for (const node of ordered) {
     const folder = node.relativePath.split('/')[0] || '';
     if (!current || current.folder !== folder) {
       const title = node.kind === 'front-matter' ? 'Front matter' : node.kind === 'back-matter' ? 'Back matter' : sectionName(node);
       const kind = node.kind === 'back-matter' ? 'back-matter' : node.kind === 'front-matter' ? 'front-matter' : 'section';
-      startSection(node, title, kind, folder);
+      current = { id: null, kind, title, folder, anchorNodeId: node.id, nodeIds: [], buildThroughNodeId: node.id, legacyIds: [] };
+      sections.push(current);
     }
     current.nodeIds.push(node.id);
     current.buildThroughNodeId = node.id;
   }
+  // Ids, folder by folder, compared without case as `sectionId` hashes them.
+  const earlier = (Array.isArray(prior?.sections) ? prior.sections : [])
+    .filter((section) => typeof section.id === 'string' && section.id.startsWith('section-'));
+  for (const key of new Set(sections.map((section) => section.folder.toLowerCase()))) {
+    const runs = sections.filter((section) => section.folder.toLowerCase() === key);
+    const before = earlier
+      .filter((section) => String(section.folder).toLowerCase() === key)
+      .map((section) => ({ id: section.id, nodeIds: Array.isArray(section.nodeIds) ? section.nodeIds : [] }));
+    // Remembered ids of this folder are its own id or that id with a `-k` suffix.
+    const own = sectionId(runs[0].folder, 1);
+    const past = Object.entries(remembered)
+      .filter(([id, nodeIds]) => (id === own || id.startsWith(`${own}-`)) && Array.isArray(nodeIds) && !before.some((section) => section.id === id))
+      .map(([id, nodeIds]) => ({ id, nodeIds }));
+    assignRunIds(runs[0].folder, runs, before, past).forEach((id, index) => { runs[index].id = id; });
+  }
+  for (const section of sections) section.legacyIds = section.nodeIds.map((id) => `scope-${id}`);
   const title = path.basename(root).replaceAll(/[-_]/g, ' ');
   return {
     id: 'book', kind: 'book', title,
@@ -268,12 +369,24 @@ function canonicalBook(root, nodes, readingOrder) {
   };
 }
 
+/**
+ * Finds a scope in a graph: `book`, a section by its current id or by one of
+ * its `legacyIds`, or a piece by its node id. A current id always wins over an
+ * alias.
+ *
+ * @param {object} graph
+ * @param {string} [id]
+ * @returns {object}
+ * @throws `SCOPE_NOT_FOUND` when nothing in the graph has that id.
+ */
 function scopeFromGraph(graph, id = 'book') {
   if (id === 'book') return graph.book;
-  const section = graph.book?.sections?.find((entry) => entry.id === id);
+  // A section is also found by any id it had before (see `canonicalBook`).
+  const section = graph.book?.sections?.find((entry) => entry.id === id)
+    || graph.book?.sections?.find((entry) => entry.legacyIds?.includes(id));
   if (section) return section;
   const node = graph.nodes.find((entry) => entry.id === id);
-  if (!node) throw new Error('Graph scope not found.');
+  if (!node) throw codedError('Graph scope not found.', 'SCOPE_NOT_FOUND');
   return { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id };
 }
 
@@ -313,7 +426,9 @@ export class ProjectStore {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
     await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.contractsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
     const graph = await this.graph();
-    const ready = graph.schemaVersion >= 4 ? graph : await this.refreshGraph();
+    // A graph written before stable section ids is rebuilt, so ids and aliases are current from the first request.
+    const stableIds = graph.book?.sections?.every((section) => section.id?.startsWith('section-') && Array.isArray(section.legacyIds));
+    const ready = graph.schemaVersion >= 4 && stableIds ? graph : await this.refreshGraph();
     // Once per store: undo any acceptance a stopped process left half applied.
     // The server initializes a store on every request, so this must not repeat.
     // A recovery that fails (a passing file lock) is tried again on the next call, not cached as failed.
@@ -422,7 +537,9 @@ export class ProjectStore {
       if (!node) diagnostics.push({ code: 'unresolved-table-of-contents-link', nodePath: programmeRelative, target, message: `Table-of-contents link does not resolve: ${target}` });
       else if (!order.includes(node.id)) order.push(node.id);
     }
-    const book = canonicalBook(this.root, nodes, order);
+    const memory = await this.#sectionMemory();
+    const book = canonicalBook(this.root, nodes, order, prior?.book, memory.sections);
+    await this.#rememberSectionAliases(book, memory);
     const graph = {
       schemaVersion: 4, generatedAt: new Date().toISOString(),
       tableOfContentsPath: `manuscript/${programmeRelative}`, programmePath: `manuscript/${programmeRelative}`,
@@ -432,6 +549,74 @@ export class ProjectStore {
     };
     await writeAtomic(this.graphPath, `${JSON.stringify(graph, null, 2)}\n`);
     return graph;
+  }
+
+  /**
+   * Reads `.texgraph/section-aliases.json`: `aliases` maps old-form section ids
+   * to the section that claimed them, and `sections` maps every section id
+   * ever issued to the pieces it last held. A missing or unparseable file reads
+   * as empty (ids are then reissued in reading order, as for a new book).
+   *
+   * @returns {Promise<{ aliases: Record<string, string>, sections: Record<string, string[]> }>}
+   */
+  async #sectionMemory() {
+    const stored = await readJsonIfUsable(path.join(this.stateDirectory, 'section-aliases.json'));
+    const aliases = stored?.aliases && typeof stored.aliases === 'object' && !Array.isArray(stored.aliases) ? stored.aliases : {};
+    const sections = {};
+    const listed = stored?.sections && typeof stored.sections === 'object' && !Array.isArray(stored.sections) ? stored.sections : {};
+    for (const [id, nodeIds] of Object.entries(listed)) {
+      if (id.startsWith('section-') && Array.isArray(nodeIds)) sections[id] = nodeIds.filter((nodeId) => typeof nodeId === 'string');
+    }
+    return { aliases, sections };
+  }
+
+  /**
+   * Keeps old-form section ids (`scope-<node id>`) attached after the piece
+   * they were named after leaves the section or is renamed.
+   *
+   * `.texgraph/section-aliases.json` maps each old-form id that has recorded
+   * data (a conversation thread or a proposal pointer) to the section it
+   * belonged to when first seen. It only grows: the first claim stands, so
+   * two sections never share an alias, and an id is never moved to another
+   * section. Each section's `legacyIds` become its derived aliases (its current
+   * pieces) plus the ids the map gives it, less any the map gives elsewhere.
+   * If the map is lost, the derived aliases still cover every current piece.
+   *
+   * The same file keeps every section id ever issued with the pieces it last
+   * held (`sections`): a run that returns gets its id back by those pieces,
+   * and a new run never reuses a retired id (see `assignRunIds`).
+   *
+   * @param {{ sections: Array<{ id: string, nodeIds: string[], legacyIds: string[] }> }} book  Mutated in place.
+   * @param {{ aliases: Record<string, string>, sections: Record<string, string[]> }} memory  As read by `#sectionMemory`.
+   * @returns {Promise<void>}
+   */
+  async #rememberSectionAliases(book, memory) {
+    const file = path.join(this.stateDirectory, 'section-aliases.json');
+    const map = { ...memory.aliases };
+    const issued = { ...memory.sections };
+    let changed = false;
+    // Every section id issued is remembered with its current pieces; retired ids keep their last.
+    for (const section of book.sections) {
+      if (JSON.stringify(issued[section.id]) !== JSON.stringify(section.nodeIds)) { issued[section.id] = [...section.nodeIds]; changed = true; }
+    }
+    const recorded = new Set();
+    for (const directory of [this.conversationsDirectory, this.proposalsDirectory]) {
+      for (const name of await readdir(directory).catch(() => [])) {
+        const match = /^(scope-[a-z0-9-]+)\.(?:jsonl|json)$/.exec(name);
+        if (match) recorded.add(match[1]);
+      }
+    }
+    for (const section of book.sections) {
+      for (const alias of section.legacyIds) {
+        if (recorded.has(alias) && !Object.hasOwn(map, alias)) { map[alias] = section.id; changed = true; }
+      }
+    }
+    if (changed) await writeAtomic(file, `${JSON.stringify({ aliases: map, sections: Object.fromEntries(Object.entries(issued).sort(([left], [right]) => left.localeCompare(right))) }, null, 2)}\n`);
+    for (const section of book.sections) {
+      const kept = section.legacyIds.filter((alias) => !Object.hasOwn(map, alias) || map[alias] === section.id);
+      const claimed = Object.keys(map).filter((alias) => map[alias] === section.id);
+      section.legacyIds = [...new Set([...kept, ...claimed])];
+    }
   }
 
   async graph({ refresh = false } = {}) { return refresh || !(await exists(this.graphPath)) ? this.refreshGraph() : JSON.parse(await readFile(this.graphPath, 'utf8')); }
@@ -464,24 +649,47 @@ export class ProjectStore {
     await this.refreshGraph();
     return this.node(id);
   }
+  /**
+   * The ids a scope is known by: its current id, and for a section every id it
+   * had before. Records written under any of them belong to the same scope.
+   *
+   * @param {{ id: string, legacyIds?: string[] }} scope
+   * @returns {string[]}
+   */
+  static aliasesOf(scope) { return [scope.id, ...(Array.isArray(scope.legacyIds) ? scope.legacyIds : [])]; }
+
   async appendTurn(scopeId, turn) {
-    await this.scope(scopeId);
-    const record = { id: randomUUID(), at: new Date().toISOString(), scopeId, ...turn };
-    await writeFile(this.conversationPath(scopeId), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
+    // Always recorded under the scope's current id, even when addressed by an earlier one.
+    const { id } = await this.scope(scopeId);
+    const record = { id: randomUUID(), at: new Date().toISOString(), ...turn, scopeId: id };
+    await writeFile(this.conversationPath(id), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
     return record;
   }
   async turns(scopeId, limit = 40) {
     const scope = await this.scope(scopeId);
-    const read = async (key) => { try { return (await readFile(this.conversationPath(key), 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
+    const aliases = ProjectStore.aliasesOf(scope);
+    // `tolerant` skips lines that do not parse. It is used for other pieces' own
+    // files, read only for old section turns, so damage there cannot break this thread.
+    const parse = (line, tolerant) => { try { return JSON.parse(line); } catch (error) { if (tolerant) return null; throw error; } };
+    const read = async (key, tolerant = false) => {
+      try { return (await readFile(this.conversationPath(key), 'utf8')).trim().split('\n').filter(Boolean).map((line) => parse(line, tolerant)).filter(Boolean); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    };
+    // A section's turns may be filed under any id it has had (see `canonicalBook`).
+    const own = [];
+    for (const key of aliases) own.push(...(await read(key)).filter((turn) => !turn.scopeId || aliases.includes(turn.scopeId)));
     // Earlier versions saved book and section turns in their anchor node's file, tagged with the scope id.
-    const own = (await read(scopeId)).filter((turn) => !turn.scopeId || turn.scopeId === scopeId);
-    const legacy = scope.kind === 'node' || !scope.anchorNodeId ? [] : (await read(scope.anchorNodeId)).filter((turn) => turn.scopeId === scopeId);
-    return [...legacy, ...own].sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
+    const anchorFiles = scope.kind === 'node' ? [] : [...new Set([scope.anchorNodeId, ...aliases.map((alias) => /^scope-(node-[a-z0-9-]+)$/.exec(alias)?.[1])].filter(Boolean))];
+    const legacy = [];
+    for (const anchor of anchorFiles) legacy.push(...(await read(anchor, true)).filter((turn) => aliases.includes(turn?.scopeId)));
+    const unique = new Map([...legacy, ...own].map((turn) => [turn.id ?? `${turn.at}${turn.message ?? ''}`, turn]));
+    return [...unique.values()].sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
   }
   // Artifacts from Hermes replies are product state: metadata and content under
   // .texgraph/artifacts, referenced from turns by id so threads stay small.
   artifactPath(id, extension) { if (!/^art-[a-f0-9]{16}$/.test(id)) throw new Error('Invalid artifact id.'); return path.join(this.stateDirectory, 'artifacts', `${id}.${extension}`); }
-  async storeParts(scopeId, parts = [], meta = null) {
+  async storeParts(addressedScopeId, parts = [], meta = null) {
+    // Artifacts are recorded under the scope's current id, even when addressed by an earlier one.
+    const scopeId = (await this.scope(addressedScopeId)).id;
     const stored = []; const dropped = [];
     for (const [index, part] of parts.entries()) {
       // The gateway validates parts; the product still refuses shapes it cannot render.
@@ -519,7 +727,7 @@ export class ProjectStore {
       const thread = await this.turns(scopeId, 100_000);
       const prompt = thread.flatMap((turn) => turn.parts || []).find((part) => part.promptId === promptId);
       if (!prompt) throw Object.assign(new Error('This question is not part of the conversation.'), { code: 'UNKNOWN_PROMPT' });
-      const key = `${scopeId}::${promptId}`;
+      const key = `${(await this.scope(scopeId)).id}::${promptId}`;
       if (this.answering.has(key) || thread.some((turn) => turn.kind === 'answer' && turn.promptId === promptId)) throw Object.assign(new Error('This question has already been answered.'), { code: 'ALREADY_ANSWERED' });
       const { normalized, summary } = answerFor(prompt, values);
       this.answering.add(key);
@@ -619,6 +827,8 @@ export class ProjectStore {
     }
 
     const sectionScope = scope.kind === 'node' ? sectionOf(scope.id) : scope.kind === 'book' ? null : scope;
+    // Records written under any id this scope has had are its own.
+    const ownScope = ProjectStore.aliasesOf(scope);
     /**
      * Whether an accepted change is approved context for this scope: for the
      * book, contracts made in the book's conversation; for a section, those made
@@ -632,7 +842,7 @@ export class ProjectStore {
      */
     const relevant = (record, change) => {
       if (scope.kind === 'book') return record.scopeId === 'book';
-      if (scope.kind !== 'node') return record.scopeId === 'book' || record.scopeId === scope.id || (change.kind === LAYOUT_CHANGE && change.level === 'section' && change.target === scope.folder);
+      if (scope.kind !== 'node') return record.scopeId === 'book' || ownScope.includes(record.scopeId) || (change.kind === LAYOUT_CHANGE && change.level === 'section' && change.target === scope.folder);
       return change.nodeId === scope.id || (change.kind === LAYOUT_CHANGE && change.level === 'section' && change.target === sectionScope?.folder);
     };
     // Approved context is a convenience: an unreadable contract file (a passing
@@ -645,7 +855,7 @@ export class ProjectStore {
       contracts.push({
         contractId: record.id, scopeId: record.scopeId,
         // The author's request can quote any piece, so it goes only back to the conversation that wrote it.
-        ...(record.scopeId === scope.id ? { request: String(record.request || '').slice(0, 280) } : {}),
+        ...(ownScope.includes(record.scopeId) ? { request: String(record.request || '').slice(0, 280) } : {}),
         decidedAt: accepted.map((change) => change.decidedAt || '').sort().at(-1) || null,
         changes: accepted.map((change) => ({ kind: change.kind || 'replace-node-source', title: change.title, nodeId: change.nodeId ?? null, ...(change.kind === LAYOUT_CHANGE ? { level: change.level, target: change.target, after: change.after } : {}) })),
       });
@@ -748,10 +958,12 @@ export class ProjectStore {
    * @returns {Promise<object[]>}  At most {@link MAX_LISTED_CONTRACTS} summaries.
    */
   async contracts({ scopeId = null, nodeId = null } = {}) {
-    const scope = scopeId ? this.scopeKey(scopeId) : null;
+    // A section's contracts may have been proposed under any id it has had.
+    const key = scopeId ? this.scopeKey(scopeId) : null;
+    const aliases = key ? await this.scope(key).then(ProjectStore.aliasesOf, (error) => { if (error.code === 'SCOPE_NOT_FOUND') return [key]; throw error; }) : null;
     const node = nodeId ? this.nodePath(nodeId) : null;
     return (await this.#journal())
-      .filter((record) => !scope || record.scopeId === scope)
+      .filter((record) => !aliases || aliases.includes(record.scopeId))
       .filter((record) => !node || record.changes.some((change) => change.nodeId === node))
       .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
       .slice(0, MAX_LISTED_CONTRACTS)
@@ -811,7 +1023,8 @@ export class ProjectStore {
 
     // Undecided earlier proposals for this scope: those in the journal, and a
     // current change set from before contracts that was never journaled.
-    const earlier = new Map(journal.filter((record) => record.scopeId === scope.id && hasPending(record)).map((record) => [record.id, record]));
+    const aliases = ProjectStore.aliasesOf(scope);
+    const earlier = new Map(journal.filter((record) => aliases.includes(record.scopeId) && hasPending(record)).map((record) => [record.id, record]));
     const current = await this.changeSet(scopeId);
     if (hasPending(current) && !earlier.has(current.id)) earlier.set(current.id, current);
     for (const prior of earlier.values()) {
@@ -824,7 +1037,7 @@ export class ProjectStore {
 
     const record = buildContract({
       id, createdAt, scope, commentary, changes: kept, dropped, offered, provenance,
-      conflicts: conflictsWith(journal, kept, scope.id),
+      conflicts: conflictsWith(journal, kept, aliases),
     });
     await this.#saveContract(record, { current: true });
     return { changeSet: record, dropped };
@@ -923,11 +1136,20 @@ export class ProjectStore {
    * @throws For a malformed scope id.
    */
   async changeSet(scopeId) {
-    const pointer = await readJsonIfUsable(this.changeSetPath(scopeId));
-    if (isContractId(pointer?.contractId)) return this.contract(pointer.contractId);
-    // A full record here is a change set from before contracts. A file without
-    // changes is an older single-page proposal, which cannot be reviewed as a diff.
-    return isContractRecord(pointer, pointer?.id) ? pointer : null;
+    // A section's pointer may be filed under an earlier id; the current id is checked first.
+    const scope = await this.scope(scopeId).catch((error) => { if (error.code === 'SCOPE_NOT_FOUND') return null; throw error; });
+    for (const key of scope ? ProjectStore.aliasesOf(scope) : [scopeId]) {
+      const pointer = await readJsonIfUsable(this.changeSetPath(key));
+      if (isContractId(pointer?.contractId)) {
+        const record = await this.contract(pointer.contractId);
+        if (record) return record;
+        continue;
+      }
+      // A full record here is a change set from before contracts. A file without
+      // changes is an older single-page proposal, which cannot be reviewed as a diff.
+      if (isContractRecord(pointer, pointer?.id)) return pointer;
+    }
+    return null;
   }
 
   /**
@@ -1001,16 +1223,23 @@ export class ProjectStore {
    * @throws A read error during the first check, or a failure to record the intent; nothing was written then.
    */
   async #acceptText(record, targets, at) {
-    // 1. Check every piece first; one that changed since the proposal stops all writes.
+    // 1. Check every piece first; one that changed since the proposal, or that is
+    // no longer part of the conversation's scope, stops all writes.
+    const scope = await this.scope(record.scopeId).catch((error) => { if (error.code === 'SCOPE_NOT_FOUND') return null; throw error; });
+    const graph = await this.graph();
+    // The whole book's conversation may change any piece and the table of contents.
+    const inScope = !scope ? new Set() : scope.kind === 'book' ? new Set([...graph.readingOrder, graph.book.tableOfContentsNodeId]) : new Set(scope.nodeIds);
     const stale = [];
     for (const change of targets) {
       const node = await this.#nodeOrMissing(change.nodeId);
-      if (node?.hash !== change.baseHash) stale.push(change);
+      if (node?.hash !== change.baseHash || !inScope.has(change.nodeId)) stale.push(change);
     }
     if (stale.length) {
       for (const change of stale) {
         change.status = 'stale'; change.decidedAt = at;
-        change.error = 'This piece changed after the suggestion, so it was not applied.';
+        change.error = inScope.has(change.nodeId)
+          ? 'This piece changed after the suggestion, so it was not applied.'
+          : 'This piece is no longer part of this conversation’s section or book, so it was not applied.';
       }
       // The rest were not written either; with several decided together they stay pending.
       return stale;
@@ -1287,7 +1516,7 @@ export class ProjectStore {
   async queueLiveBuild(scopeId = 'book') {
     const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
     const scope = scopeFromGraph(graph, scopeId);
-    if (!proof?.ok || proof.targetScope?.id !== scope.id) {
+    if (!proof?.ok || !ProjectStore.aliasesOf(scope).includes(proof.targetScope?.id)) {
       const error = new Error('Create a successful proof for this exact scope before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
     }
     for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
