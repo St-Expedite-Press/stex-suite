@@ -26,6 +26,14 @@ test('records and applies only a current deterministic bounded proposal', async 
   assert.match(await readFile(store.pagePath(project.id), 'utf8'), /A sharper working headline/);
 });
 
+test('a proposed heading is literal text: no replacement patterns, no JSX elements or expressions', async (context) => {
+  const store = await fixture(context); const project = await store.create({ title: 'One' });
+  const proposal = await store.proposal(project.id, { message: "Price $& and $' {process.exit(1)} <script>x</script>" });
+  const heading = /<h1>([^<]*)<\/h1>/.exec(proposal.source)[1];
+  assert.equal(heading, "Price $& and $' process.exit(1) scriptx/script");
+  assert.equal(proposal.source.match(/<h1>/g).length, 1, 'the page source was not spliced into the heading');
+});
+
 test('refuses stale proposal source and never commits it', async (context) => {
   const store = await fixture(context); const project = await store.create({ title: 'One' }); const proposal = await store.proposal(project.id, { message: 'Proposed' });
   await writeFile(store.pagePath(project.id), '// concurrent local change\n', 'utf8');
