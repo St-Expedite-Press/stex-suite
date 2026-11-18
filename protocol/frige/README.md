@@ -185,10 +185,30 @@ Rules the engine enforces:
 - A proposal writes nothing. Only an explicit decision or rollback writes.
 - A change is kept only for a node whose exact text was offered in that turn.
 - Acceptance writes through the base hash; a piece edited since is `stale`.
-  With several pieces pending, each is decided independently. A change is
-  `accepted` only when its own decision wrote it: if the piece already holds
-  the proposed text because something else wrote it, the change is `stale`
-  and cannot be rolled back, so its `before` can never undo another write.
+  Accepting several pieces together (no `nodeId`) is all-or-nothing: every
+  piece is checked first, and if any has changed it is marked `stale`,
+  nothing is written, and the others stay `pending` to decide again. If a
+  write fails part-way, every piece that holds the proposed text is restored,
+  and each change's status then follows what its piece holds: `failed` if
+  it holds its earlier text, `accepted` (with the reason) in the rare case a
+  restore did not take effect, so a rollback can still undo it. Outcomes are
+  read from the files, because a write can reach the file and still report
+  an error. A change is `accepted` only when its
+  own decision wrote it: if the piece already holds the proposed text
+  because something else wrote it, the change is `stale` and cannot be
+  rolled back, so its `before` can never undo another write.
+- Before writing, an acceptance records the pieces it is applying as
+  `applying` on the contract and removes it when done, including when it
+  fails. It is left in place only if the engine stopped, or a piece could not
+  be read to settle its outcome. A contract still carrying `applying` is
+  settled before anything else acts on it: the first time the book is used
+  after the engine starts, and before any decision, rollback or newer
+  proposal touches that contract. Each listed piece holding the proposed text
+  is restored to `before`, a piece holding anything else is left as it is,
+  and those changes become `failed` with the reason, so the author decides
+  again. If a piece cannot be read, nothing is settled and the operation
+  fails, to be retried; a lock is never taken to mean the piece was left
+  alone.
 - `POST /contracts/<id>/revert` restores `before` for each accepted change,
   only if every targeted piece still holds `afterHash`. Otherwise it returns
   `409 STALE_SOURCE` and writes nothing. The node id is unchanged and the

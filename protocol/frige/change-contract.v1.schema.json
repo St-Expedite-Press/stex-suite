@@ -630,6 +630,27 @@
           "type": "object"
         }
       }
+    },
+    "applying": {
+      "description": "Present while an acceptance is writing. Left in place only if the engine stopped, or a piece could not be read to settle its outcome. Such a record is settled (each piece holding the proposed text restored, the changes marked failed) before anything else acts on the contract, and the first time the book is used after a start.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "nodeIds"
+      ],
+      "properties": {
+        "startedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

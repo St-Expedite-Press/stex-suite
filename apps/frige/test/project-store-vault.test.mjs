@@ -57,11 +57,17 @@ test('a change set keeps only changes to offered nodes, and accepting never over
   const both = [...section.sources, ...pageContext.sources];
   const pair = (await store.createChangeSet(sectionId, { changes: [{ nodeId: second, source: '# Second\n\nFrom Hermes.\n' }, { nodeId: first, source: '# First\n\nFrom Hermes.\n' }] }, both)).changeSet;
   const edited = await store.node(first); await store.updateNode(first, '# First\n\nBy hand.\n', edited.hash);
+  // Accepting both together is all-or-nothing (program Wave 3d): the edited piece is
+  // stale, so neither is written, and the other stays pending to decide again.
   const decided = await store.decideChanges(sectionId, pair.id, { decision: 'accept' });
-  assert.deepEqual(decided.changes.map((change) => change.status), ['accepted', 'stale']); assert.equal(decided.status, 'resolved');
-  assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
+  assert.deepEqual(decided.changes.map((change) => change.status), ['pending', 'stale']); assert.equal(decided.status, 'pending');
+  assert.doesNotMatch(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
   assert.match(await readFile(path.join(root, 'manuscript', '01', 'First.md'), 'utf8'), /By hand/);
   assert.equal((await store.turns(sectionId)).at(-1).kind, 'changes-decided');
+  // The remaining piece can still be accepted on its own.
+  const second2 = await store.decideChanges(sectionId, pair.id, { decision: 'accept' });
+  assert.deepEqual(second2.changes.map((change) => change.status), ['accepted', 'stale']); assert.equal(second2.status, 'resolved');
+  assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
   await assert.rejects(() => store.decideChanges(sectionId, pair.id, { decision: 'accept' }), /No pending change/);
 });
 test('assembles table-of-contents order and prints editorial notes as footnotes where they occur', async (context) => {

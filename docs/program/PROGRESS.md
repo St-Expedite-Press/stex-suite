@@ -5,11 +5,13 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 
 ## Current wave
 
-**Wave 3 — section and book intelligence.** Waves 2, 3a and 3b are implemented,
-reviewed and committed on the local branch `feat/frige-change-contracts`.
-Evidence: [Wave 2](../verification/frige-change-contracts-w2.md),
+**Wave 3 — section and book intelligence.** Waves 2, 3a, 3b and 3d are
+implemented, reviewed and committed on the local branch
+`feat/frige-change-contracts`. Evidence:
+[Wave 2](../verification/frige-change-contracts-w2.md),
 [Wave 3a](../verification/frige-layout-overrides-w3a.md),
-[Wave 3b](../verification/frige-layout-contracts-w3b.md).
+[Wave 3b](../verification/frige-layout-contracts-w3b.md),
+[Wave 3d](../verification/frige-atomic-acceptance-w3d.md).
 
 ## Work packages
 
@@ -27,8 +29,8 @@ Evidence: [Wave 2](../verification/frige-change-contracts-w2.md),
 | W3-0 | Wave 3 specification | 3 | Drafted; open to owner review | [Master plan](MASTER-PLAN.md#wave-3-specification) |
 | W3-a | Typed layout overrides (book → section → element) | 3 | Done; one review round, findings fixed | [Wave 3a report](../verification/frige-layout-overrides-w3a.md) |
 | W3-b | Layout change contracts | 3 | Done; two review rounds, findings fixed | [Wave 3b report](../verification/frige-layout-contracts-w3b.md) |
-| W3-c | Hierarchical context with categories | 3 | Next | — |
-| W3-d | All-or-nothing application across pieces | 3 | Planned | — |
+| W3-c | Hierarchical context with categories (with the stex-igor adapter) | 3 | Next; local stex-igor branch authorized (D-014) | — |
+| W3-d | All-or-nothing application across pieces, with crash recovery | 3 | Done; two review rounds, findings fixed | [Wave 3d report](../verification/frige-atomic-acceptance-w3d.md) |
 | W3-e | Stable section identity | 3 | Planned | — |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
@@ -46,5 +48,5 @@ Evidence: [Wave 2](../verification/frige-change-contracts-w2.md),
 
 1. Owner: review the Wave 3 specification and the open decisions in the
    [handoff](HANDOFF.md#decisions-waiting-on-the-owner).
-2. Wave 3c: hierarchical context with categories.
-3. Then Waves 3d–3e: all-or-nothing application, stable section identity.
+2. Wave 3c: hierarchical context, in Frige and the local stex-igor branch.
+3. Then Wave 3e: stable section identity.

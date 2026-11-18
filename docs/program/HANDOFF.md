@@ -14,10 +14,12 @@ Update this file whenever the state below changes.
 ## State
 
 - **Branch:** `feat/frige-change-contracts` in `stex-suite`, cut from
-  `d96340e`. Local only; nothing is pushed. Waves 2, 3a and 3b and two
-  baseline defect fixes are committed locally on top of `d96340e`.
-- **stex-igor:** untouched, at `d0598d8`.
-- **Current work:** Wave 3c (hierarchical context). See [progress](PROGRESS.md) for package states and the
+  `d96340e`. Local only; nothing is pushed. Waves 2, 3a, 3b and 3d and
+  two baseline defect fixes are committed locally on top of `d96340e`.
+- **stex-igor:** local branch `feat/frige-scope-context` from `d0598d8`, for
+  the Wave 3c adapter change ([D-014](DECISIONS.md)). Local only: a push to
+  stex-igor `main` deploys, and pushing needs the owner's approval.
+- **Current work:** Wave 3c (hierarchical context), in Frige and the stex-igor adapter. See [progress](PROGRESS.md) for package states and the
   [Wave 2 report](../verification/frige-change-contracts-w2.md) for evidence.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
@@ -59,5 +61,5 @@ Windows Application Control on the owner's machine blocks their launchers in
 | Base hash required on source saves ([D-004](DECISIONS.md)) | Keep | Closes a gap in the stale-write guard |
 | Never overwrite a file that is not valid UTF-8 ([D-009](DECISIONS.md)) | Keep | Such a file's bytes were destroyed on the first write, beyond rollback |
 | Push `feat/frige-change-contracts` so CI runs it | Push after review round 2 and the local commit | CI has not run this work |
-| Authorize a `stex-igor` branch for Wave 4 and, later, its release | Authorize the local branch now; the release separately | Real proposals need the inference adapter to change |
+| Release the `stex-igor` branch (local branch authorized 2026-11-17, D-014) | Decide after Waves 3c and 4 are reviewed locally | A push to `main` deploys to production |
 | Runtime model for the director (no Claude models; xAI through OpenRouter preferred) | Decide after a catalog check, which is a paid-adjacent lookup | Wave 4 needs tool-capable, structured-output models |

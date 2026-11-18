@@ -304,7 +304,74 @@ export class ProjectStore {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
     await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.contractsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
     const graph = await this.graph();
-    return graph.schemaVersion >= 4 ? graph : this.refreshGraph();
+    const ready = graph.schemaVersion >= 4 ? graph : await this.refreshGraph();
+    // Once per store: undo any acceptance a stopped process left half applied.
+    // The server initializes a store on every request, so this must not repeat.
+    // A recovery that fails (a passing file lock) is tried again on the next call, not cached as failed.
+    if (!this.recovery) this.recovery = this.exclusive(() => this.#recoverInterrupted()).catch((error) => { this.recovery = null; throw error; });
+    await this.recovery;
+    return ready;
+  }
+
+  /**
+   * Restores pieces written by an acceptance that never finished. Before an
+   * acceptance writes, it records which pieces it is applying (`applying` on
+   * the contract); a contract still carrying that record was interrupted.
+   * Each such piece that holds the proposed text is restored to its prior
+   * text, and every change in the interrupted acceptance is recorded as
+   * failed, so the author decides again with the manuscript as it was.
+   *
+   * @returns {Promise<string[]>}  Ids of the contracts that were recovered.
+   */
+  async #recoverInterrupted() {
+    const recovered = [];
+    for (const record of await this.#journal()) {
+      if (!record.applying) continue;
+      await this.#settleInterrupted(record);
+      recovered.push(record.id);
+    }
+    return recovered;
+  }
+
+  /**
+   * Settles one contract left mid-acceptance (`applying` set): each listed
+   * pending text change whose piece holds the proposed text is restored to
+   * its prior text, every such change is recorded as failed, and `applying`
+   * is removed. Runs inside the store lock: from start-up recovery, and before
+   * any decision, rollback or newer proposal touches the contract, so a later
+   * operation can never act on a half-applied acceptance.
+   *
+   * A piece that cannot be read throws, leaving the record unchanged on disk,
+   * so the operation fails and is retried rather than guessing what the piece
+   * holds.
+   *
+   * @param {import('./change-contract.mjs').ChangeContract} record  Mutated in place and saved.
+   * @returns {Promise<void>}
+   */
+  async #settleInterrupted(record) {
+    const at = new Date().toISOString();
+    // Without a usable list, every pending text change of the contract is checked.
+    const listed = Array.isArray(record.applying.nodeIds) ? record.applying.nodeIds
+      : record.changes.filter((entry) => entry.kind !== LAYOUT_CHANGE && entry.status === 'pending').map((entry) => entry.nodeId);
+    const pending = listed.map((id) => record.changes.find((entry) => entry.kind !== LAYOUT_CHANGE && entry.nodeId === id && entry.status === 'pending')).filter(Boolean);
+    // Read every piece before writing any, so an unreadable piece changes nothing.
+    const held = [];
+    for (const change of pending) held.push((await this.#nodeOrMissing(change.nodeId))?.hash ?? null);
+    const outcomes = [];
+    for (const [index, change] of pending.entries()) {
+      let restored = false;
+      if (held[index] === change.afterHash) { await this.#writeNode(change.nodeId, change.before, change.afterHash); restored = true; }
+      change.status = 'failed'; change.decidedAt = at;
+      change.error = restored
+        ? 'The acceptance was interrupted before it finished; this piece was restored to its earlier text. Accept again to apply it.'
+        : 'The acceptance was interrupted before it finished; this piece does not hold the proposed text, so it was left as it is. Accept again to apply it.';
+      outcomes.push(change);
+    }
+    delete record.applying;
+    record.status = hasPending(record) ? 'pending' : 'resolved';
+    await this.#saveContract(record);
+    const scopeExists = await this.scope(record.scopeId).then(() => true, () => false);
+    if (outcomes.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-decided', changeSetId: record.id, decisions: outcomes.map(decisionOf) });
   }
 
   async refreshGraph() {
@@ -367,7 +434,7 @@ export class ProjectStore {
   async node(id) {
     const graph = await this.graph();
     const summary = graph.nodes.find((entry) => entry.id === this.nodePath(id));
-    if (!summary) throw new Error('Graph node not found.');
+    if (!summary) throw codedError('Graph node not found.', 'NODE_NOT_FOUND');
     const source = await readFile(this.sourcePath(summary.relativePath), 'utf8');
     return { ...summary, source, hash: sourceHash(source) };
   }
@@ -631,6 +698,8 @@ export class ProjectStore {
     const current = await this.changeSet(scopeId);
     if (hasPending(current) && !earlier.has(current.id)) earlier.set(current.id, current);
     for (const prior of earlier.values()) {
+      // Settled first, so superseding never leaves a half-applied acceptance in place.
+      if (prior.applying) await this.#settleInterrupted(prior);
       const replaced = supersede(prior, id, createdAt);
       await this.#saveContract(prior);
       await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId: prior.id, decisions: replaced.map(decisionOf) });
@@ -745,10 +814,15 @@ export class ProjectStore {
   }
 
   /**
-   * Applies the author's decision to the scope's current contract. Accepting
-   * writes through the base-hash check, so a node edited since the proposal is
-   * marked stale, never overwritten. Pieces are decided independently: with
-   * several pending, some may be accepted while others turn out stale.
+   * Applies the author's decision to the scope's current contract.
+   *
+   * Accepting text changes is all-or-nothing across the pieces decided
+   * together: every piece is checked against its base hash before any is
+   * written. If any has changed since the proposal, that change is marked
+   * stale and nothing is written; the others stay pending to decide again.
+   * If a write fails part-way, the pieces already written are restored. An
+   * `applying` record saved before the first write lets a restarted process
+   * undo an acceptance that a stop interrupted (see `#recoverInterrupted`).
    *
    * @param {string} scopeId
    * @param {string} changeSetId  Must be the scope's current contract.
@@ -762,31 +836,142 @@ export class ProjectStore {
     if (!['accept', 'reject'].includes(decision)) throw new Error('Decision must be accept or reject.');
     const record = await this.changeSet(scopeId);
     if (!record || record.id !== changeSetId) throw new Error('This change set is no longer current.');
+    // A half-applied earlier acceptance is settled before anything is decided on top of it.
+    if (record.applying) await this.#settleInterrupted(record);
     const targets = record.changes.filter((change) => change.status === 'pending' && (!nodeId || change.nodeId === nodeId));
     if (!targets.length) throw new Error('No pending change matches.');
+    let decided = targets;
     try {
-      for (const change of targets) {
-        change.decidedAt = new Date().toISOString();
-        if (decision === 'reject') { change.status = 'rejected'; continue; }
-        // A change is recorded as accepted only when this decision wrote it. A
-        // piece that already holds the proposed text was written by something
-        // else (another contract or a hand edit), so this change is stale and
-        // can never be rolled back: its `before` would undo that other write.
-        try {
-          if (change.kind === LAYOUT_CHANGE) await this.#writeLayout(change, change.after, change.baseHash, { requireTarget: true });
-          else await this.#writeNode(change.nodeId, change.source, change.baseHash);
-          change.status = 'accepted';
-        } catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
-      }
+      const at = new Date().toISOString();
+      if (decision === 'reject') for (const change of targets) { change.decidedAt = at; change.status = 'rejected'; }
+      else if (targets[0].kind === LAYOUT_CHANGE) {
+        // A layout contract holds one change.
+        const [change] = targets; change.decidedAt = at;
+        try { await this.#writeLayout(change, change.after, change.baseHash, { requireTarget: true }); change.status = 'accepted'; }
+        catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
+      } else decided = await this.#acceptText(record, targets, at);
     } finally {
       // A proof recorded before this decision did not typeset a piece accepted now.
       if (targets.some((change) => change.status === 'accepted')) record.proof = null;
-      // Saved even if a write threw, so the record never claims less than what reached the manuscript.
+      // Saved even if a step threw. Each status already follows what reached the manuscript, and
+      // `applying` is still set only when a piece could not be read, for recovery to settle.
       record.status = hasPending(record) ? 'pending' : 'resolved';
       await this.#saveContract(record, { current: true });
     }
-    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: targets.map(decisionOf) });
+    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: decided.map(decisionOf) });
     return record;
+  }
+
+  /**
+   * Accepts text changes all-or-nothing. Runs inside the store lock.
+   *
+   * A change is recorded as accepted only when this acceptance wrote it. A
+   * piece that already holds the proposed text was written by something else
+   * (another contract or a hand edit), so its change is stale and can never be
+   * rolled back: its `before` would undo that other write.
+   *
+   * Outcomes are decided from what each piece holds on disk, never from
+   * whether a write threw: a write can reach the file and still throw
+   * afterwards (while the graph refreshes), so an exception proves nothing
+   * about the manuscript. The `applying` record is removed before this
+   * returns or throws, except when a piece's state could not be read, in which
+   * case it stays for `#recoverInterrupted` to settle on the next start.
+   *
+   * @param {import('./change-contract.mjs').ChangeContract} record  Mutated in place; the caller saves it.
+   * @param {import('./change-contract.mjs').ContractChange[]} targets  Pending text changes to accept together.
+   * @param {string} at  ISO timestamp of the decision.
+   * @returns {Promise<import('./change-contract.mjs').ContractChange[]>}  The changes whose status this decided.
+   * @throws A read error during the first check, or a failure to record the intent; nothing was written then.
+   */
+  async #acceptText(record, targets, at) {
+    // 1. Check every piece first; one that changed since the proposal stops all writes.
+    const stale = [];
+    for (const change of targets) {
+      const node = await this.#nodeOrMissing(change.nodeId);
+      if (node?.hash !== change.baseHash) stale.push(change);
+    }
+    if (stale.length) {
+      for (const change of stale) {
+        change.status = 'stale'; change.decidedAt = at;
+        change.error = 'This piece changed after the suggestion, so it was not applied.';
+      }
+      // The rest were not written either; with several decided together they stay pending.
+      return stale;
+    }
+
+    // 2. Record the intent before the first write, so a stop part-way can be undone on restart.
+    record.applying = { startedAt: at, nodeIds: targets.map((change) => change.nodeId) };
+    try {
+      await this.#saveContract(record, { current: true });
+    } catch (error) {
+      // Nothing was written; the record must not be left claiming an acceptance in progress.
+      // The save may have reached the contract file before failing, so try once to clear it there.
+      delete record.applying;
+      await this.#saveContract(record).catch(() => {});
+      throw error;
+    }
+
+    // 3. Write each piece in order, stopping at the first failure.
+    let failure = null; let failedIndex = -1;
+    for (const [index, change] of targets.entries()) {
+      try {
+        await this.#writeNode(change.nodeId, change.source, change.baseHash);
+      } catch (error) {
+        failure = error; failedIndex = index;
+        break;
+      }
+    }
+
+    // 4. On a failure, restore every piece that holds the proposed text, whether or not its write threw.
+    if (failure) {
+      for (const change of [...targets].reverse()) {
+        const node = await this.#nodeOrMissing(change.nodeId).catch(() => null);
+        if (node?.hash !== change.afterHash) continue;
+        // A restore that throws may still have reached the file; step 5 reads what it holds.
+        await this.#writeNode(change.nodeId, change.before, change.afterHash).catch(() => {});
+      }
+    }
+
+    // 5. Each status follows what the piece now holds.
+    let settled = true;
+    for (const [index, change] of targets.entries()) {
+      let hash;
+      try { hash = (await this.#nodeOrMissing(change.nodeId))?.hash ?? null; }
+      catch { settled = false; continue; } // Unreadable: leave it pending under `applying` for recovery.
+      change.decidedAt = at;
+      if (!failure && hash === change.afterHash) { change.status = 'accepted'; continue; }
+      if (hash === change.afterHash) {
+        // Never claim less than what reached the manuscript: it is accepted, and rollback can undo it.
+        change.status = 'accepted';
+        change.error = `Another piece of this change could not be written, and this one could not be restored: ${failure.message}`;
+      } else if (hash === change.baseHash) {
+        change.status = 'failed';
+        // The piece whose write failed carries that error; the others say why they were not applied.
+        change.error = !failure ? 'The write did not take effect, so this piece was not changed.'
+          : index === failedIndex ? failure.message : 'Not applied: another piece of this change could not be written, so none was.';
+      } else {
+        change.status = 'failed';
+        change.error = 'Not applied: this piece holds neither its earlier text nor the proposed text, so it was left as it is.';
+      }
+    }
+    if (settled) delete record.applying;
+    return targets;
+  }
+
+  /**
+   * Reads a piece, or `null` when it is no longer in the manuscript. Any other
+   * failure (a lock held by a sync client or scanner) is thrown, so a passing
+   * lock is never mistaken for a changed or missing piece.
+   *
+   * @param {string} id
+   * @returns {Promise<{ hash: string, source: string } | null>}
+   */
+  async #nodeOrMissing(id) {
+    try { return await this.node(id); }
+    catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'NODE_NOT_FOUND') return null;
+      throw error;
+    }
   }
 
   /**
@@ -807,6 +992,7 @@ export class ProjectStore {
   async #revertChanges(contractId, { nodeId = null } = {}) {
     const record = await this.contract(contractId);
     if (!record) throw codedError('Change contract not found.', 'CONTRACT_NOT_FOUND');
+    if (record.applying) await this.#settleInterrupted(record);
     const targets = record.changes.filter((change) => change.status === 'accepted' && (!nodeId || change.nodeId === nodeId));
     if (!targets.length) throw codedError('This contract has no accepted change to roll back.', 'NOTHING_TO_REVERT');
 

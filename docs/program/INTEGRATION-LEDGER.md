@@ -16,8 +16,8 @@ must keep compatible.
 
 | Repository | Branch | Base | Contents | Pushed | Merge needs |
 | --- | --- | --- | --- | --- | --- |
-| stex-suite | `feat/frige-change-contracts` | `d96340e` | Program records; Waves 2, 3a, 3b; two baseline defect fixes (all committed locally) | No | Owner authorization to push; PR 5 merge order |
-| stex-igor | — | — | No program change yet | — | — |
+| stex-suite | `feat/frige-change-contracts` | `d96340e` | Program records; Waves 2, 3a, 3b, 3d; two baseline defect fixes (all committed locally) | No | Owner authorization to push; PR 5 merge order |
+| stex-igor | `feat/frige-scope-context` | `d0598d8` | Wave 3c adapter change (in progress) | No | Owner authorization to push; a push to `main` deploys |
 
 ## Compatibility requirements
 
@@ -38,4 +38,5 @@ must keep compatible.
 | Wave 2 Frige change contracts | 187 Node tests pass; Python checks pass via `python -m` | `verify:frige` PASS (Chrome) | Two rounds; findings fixed; round-2 fixes not re-reviewed | Not pushed |
 | Wave 3a layout overrides | `corepack pnpm test` passes as one command (196 Node tests) | `verify:frige` PASS (Chrome) | One round; findings fixed; not re-reviewed | Not pushed |
 | Wave 3b layout change contracts | `corepack pnpm test` passes (205 Node tests) | `verify:frige` PASS (Chrome) | Two rounds; findings fixed; round-2 fixes not re-reviewed | Not pushed |
+| Wave 3d all-or-nothing acceptance | `corepack pnpm test` passes (215 Node tests) | `verify:frige` PASS (Chrome) | Two rounds; findings fixed; round-2 fixes not re-reviewed | Not pushed |
 | Seaxneat simulator input fix | `test:seaxneat` (24) | `verify:platform` PASS (real Next build) | Not independently reviewed (small defect fix) | Not pushed |

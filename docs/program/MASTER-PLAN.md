@@ -189,11 +189,14 @@ category and revision, and categories are never merged.
 - Before the first write, the contract records an `applying` intent listing
   the pieces. If a write fails, the pieces already written are restored, and
   the contract records the failure.
-- On start, a contract left `applying` by a crash is completed or restored
-  from its stored texts, and the outcome is recorded.
+- On start, a contract left `applying` by a crash is restored from its
+  stored texts (never completed: the author decides again), and the outcome
+  is recorded.
 - Per-piece acceptance stays available.
-- **Acceptance:** an injected failure on the second of three pieces leaves
-  all three unchanged; a simulated crash mid-apply is recovered on restart.
+- **Acceptance:** an injected failure on the second of three pieces leaves all
+  three unchanged, including when a write reaches the file and then fails;
+  a simulated crash mid-apply is recovered on restart.
+- **Done:** see the [Wave 3d evidence](../verification/frige-atomic-acceptance-w3d.md).
 
 ### 3e — Stable section identity
 

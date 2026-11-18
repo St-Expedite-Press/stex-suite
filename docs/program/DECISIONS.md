@@ -51,7 +51,9 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 
 ## D-005 — Multi-piece acceptance stays per piece until Wave 3
 
-- **Status:** Proposed.
+- **Status:** Superseded by Wave 3d (2026-11-17): accepting several pieces
+  together is now all-or-nothing, with recovery after an interrupted
+  acceptance. The original decision is kept below for the record.
 - **Decision:** "Accept all" continues to decide each piece independently, so
   a set can end partly accepted and partly stale. This is existing, tested
   behaviour. All-or-nothing application belongs with section and book scopes
@@ -137,6 +139,32 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 - **Why:** a printed book has one page size and one apparatus. Allowing
   overrides there would invite layouts the press cannot produce, for no
   current request.
+
+## D-013 — Wave 3d and 3e before 3c
+
+- **Status:** Proposed (2026-11-17).
+- **Decision:** build all-or-nothing application (3d) and stable section
+  identity (3e) before hierarchical context (3c).
+- **Why:** the stex-igor inference adapter forwards only `scope`, `page`,
+  `scopeSources` and `withheldNodes` to Hermes
+  (`stex-igor/services/inference/src/texgraph-adapter.mjs`). New context
+  fields from Frige would be dropped before the director sees them, so 3c
+  needs an adapter change in stex-igor, which waits on the owner's
+  authorization of a stex-igor branch. 3d and 3e are entirely inside Frige
+  and strengthen manuscript integrity, which the directive ranks highly.
+- **Affects:** the order of Wave 3 increments only.
+
+## D-014 — A local stex-igor branch for the inference adapter
+
+- **Decided by:** owner, 2026-11-17 ("sure", in answer to the request for a
+  local stex-igor branch for the Wave 3c and Wave 4 adapter work).
+- **Scope:** creating and committing to a local branch in the `stex-igor`
+  submodule. **Not** pushing it, merging it, moving the suite's submodule
+  pointer to an unpushed commit in a pushed suite branch, or any
+  deployment. A push to stex-igor `main` deploys to production and needs its
+  own approval.
+- **Affects:** `stex-igor/services/inference` (the scope-turn adapter) and
+  its tests.
 
 ## Open decisions for the owner
 

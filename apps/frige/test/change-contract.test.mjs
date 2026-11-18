@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -714,6 +714,179 @@ test('a layout proposal supersedes a pending text proposal in the same conversat
   assert.deepEqual(otherPiece.conflicts, [], 'layout changes to different targets do not conflict');
   assert.equal(layout.changes[0].status, 'pending');
   assert.deepEqual(violations(SCHEMA, sectionText), []);
+});
+
+// --- All-or-nothing acceptance and crash recovery (program Wave 3d) ---------------
+
+test('a failed write part-way through accepting several pieces restores the pieces already written', async (context) => {
+  const { root, store, first, second } = await syntheticBook(context);
+  const secondFile = path.join(root, 'manuscript', '02', 'Second.md');
+  // The second piece is not valid UTF-8, so Frige refuses to overwrite it: a write that fails after the first succeeded.
+  const latin1 = Buffer.concat([Buffer.from('# Second\n\ncaf', 'ascii'), Buffer.from([0xe9]), Buffer.from('\n', 'ascii')]);
+  await writeFile(secondFile, latin1); await store.refreshGraph();
+  const graph = await store.graph();
+  const offered = [...(await store.scopeContext(graph.readingOrder[0])).sources, ...(await store.scopeContext(graph.readingOrder[1])).sources];
+  const { changeSet } = await store.createChangeSet('book', { changes: [{ nodeId: first, source: `${FIRST}\nFirst together.\n` }, { nodeId: second, source: '# Second\n\nReplaced.\n' }] }, offered);
+  const decided = await store.decideChanges('book', changeSet.id, { decision: 'accept' });
+  assert.deepEqual(decided.changes.map((change) => change.status), ['failed', 'failed']);
+  assert.match(decided.changes[0].error, /none was/); assert.match(decided.changes[1].error, /not valid UTF-8/);
+  assert.equal((await store.node(first)).source, FIRST, 'the piece written first was restored');
+  assert.ok((await readFile(secondFile)).equals(latin1));
+  assert.equal('applying' in (await store.contract(changeSet.id)), false, 'no intent record is left behind');
+  assert.deepEqual(violations(SCHEMA, await store.contract(changeSet.id)), []);
+});
+
+test('an acceptance interrupted by a stop is undone when the store next starts', async (context) => {
+  const { root, store, first, firstFile } = await syntheticBook(context);
+  const contract = await propose(store, first, `${FIRST}\nWritten before the stop.\n`);
+  // Simulate a stop after the intent was recorded and the piece written, before the record was completed.
+  const file = path.join(root, '.texgraph', 'contracts', `${contract.id}.json`);
+  const record = JSON.parse(await readFile(file, 'utf8'));
+  record.applying = { startedAt: '2026-01-01T00:00:00.000Z', nodeIds: [first] };
+  await writeFile(file, JSON.stringify(record)); await writeFile(firstFile, contract.changes[0].source);
+
+  const restarted = new ProjectStore(root); await restarted.initialize();
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST, 'the half-applied piece is restored');
+  const recovered = await restarted.contract(contract.id);
+  assert.equal(recovered.changes[0].status, 'failed'); assert.match(recovered.changes[0].error, /interrupted/);
+  assert.equal('applying' in recovered, false);
+  assert.equal((await restarted.turns(first)).at(-1).kind, 'changes-decided');
+  assert.deepEqual(violations(SCHEMA, recovered), []);
+  // Recovery runs once per store; the author can propose and accept again.
+  const again = await propose(restarted, first, `${FIRST}\nAccepted after recovery.\n`);
+  assert.equal((await restarted.decideChanges(first, again.id, { decision: 'accept' })).changes[0].status, 'accepted');
+});
+
+test('an interrupted acceptance whose piece was never written is recorded as failed and changes nothing', async (context) => {
+  const { root, first, firstFile } = await syntheticBook(context);
+  const store = new ProjectStore(root);
+  const contract = await propose(store, first, `${FIRST}\nNever written.\n`);
+  const file = path.join(root, '.texgraph', 'contracts', `${contract.id}.json`);
+  const record = JSON.parse(await readFile(file, 'utf8')); record.applying = { startedAt: '2026-01-01T00:00:00.000Z', nodeIds: [first] };
+  await writeFile(file, JSON.stringify(record));
+  const restarted = new ProjectStore(root); await restarted.initialize();
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST);
+  const recovered = await restarted.contract(contract.id);
+  assert.equal(recovered.changes[0].status, 'failed'); assert.match(recovered.changes[0].error, /left as it is/);
+  assert.equal('applying' in recovered, false); assert.equal((await restarted.turns(first)).at(-1).kind, 'changes-decided');
+});
+
+test('recovery leaves alone a piece edited after the stop, and a record carrying `applying` conforms to the schema', async (context) => {
+  const { root, store, first, firstFile } = await syntheticBook(context);
+  const contract = await propose(store, first, `${FIRST}\nProposed.\n`);
+  const file = path.join(root, '.texgraph', 'contracts', `${contract.id}.json`);
+  const record = JSON.parse(await readFile(file, 'utf8')); record.applying = { startedAt: '2026-01-01T00:00:00.000Z', nodeIds: [first] };
+  assert.deepEqual(violations(SCHEMA, record), [], 'a record mid-acceptance is valid');
+  await writeFile(file, JSON.stringify(record));
+  const byHand = `${FIRST}\nEdited outside Frige after the stop.\n`;
+  await writeFile(firstFile, byHand);
+  const restarted = new ProjectStore(root); await restarted.initialize();
+  assert.equal(await readFile(firstFile, 'utf8'), byHand, 'an edit made after the stop is never overwritten');
+  assert.equal((await restarted.contract(contract.id)).changes[0].status, 'failed');
+});
+
+test('a write that reaches the file and then throws is still restored, and recorded by what the piece holds', async (context) => {
+  const { root, store, first, second } = await syntheticBook(context);
+  const graph = await store.graph();
+  const offered = [...(await store.scopeContext(graph.readingOrder[0])).sources, ...(await store.scopeContext(graph.readingOrder[1])).sources];
+  const { changeSet } = await store.createChangeSet('book', { changes: [{ nodeId: first, source: `${FIRST}\nOne.\n` }, { nodeId: second, source: `${SECOND}\nTwo.\n` }] }, offered);
+  // The second piece's write replaces the file, then the graph refresh after it throws.
+  const refresh = store.refreshGraph.bind(store); let calls = 0;
+  store.refreshGraph = async () => { calls += 1; if (calls === 2) throw Object.assign(new Error('Simulated lock during refresh.'), { code: 'EBUSY' }); return refresh(); };
+  const decided = await store.decideChanges('book', changeSet.id, { decision: 'accept' });
+  store.refreshGraph = refresh;
+  assert.deepEqual(decided.changes.map((change) => change.status), ['failed', 'failed']);
+  assert.match(decided.changes[1].error, /Simulated lock/);
+  assert.equal(await readFile(path.join(root, 'manuscript', '01', 'First.md'), 'utf8'), FIRST);
+  assert.equal(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), SECOND, 'the piece whose write threw after reaching the file is restored too');
+  assert.equal('applying' in (await store.contract(changeSet.id)), false);
+});
+
+test('a failure to save the contract during acceptance never leaves `applying` on disk', async (context) => {
+  const { root, store, first, firstFile } = await syntheticBook(context);
+  const contract = await propose(store, first, `${FIRST}\nProposed.\n`);
+  // The contract file can be written but the scope's pointer cannot (a lock outlasting the retries).
+  const pointer = path.join(root, '.texgraph', 'proposals', `${first}.json`);
+  await chmod(pointer, 0o444);
+  try { await assert.rejects(() => store.decideChanges(first, contract.id, { decision: 'accept' })); }
+  finally { await chmod(pointer, 0o644); }
+  const stored = await store.contract(contract.id);
+  assert.equal('applying' in stored, false, 'the record saved afterwards does not claim an acceptance in progress');
+  assert.equal(stored.changes[0].status, 'pending'); assert.equal(await readFile(firstFile, 'utf8'), FIRST);
+  // So a later, legitimate write of the same text is never undone by a restart.
+  await store.updateNode(first, contract.changes[0].source, (await store.node(first)).hash);
+  await new ProjectStore(root).initialize();
+  assert.equal(await readFile(firstFile, 'utf8'), contract.changes[0].source);
+});
+
+/**
+ * Leaves a contract as an acceptance does when it could not read a piece to
+ * settle it: `applying` set, the change still pending, the piece holding the
+ * proposed text. The store's start-up recovery has already run.
+ *
+ * @param {import('node:test').TestContext} context
+ */
+async function halfApplied(context) {
+  const book = await syntheticBook(context);
+  await book.store.initialize();
+  const contract = await propose(book.store, book.first, `${FIRST}\nWritten, not settled.\n`);
+  const file = path.join(book.root, '.texgraph', 'contracts', `${contract.id}.json`);
+  const record = JSON.parse(await readFile(file, 'utf8')); record.applying = { startedAt: '2026-01-01T00:00:00.000Z', nodeIds: [book.first] };
+  await writeFile(file, JSON.stringify(record)); await writeFile(book.firstFile, contract.changes[0].source);
+  return { ...book, contract };
+}
+
+test('a half-applied acceptance is settled before a later decision, so accepting again cannot make it permanent', async (context) => {
+  const { store, first, firstFile, contract } = await halfApplied(context);
+  await assert.rejects(() => store.decideChanges(first, contract.id, { decision: 'accept' }), /No pending change/);
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST, 'the piece is restored, not left holding the proposed text');
+  const settled = await store.contract(contract.id);
+  assert.equal(settled.changes[0].status, 'failed'); assert.equal('applying' in settled, false);
+});
+
+test('a half-applied acceptance is settled before a newer proposal supersedes it, and before a rollback', async (context) => {
+  const { store, first, firstFile, contract } = await halfApplied(context);
+  await propose(store, first, `${FIRST}\nNewer.\n`);
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST);
+  assert.equal((await store.contract(contract.id)).changes[0].status, 'failed', 'settled, then nothing left to supersede');
+
+  const again = await halfApplied(context);
+  await assert.rejects(() => again.store.revertChanges(again.contract.id), { code: 'NOTHING_TO_REVERT' });
+  assert.equal(await readFile(again.firstFile, 'utf8'), FIRST);
+});
+
+test('recovery that cannot read a piece fails and is retried, never guessing that the piece was left alone', async (context) => {
+  const { root, store, first, firstFile } = await syntheticBook(context);
+  const contract = await propose(store, first, `${FIRST}\nWritten before the stop.\n`);
+  const file = path.join(root, '.texgraph', 'contracts', `${contract.id}.json`);
+  const record = JSON.parse(await readFile(file, 'utf8')); record.applying = { startedAt: '2026-01-01T00:00:00.000Z', nodeIds: [first] };
+  await writeFile(file, JSON.stringify(record)); await writeFile(firstFile, contract.changes[0].source);
+  const restarted = new ProjectStore(root);
+  const read = restarted.node.bind(restarted); let locked = true;
+  restarted.node = async (id) => { if (locked && id === first) throw Object.assign(new Error('Simulated lock.'), { code: 'EBUSY' }); return read(id); };
+  await assert.rejects(() => restarted.initialize(), /Simulated lock/);
+  assert.equal('applying' in (await restarted.contract(contract.id)), true, 'nothing is settled while the piece cannot be read');
+  assert.equal(await readFile(firstFile, 'utf8'), contract.changes[0].source);
+  locked = false;
+  await restarted.initialize();
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST, 'the retried recovery restores the piece');
+  assert.equal((await restarted.contract(contract.id)).changes[0].status, 'failed');
+});
+
+test('accepting three pieces with a failure on the second leaves all three unchanged', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'frige-contract-three-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
+  const files = { A: '# A\n\nOne.\n', B: Buffer.concat([Buffer.from('# B\n\ncaf', 'ascii'), Buffer.from([0xe9]), Buffer.from('\n', 'ascii')]), C: '# C\n\nThree.\n' };
+  for (const [name, content] of Object.entries(files)) await writeFile(path.join(root, 'manuscript', '01', `${name}.md`), content);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [A](01/A.md)\n- [B](01/B.md)\n- [C](01/C.md)\n');
+  const store = new ProjectStore(root); const graph = await store.initialize();
+  const section = graph.book.sections[0];
+  const { sources } = await store.scopeContext(section.id);
+  const { changeSet } = await store.createChangeSet(section.id, { changes: graph.readingOrder.map((nodeId) => ({ nodeId, source: `# Replaced ${nodeId}\n` })) }, sources);
+  const decided = await store.decideChanges(section.id, changeSet.id, { decision: 'accept' });
+  assert.deepEqual(decided.changes.map((change) => change.status), ['failed', 'failed', 'failed']);
+  for (const [name, content] of Object.entries(files)) assert.ok((await readFile(path.join(root, 'manuscript', '01', `${name}.md`))).equals(Buffer.from(content)), `${name} unchanged`);
 });
 
 test('a proof records the hash of the text it typeset, not the hash the graph held', async (context) => {
