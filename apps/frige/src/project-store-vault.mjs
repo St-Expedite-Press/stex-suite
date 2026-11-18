@@ -10,6 +10,15 @@ import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, buildChange, buildContract, con
 const MAX_SOURCE = 400_000;
 /** Most contracts a history listing returns; the journal itself is not truncated. */
 const MAX_LISTED_CONTRACTS = 200;
+/**
+ * Most UTF-8 bytes of book outline offered with a turn. The inference service
+ * counts a turn's whole context in bytes against its own budget (96,000), and
+ * its adapter trims the outline further if the scope's sources and recent turns
+ * leave less room; the contract records what was actually forwarded.
+ */
+const OUTLINE_BUDGET = 20_000;
+/** Most accepted contracts offered with a turn as approved context. */
+const MAX_APPROVED_CONTRACTS = 8;
 const SCOPE_SOURCE_BUDGET = 60_000;
 const NODE_ID = /^[a-z][a-z0-9-]{5,80}$/;
 export const sourceHash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
@@ -540,6 +549,114 @@ export class ProjectStore {
       sources.push({ nodeId: node.id, relativePath: node.relativePath, title: node.title, kind: node.kind, hash: node.hash, source: node.source });
     }
     return { graph, scope, sources, withheld };
+  }
+
+  /**
+   * Context from the levels around a conversation (program Wave 3c), offered
+   * beside its own sources. Each part carries its category, and none contains
+   * manuscript text: piece text is offered only as the scope's own sources.
+   *
+   * - `outline` (`outline`): pieces in reading order with title, path, kind,
+   *   hash and section, and book pages only from a current verified proof, so a
+   *   conversation can reason about the whole book's structure without its
+   *   text. Bounded; `truncated` says when pieces were left out. Titles are the
+   *   pieces' headings, offered as identifying metadata.
+   * - `settings` (`document-settings`): the publication profile and, for a
+   *   section or piece, the size and leading in force there with where they
+   *   come from, and the scope's own override.
+   * - `contracts` (`approved-contract`): the most recent accepted changes
+   *   relevant to the scope (see `relevant`), as targets. The author's request
+   *   is included only for contracts written in this same conversation, since
+   *   it may quote any piece. If the contract history cannot be read, it is
+   *   left out of this turn with `unavailable: true`.
+   *
+   * @param {{ id: string, kind: string, folder?: string }} scope
+   * @param {{ readingOrder: string[], nodes: Array<{ id: string, title: string, kind: string, relativePath: string, hash: string }>, book: { sections: Array<{ id: string, folder: string, title: string, nodeIds: string[] }> } }} graph
+   * @returns {Promise<{
+   *   outline: { category: 'outline', entries: object[], truncated: boolean },
+   *   settings: { category: 'document-settings', designHash: string, book: object, scope: object | null },
+   *   contracts: { category: 'approved-contract', entries: object[], unavailable?: true },
+   * }>}
+   */
+  async hierarchy(scope, graph) {
+    const sectionOf = (id) => graph.book.sections.find((section) => section.nodeIds.includes(id));
+    const design = await this.design();
+    // Pages are offered only from a verified book-order proof that still matches
+    // the book: the same profile, the same reading order through the proof's end,
+    // and each piece's typeset hash equal to its current one. Anything else would
+    // present an old layout's page numbers as the book's.
+    const reference = await this.referenceMap().catch(() => null);
+    const included = Array.isArray(reference?.includedNodeIds) ? reference.includedNodeIds : [];
+    const referenceCurrent = Boolean(reference) && reference.designHash === designHash(design)
+      && JSON.stringify(graph.readingOrder.slice(0, included.length)) === JSON.stringify(included);
+    const pagesOf = (node) => {
+      if (!referenceCurrent || reference.sourceHashes?.[node.id] !== node.hash) return null;
+      const entry = reference.nodes?.find((mapped) => mapped.nodeId === node.id && mapped.firstPage);
+      return entry ? { first: entry.firstBookPage ?? entry.firstPage, last: entry.lastBookPage ?? entry.lastPage } : null;
+    };
+    // The budget counts UTF-8 bytes, as the inference service does, including each entry's separating comma.
+    const entries = []; let size = 2; let truncated = false;
+    for (const id of graph.readingOrder) {
+      const node = graph.nodes.find((entry) => entry.id === id);
+      if (!node) continue;
+      const entry = { nodeId: id, title: node.title, relativePath: node.relativePath, kind: node.kind, hash: node.hash, section: sectionOf(id)?.title ?? null, pages: pagesOf(node) };
+      const cost = Buffer.byteLength(JSON.stringify(entry), 'utf8') + 1;
+      // One piece with an unusually long title is left out without dropping the pieces after it.
+      if (size + cost > OUTLINE_BUDGET) { truncated = true; continue; }
+      size += cost; entries.push(entry);
+    }
+
+    const { sections = {}, nodes = {}, ...book } = design;
+    const own = (map, key) => (key && Object.hasOwn(map, key) ? map[key] : null);
+    let inScope = null;
+    if (scope.kind === 'node') {
+      const folder = sectionOf(scope.id)?.folder || null;
+      const resolved = resolveLayout(design, { sectionKey: folder, nodeId: scope.id });
+      inScope = { level: 'element', fontSize: resolved.fontSize, leading: resolved.leading, sizeFrom: resolved.sizeFrom, own: own(nodes, scope.id), section: own(sections, folder) };
+    } else if (scope.kind !== 'book' && scope.folder) {
+      const resolved = resolveLayout(design, { sectionKey: scope.folder });
+      inScope = { level: 'section', fontSize: resolved.fontSize, leading: resolved.leading, sizeFrom: resolved.sizeFrom, own: own(sections, scope.folder) };
+    }
+
+    const sectionScope = scope.kind === 'node' ? sectionOf(scope.id) : scope.kind === 'book' ? null : scope;
+    /**
+     * Whether an accepted change is approved context for this scope: for the
+     * book, contracts made in the book's conversation; for a section, those made
+     * in the book's or this section run's conversation, and layout changes to its
+     * folder; for a piece, changes made to it at any level and its section's
+     * layout changes.
+     *
+     * @param {{ scopeId: string }} record
+     * @param {{ kind?: string, nodeId?: string | null, level?: string, target?: string }} change
+     * @returns {boolean}
+     */
+    const relevant = (record, change) => {
+      if (scope.kind === 'book') return record.scopeId === 'book';
+      if (scope.kind !== 'node') return record.scopeId === 'book' || record.scopeId === scope.id || (change.kind === LAYOUT_CHANGE && change.level === 'section' && change.target === scope.folder);
+      return change.nodeId === scope.id || (change.kind === LAYOUT_CHANGE && change.level === 'section' && change.target === sectionScope?.folder);
+    };
+    // Approved context is a convenience: an unreadable contract file (a passing
+    // lock) leaves it out for this turn rather than failing the conversation.
+    const journal = await this.#journal().catch(() => null);
+    const contracts = [];
+    for (const record of journal || []) {
+      const accepted = record.changes.filter((change) => change.status === 'accepted' && relevant(record, change));
+      if (!accepted.length) continue;
+      contracts.push({
+        contractId: record.id, scopeId: record.scopeId,
+        // The author's request can quote any piece, so it goes only back to the conversation that wrote it.
+        ...(record.scopeId === scope.id ? { request: String(record.request || '').slice(0, 280) } : {}),
+        decidedAt: accepted.map((change) => change.decidedAt || '').sort().at(-1) || null,
+        changes: accepted.map((change) => ({ kind: change.kind || 'replace-node-source', title: change.title, nodeId: change.nodeId ?? null, ...(change.kind === LAYOUT_CHANGE ? { level: change.level, target: change.target, after: change.after } : {}) })),
+      });
+    }
+    contracts.sort((left, right) => String(right.decidedAt).localeCompare(String(left.decidedAt)));
+
+    return {
+      outline: { category: 'outline', entries, truncated },
+      settings: { category: 'document-settings', designHash: designHash(design), book, scope: inScope },
+      contracts: { category: 'approved-contract', entries: contracts.slice(0, MAX_APPROVED_CONTRACTS), ...(journal ? {} : { unavailable: true }) },
+    };
   }
   // ---------------------------------------------------------------------------
   // Change contracts (stex.frige.change-contract.v1)

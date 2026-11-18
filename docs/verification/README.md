@@ -9,6 +9,7 @@ then use a report here to inspect the command output and limits behind it.
 | Area | Report | Current limit |
 | --- | --- | --- |
 | Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Local branch only; simulator and stub proposals; element scope in the browser; Chrome only |
+| Frige hierarchical context (program Wave 3c) | [Wave 3c evidence](frige-hierarchical-context-w3c.md) | Both repositories on local branches; fake and stub transports only |
 | Frige all-or-nothing acceptance (program Wave 3d) | [Wave 3d evidence](frige-atomic-acceptance-w3d.md) | Local branch only; failures and stops simulated in tests |
 | Frige layout change contracts (program Wave 3b) | [Wave 3b evidence](frige-layout-contracts-w3b.md) | Local branch only; simulator and stub proposals; Chrome only |
 | Frige layout overrides (program Wave 3a) | [Wave 3a evidence](frige-layout-overrides-w3a.md) | Local branch only; author-set overrides only; Chrome only |

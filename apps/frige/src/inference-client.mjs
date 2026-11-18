@@ -126,6 +126,22 @@ function fakeScopeTurn(message, sources = []) {
  * @param {unknown} value
  * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
  */
+/**
+ * Reads the gateway's report of the context it forwarded to the director after
+ * trimming (`meta.forwardedContext`), so the contract can record what the
+ * director was given. Only the expected shape is kept.
+ *
+ * @param {unknown} value
+ * @returns {{ outline: { count: number, truncated: boolean } | null, documentSettings: boolean, approvedContracts: string[] | null } | null}
+ */
+function forwardedFrom(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const outline = value.outline && typeof value.outline === 'object' && Number.isInteger(value.outline.count) && value.outline.count >= 0
+    ? { count: value.outline.count, truncated: value.outline.truncated === true } : null;
+  const approvedContracts = Array.isArray(value.approvedContracts) ? value.approvedContracts.filter((id) => typeof id === 'string').slice(0, 20) : null;
+  return { outline, documentSettings: value.documentSettings === true, approvedContracts };
+}
+
 export function layoutFrom(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const summary = typeof value.summary === 'string' ? { summary: value.summary.slice(0, 500) } : {};
@@ -135,7 +151,16 @@ export function layoutFrom(value) {
   return null;
 }
 
-export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
+/**
+ * One editorial turn with the director for a book, a section or a piece
+ * (`stex.texgraph.scope-turn.v3`). `hierarchy`, when given, adds the scope's
+ * outline, settings in force and approved contracts as three separately
+ * labelled request fields (see `ProjectStore#hierarchy`).
+ *
+ * @param {object} input
+ * @returns {Promise<object>}  The labelled reply; never throws for an unavailable gateway.
+ */
+export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null }) {
   if (deterministic()) return fakeScopeTurn(message, sources);
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
@@ -151,6 +176,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         scopeSources: sources.map(({ nodeId, relativePath, title, kind, hash, source }) => ({ nodeId, relativePath, title, kind, sourceHash: hash, source })),
         withheldNodes: withheld,
         graph,
+        // Additive v3 fields: each carries its own category and none holds manuscript text.
+        ...(hierarchy ? { outline: hierarchy.outline, documentSettings: hierarchy.settings, approvedContracts: hierarchy.contracts } : {}),
         approvedSourceExcerpts: approvedSourceExcerpts.map((entry) => ({ id: entry.id, name: entry.name, excerpt: String(entry.excerpt || '').slice(0, 6000) })).slice(0, 8),
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
@@ -170,7 +197,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     const droppedParts = Array.isArray(payload.droppedParts) ? payload.droppedParts.slice(0, 20) : [];
     // Models passed over in the director's stack are kept so the reply can say so.
     const skipped = Array.isArray(payload.meta?.skipped) ? payload.meta.skipped.slice(0, 6).map((entry) => String(entry?.model || '').slice(0, 120)).filter(Boolean) : [];
-    const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}) } : null;
+    const forwarded = forwardedFrom(payload.meta?.forwardedContext);
+    const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}), ...(forwarded ? { forwardedContext: forwarded } : {}) } : null;
     const layout = layoutFrom(payload.layout);
     return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta, ...(layout ? { layout } : {}) };
   } catch (error) {

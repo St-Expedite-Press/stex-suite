@@ -195,6 +195,18 @@ whole book, a section, or a page each keep their own thread in
 `STEX_INFERENCE_URL/v1/texgraph/scope-turn` (`protocol/texgraph`, scope turn
 v3) with the scope's offered sources and at most ten recent turns.
 
+Each turn is also offered context from the levels around its scope, labelled
+by category and never merged with the sources: the book outline (pieces'
+titles, places and hashes without text, with page ranges only from a proof
+that still matches the book; cut short for a very long book), the settings
+in force (and, for a section or piece, where its size and leading come from),
+and up to eight accepted contracts relevant to the scope. The author's request
+behind a contract is offered only to the conversation that wrote it. A whole-book
+conversation can therefore reason about the book's structure while still
+being offered only its table of contents as text. The contract records which
+of this context the director was given, as the gateway reports it, or what
+Frige sent, marked unconfirmed, when no gateway reports it.
+
 Hermes replies in typed parts:
 
 - **Text** renders as formatted prose.

@@ -134,6 +134,15 @@ through.
 
 Context categories are recorded separately and are never merged: a reference
 or a generated proposal does not become canonical source by being offered.
+A turn also offered context from the levels around its scope records it as
+`context.outline` (`{category: "outline", count, truncated}`),
+`context.settings` (`{category: "document-settings", designHash}`) and
+`context.contracts` (`[{contractId, category: "approved-contract"}]`): what
+was offered, never its content. `context.hierarchyConfirmed` is `true` when
+the inference gateway reported what it forwarded to the director after
+trimming, and `false` when the record shows what Frige sent (the simulator, or
+a gateway that does not report it). These fields are absent in contracts from
+turns that offered no such context.
 
 **Layout changes.** A contract may instead hold exactly one layout change:
 setting or clearing the [override](#layout-overrides) of the conversation's

@@ -14,12 +14,14 @@ Update this file whenever the state below changes.
 ## State
 
 - **Branch:** `feat/frige-change-contracts` in `stex-suite`, cut from
-  `d96340e`. Local only; nothing is pushed. Waves 2, 3a, 3b and 3d and
-  two baseline defect fixes are committed locally on top of `d96340e`.
-- **stex-igor:** local branch `feat/frige-scope-context` from `d0598d8`, for
-  the Wave 3c adapter change ([D-014](DECISIONS.md)). Local only: a push to
+  `d96340e`. Local only; nothing is pushed. Waves 2, 3a, 3b, 3c and 3d
+  and two baseline defect fixes are committed locally on top of `d96340e`.
+- **stex-igor:** local branch `feat/frige-scope-context` from `d0598d8`, at
+  `a8880aa`, with the Wave 3c adapter change ([D-014](DECISIONS.md)). The
+  suite's submodule pointer stays at `d0598d8`: never stage `stex-igor` in a
+  suite commit while the branch is unpushed. Local only: a push to
   stex-igor `main` deploys, and pushing needs the owner's approval.
-- **Current work:** Wave 3c (hierarchical context), in Frige and the stex-igor adapter. See [progress](PROGRESS.md) for package states and the
+- **Current work:** Wave 3e (stable section identity). See [progress](PROGRESS.md) for package states and the
   [Wave 2 report](../verification/frige-change-contracts-w2.md) for evidence.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts

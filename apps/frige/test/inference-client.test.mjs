@@ -64,3 +64,30 @@ test('a gateway layout field is shaped and bounded before the engine sees it', (
   assert.deepEqual(layoutFrom({ clear: true }), { clear: true });
   for (const malformed of [null, 'clear', [], { clear: 'yes' }, { set: [] }, { set: 'x' }, { set: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [String(index), 1])) }]) assert.equal(layoutFrom(malformed), null, JSON.stringify(malformed)?.slice(0, 40));
 });
+
+test('a scope turn sends the outline, settings and approved contracts as separately labelled fields to the gateway', async (context) => {
+  const { createServer } = await import('node:http');
+  let received = null;
+  const gateway = createServer(async (request, response) => {
+    let raw = ''; for await (const chunk of request) raw += chunk;
+    received = JSON.parse(raw);
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ commentary: 'ok', changes: [], parts: [], meta: { model: 'stub', forwardedContext: { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1', 7] } } }));
+  });
+  await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+  const saved = { mode: process.env.STEX_FRIGE_INFERENCE_MODE, url: process.env.STEX_INFERENCE_URL };
+  delete process.env.STEX_FRIGE_INFERENCE_MODE; process.env.STEX_INFERENCE_URL = `http://127.0.0.1:${gateway.address().port}`;
+  context.after(() => {
+    gateway.close();
+    if (saved.mode === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = saved.mode;
+    if (saved.url === undefined) delete process.env.STEX_INFERENCE_URL; else process.env.STEX_INFERENCE_URL = saved.url;
+  });
+  const hierarchy = { outline: { category: 'outline', entries: [{ nodeId: 'node-a' }], truncated: false }, settings: { category: 'document-settings', designHash: 'abc', book: {}, scope: null }, contracts: { category: 'approved-contract', entries: [] } };
+  const reply = await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, hierarchy, turns: [], message: 'Hello.' });
+  assert.equal(reply.availability, 'available');
+  assert.deepEqual(reply.meta.forwardedContext, { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1'] }, 'the gateway report is read and shaped');
+  assert.deepEqual([received.outline, received.documentSettings, received.approvedContracts], [hierarchy.outline, hierarchy.settings, hierarchy.contracts]);
+  // A turn without that context sends none of the fields.
+  await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Hello.' });
+  assert.equal('outline' in received, false);
+});

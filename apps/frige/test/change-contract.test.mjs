@@ -889,6 +889,122 @@ test('accepting three pieces with a failure on the second leaves all three uncha
   for (const [name, content] of Object.entries(files)) assert.ok((await readFile(path.join(root, 'manuscript', '01', `${name}.md`))).equals(Buffer.from(content)), `${name} unchanged`);
 });
 
+// --- Context from the levels around a scope (program Wave 3c) ---------------------
+
+test('every scope is offered the outline, the settings in force and relevant approved contracts, with no manuscript text', async (context) => {
+  const { store, first, second } = await syntheticBook(context);
+  const graph = await store.graph({ refresh: true });
+  const sectionOf = (id) => graph.book.sections.find((entry) => entry.nodeIds.includes(id));
+  // A section override and three accepted changes at different levels.
+  await store.saveDesign({ sections: { [sectionOf(first).folder]: { fontSize: '10pt', leading: '12pt' } } });
+  const inPiece = await propose(store, first, `${FIRST}\nAccepted in the piece.\n`);
+  await store.decideChanges(first, inPiece.id, { decision: 'accept' });
+  const otherPiece = await propose(store, second, `${SECOND}\nAccepted elsewhere.\n`);
+  await store.decideChanges(second, otherPiece.id, { decision: 'accept' });
+  const rejected = await propose(store, first, `${FIRST}\nRejected.\n`);
+  await store.decideChanges(first, rejected.id, { decision: 'reject' });
+  const current = await store.graph({ refresh: true });
+  const scopeOf = async (id) => store.scope(id);
+
+  for (const scopeId of ['book', sectionOf(first).id, first]) {
+    const scope = await scopeOf(scopeId);
+    const offered = await store.hierarchy(scope, current);
+    assert.deepEqual([offered.outline.category, offered.settings.category, offered.contracts.category], ['outline', 'document-settings', 'approved-contract']);
+    // The outline lists every piece by hash, in reading order, and holds no text.
+    assert.deepEqual(offered.outline.entries.map((entry) => [entry.nodeId, entry.hash]), current.readingOrder.map((id) => [id, current.nodes.find((node) => node.id === id).hash]));
+    assert.equal(offered.outline.truncated, false);
+    const serialized = JSON.stringify(offered);
+    for (const text of ['Accepted in the piece', 'Accepted elsewhere', 'One line,', 'Two.']) assert.equal(serialized.includes(text), false, `${scopeId}: no manuscript text (${text})`);
+    assert.equal(offered.settings.designHash, designHash(await store.design()));
+    assert.equal(offered.contracts.entries.some((entry) => entry.contractId === rejected.id), false, 'a rejected proposal is not approved context');
+  }
+  // What each level sees of the settings in force.
+  assert.equal((await store.hierarchy(await scopeOf('book'), current)).settings.scope, null);
+  assert.deepEqual((await store.hierarchy(await scopeOf(sectionOf(first).id), current)).settings.scope, { level: 'section', fontSize: '10pt', leading: '12pt', sizeFrom: 'section', own: { fontSize: '10pt', leading: '12pt' } });
+  assert.deepEqual((await store.hierarchy(await scopeOf(first), current)).settings.scope, { level: 'element', fontSize: '10pt', leading: '12pt', sizeFrom: 'section', own: null, section: { fontSize: '10pt', leading: '12pt' } });
+  // Which accepted changes each level is shown.
+  const contractsFor = async (id) => (await store.hierarchy(await scopeOf(id), current)).contracts.entries.map((entry) => entry.contractId);
+  assert.deepEqual(await contractsFor('book'), [], 'piece conversations are not book decisions');
+  assert.deepEqual(await contractsFor(first), [inPiece.id], 'a piece sees the changes made to it');
+  assert.deepEqual(await contractsFor(second), [otherPiece.id]);
+});
+
+test('approved context keeps requests in their own conversation, skips reverted changes, and shows a section layout to its pieces', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const graph = await store.graph({ refresh: true });
+  const section = graph.book.sections.find((entry) => entry.nodeIds.includes(first));
+  // A section conversation accepts a change whose request quotes text.
+  const { sources } = await store.scopeContext(section.id);
+  const { changeSet: quoted } = await store.createChangeSet(section.id, { changes: [{ nodeId: first, source: `${FIRST}\nQuoted.\n` }] }, sources, { request: 'Make it echo "SECRET LINE" from elsewhere.' });
+  await store.decideChanges(section.id, quoted.id, { decision: 'accept' });
+  // A section layout change, and a piece change that is then rolled back.
+  const { changeSet: layout } = await proposeLayout(store, section.id, { set: { opensRecto: true } });
+  await store.decideChanges(section.id, layout.id, { decision: 'accept' });
+  const reverted = await propose(store, first, `${(await store.node(first)).source}\nUndone.\n`);
+  await store.decideChanges(first, reverted.id, { decision: 'accept' }); await store.revertChanges(reverted.id);
+  const current = await store.graph({ refresh: true });
+
+  const forSection = (await store.hierarchy(await store.scope(section.id), current)).contracts.entries;
+  assert.deepEqual(forSection.map((entry) => entry.contractId).sort(), [quoted.id, layout.id].sort());
+  assert.match(forSection.find((entry) => entry.contractId === quoted.id).request, /SECRET LINE/, 'the conversation that wrote a request sees it');
+  const forPiece = (await store.hierarchy(await store.scope(first), current)).contracts.entries;
+  assert.deepEqual(forPiece.map((entry) => entry.contractId).sort(), [quoted.id, layout.id].sort(), 'the piece sees the change made to it and its section layout, not the reverted one');
+  assert.equal(JSON.stringify(forPiece).includes('SECRET LINE'), false, 'a request written elsewhere is not offered');
+  assert.equal(forPiece.some((entry) => 'request' in entry), false);
+});
+
+test('outline pages come only from a proof that still matches the text, the profile and the reading order', async (context) => {
+  const { store, first, second } = await syntheticBook(context);
+  const graph = await store.graph({ refresh: true });
+  const hashes = Object.fromEntries(graph.readingOrder.map((id) => [id, graph.nodes.find((node) => node.id === id).hash]));
+  const pageMap = { schemaVersion: 3, mode: 'prefix', designHash: designHash(await store.design()), includedNodeIds: graph.readingOrder, sourceHashes: hashes, pagination: { verified: true }, nodes: [{ nodeId: first, firstPage: 1, lastPage: 1 }, { nodeId: second, firstPage: 2, lastPage: 3 }] };
+  await store.saveReferenceMap(pageMap);
+  const pages = async () => Object.fromEntries((await store.hierarchy(await store.scope('book'), await store.graph({ refresh: true }))).outline.entries.map((entry) => [entry.nodeId, entry.pages]));
+  assert.deepEqual(await pages(), { [first]: { first: 1, last: 1 }, [second]: { first: 2, last: 3 } });
+  await store.updateNode(first, `${FIRST}\nEdited since the proof.\n`, hashes[first]);
+  assert.deepEqual(await pages(), { [first]: null, [second]: { first: 2, last: 3 } }, 'a piece edited since the proof has no pages');
+  await store.saveDesign({ folios: true });
+  assert.deepEqual(await pages(), { [first]: null, [second]: null }, 'a profile changed since the proof gives no pages');
+});
+
+test('the outline budget counts UTF-8 bytes, so multi-byte titles cannot overrun it', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'frige-outline-bytes-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
+  const title = '詩'.repeat(60);
+  for (let index = 0; index < 150; index += 1) await writeFile(path.join(root, 'manuscript', '01', `P${index}.md`), `# ${title} ${index}\n\nA line.\n`);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), Array.from({ length: 150 }, (_, index) => `- [P](01/P${index}.md)`).join('\n'));
+  const store = new ProjectStore(root); const graph = await store.initialize();
+  const { outline } = await store.hierarchy(await store.scope('book'), graph);
+  assert.equal(outline.truncated, true);
+  assert.ok(Buffer.byteLength(JSON.stringify(outline.entries), 'utf8') <= 20_000);
+});
+
+test('a book outline longer than its budget is cut short and says so', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'frige-outline-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
+  const titles = Array.from({ length: 220 }, (_, index) => `Piece ${String(index).padStart(3, '0')} ${'with a long title '.repeat(2)}`);
+  for (const [index, title] of titles.entries()) await writeFile(path.join(root, 'manuscript', '01', `P${index}.md`), `# ${title}\n\nA line.\n`);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), titles.map((_, index) => `- [P](01/P${index}.md)`).join('\n'));
+  const store = new ProjectStore(root); const graph = await store.initialize();
+  const { outline } = await store.hierarchy(await store.scope('book'), graph);
+  assert.equal(outline.truncated, true);
+  assert.ok(outline.entries.length > 0 && outline.entries.length < 220);
+  assert.ok(JSON.stringify(outline.entries).length <= 20_000, 'the outline stays within its budget');
+});
+
+test('a contract records the context categories it was offered, without their content', async (context) => {
+  const { store, first } = await syntheticBook(context);
+  const contract = await propose(store, first, `${FIRST}\nProposed.\n`, { hierarchy: { outline: 2, outlineTruncated: false, settingsHash: 'abc', contracts: [randomUUID(), 'not-a-contract-id'] } });
+  assert.deepEqual(contract.context.outline, { category: 'outline', count: 2, truncated: false });
+  assert.deepEqual(contract.context.settings, { category: 'document-settings', designHash: 'abc' });
+  assert.equal(contract.context.contracts.length, 1, 'only well-formed contract ids are recorded');
+  assert.equal(contract.context.contracts[0].category, 'approved-contract');
+  assert.deepEqual(violations(SCHEMA, contract), []);
+  assert.deepEqual(violations(SCHEMA, await propose(store, first, `${FIRST}\nWithout it.\n`)), [], 'turns without such context still conform');
+});
+
 test('a proof records the hash of the text it typeset, not the hash the graph held', async (context) => {
   const { store, first, firstFile } = await syntheticBook(context);
   const { assembleBook } = await import('../src/book-assembler.mjs');

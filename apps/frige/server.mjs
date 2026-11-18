@@ -262,8 +262,10 @@ async function scopeTurn(store, scopeId, payload) {
   }
   try {
     const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    // Context from the levels around the scope (outline, settings in force, approved contracts), labelled by category.
+    const hierarchy = await store.hierarchy(context.scope, context.graph);
     const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
     if (reservation) {
       // Hermes did not receive the answer: leave the question open and say why.
       if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
@@ -276,6 +278,10 @@ async function scopeTurn(store, scopeId, payload) {
       model: result.meta?.model || null, transport: result.meta?.usage?.transport || null,
       withheld: context.withheld, references: approvedSourceExcerpts.map(({ id, name }) => ({ id, name })),
       designHash: designHash(await store.design()),
+      // What the director was given: the gateway's report after trimming when it sends one, else what Frige sent, marked unconfirmed.
+      hierarchy: result.meta?.forwardedContext
+        ? { outline: result.meta.forwardedContext.outline?.count ?? 0, outlineTruncated: result.meta.forwardedContext.outline?.truncated === true, settingsHash: result.meta.forwardedContext.documentSettings ? hierarchy.settings.designHash : null, contracts: result.meta.forwardedContext.approvedContracts ?? [], confirmed: true }
+        : { outline: hierarchy.outline.entries.length, outlineTruncated: hierarchy.outline.truncated, settingsHash: hierarchy.settings.designHash, contracts: hierarchy.contracts.entries.map((entry) => entry.contractId), confirmed: false },
     };
     // A reply proposes text changes, or (from the simulator, until the director can) one layout change.
     const proposes = result.changes.length || result.layout;

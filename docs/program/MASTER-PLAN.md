@@ -181,6 +181,18 @@ category and revision, and categories are never merged.
 - Knowledge (User Graph) material is not offered until Wave 6.
 - **Acceptance:** for each scope, a test asserts the exact categories and
   hashes offered, and that no piece text outside the scope is sent.
+- **Done** (as built: see the [Wave 3c evidence](../verification/frige-hierarchical-context-w3c.md)).
+  Deviations from the table above:
+  - every scope receives the whole book outline (titles, places, hashes), not
+    only its own place in it; titles are headings, treated as identifying
+    metadata;
+  - the outline carries no line counts, and pages only from a proof that
+    still matches the book;
+  - the contract records counts and ids of what was offered, as the gateway
+    reports forwarding it, not each item;
+  - an author's request is offered only to the conversation that wrote it.
+  The stex-igor adapter forwards the three fields on a local branch; deployed
+  Igor drops them until that branch is released.
 
 ### 3d — All-or-nothing application across pieces
 

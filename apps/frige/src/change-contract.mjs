@@ -30,7 +30,10 @@ const MAX_SUMMARY_REQUEST = 280;
  * recorded separately so that canonical source, reviewed references and
  * generated text are never merged into one undifferentiated authority.
  *
- * @typedef {'canonical-source' | 'approved-reference'} ContextCategory
+ * `outline`, `document-settings` and `approved-contract` describe context from
+ * the levels around a conversation's own scope (program Wave 3c).
+ *
+ * @typedef {'canonical-source' | 'approved-reference' | 'outline' | 'document-settings' | 'approved-contract'} ContextCategory
  */
 
 /**
@@ -103,6 +106,10 @@ const MAX_SUMMARY_REQUEST = 280;
  * @property {Array<{ nodeId: string, title: string }>} [withheld]  In scope but too large to offer.
  * @property {Array<{ id: string, name: string }>} [references]     Author-approved excerpts offered.
  * @property {string | null} [designHash]  Publication profile in force when proposed.
+ * @property {{ outline: number, outlineTruncated: boolean, settingsHash: string | null, contracts: string[], confirmed?: boolean }} [hierarchy]
+ *   What was offered from the levels around the scope: the number of outline
+ *   entries, whether the outline was cut short, the settings' profile hash, and
+ *   the ids of the approved contracts offered.
  */
 
 /**
@@ -168,7 +175,11 @@ const MAX_SUMMARY_REQUEST = 280;
  *   withheld: Array<{ nodeId: string, title: string }>,
  *   references: Array<{ id: string, name: string, category: ContextCategory }>,
  *   designHash: string | null,
- * }} context
+ *   outline?: { category: 'outline', count: number, truncated: boolean },
+ *   settings?: { category: 'document-settings', designHash: string | null },
+ *   contracts?: Array<{ contractId: string, category: 'approved-contract' }>,
+ *   hierarchyConfirmed?: boolean,
+ * }} context  What the director was shown, by category; the last three only for turns offering context from the levels around the scope.
  * @property {'pending' | 'resolved'} status
  * @property {Array<ContractChange | LayoutChange>} changes  Text changes, or exactly one layout change.
  * @property {Array<{ nodeId: string, reason: string }>} dropped
@@ -370,6 +381,14 @@ export function buildContract({ id, createdAt, scope, commentary, changes, dropp
       withheld: (provenance.withheld || []).map(({ nodeId, title }) => ({ nodeId, title })),
       references: (provenance.references || []).map(({ id: referenceId, name }) => ({ id: referenceId, name, category: 'approved-reference' })),
       designHash: label(provenance.designHash),
+      // Context from the levels around the scope (Wave 3c), recorded by category without its content.
+      ...(provenance.hierarchy ? {
+        outline: { category: 'outline', count: Number(provenance.hierarchy.outline) || 0, truncated: provenance.hierarchy.outlineTruncated === true },
+        settings: { category: 'document-settings', designHash: label(provenance.hierarchy.settingsHash) },
+        contracts: (Array.isArray(provenance.hierarchy.contracts) ? provenance.hierarchy.contracts : []).filter(isContractId).map((contractId) => ({ contractId, category: 'approved-contract' })),
+        // True when the gateway reported what it forwarded; false when this records only what Frige sent.
+        hierarchyConfirmed: provenance.hierarchy.confirmed === true,
+      } : {}),
     },
     status: 'pending',
     changes,

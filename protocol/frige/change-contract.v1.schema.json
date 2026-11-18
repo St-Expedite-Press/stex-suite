@@ -203,6 +203,74 @@
             "null"
           ],
           "maxLength": 120
+        },
+        "outline": {
+          "description": "The book outline offered with the turn (Wave 3c): how many pieces it listed, and whether it was cut short. No manuscript text.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "count",
+            "truncated"
+          ],
+          "properties": {
+            "category": {
+              "const": "outline"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        "settings": {
+          "description": "The settings in force offered with the turn, by profile hash.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "designHash"
+          ],
+          "properties": {
+            "category": {
+              "const": "document-settings"
+            },
+            "designHash": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 120
+            }
+          }
+        },
+        "contracts": {
+          "description": "Approved contracts offered with the turn as context.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "contractId",
+              "category"
+            ],
+            "properties": {
+              "contractId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "category": {
+                "const": "approved-contract"
+              }
+            }
+          }
+        },
+        "hierarchyConfirmed": {
+          "description": "True when the inference gateway reported the outline, settings and contracts it forwarded to the director (after trimming); false when the contract records what Frige sent, unconfirmed.",
+          "type": "boolean"
         }
       }
     },

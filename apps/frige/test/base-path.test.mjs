@@ -195,6 +195,11 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   assert.equal(proposed.origin.userTurnId, turn.body.userTurn.id); assert.equal(proposed.origin.transport, 'fake');
   assert.deepEqual(proposed.context.offered, [{ nodeId, relativePath: node.relativePath, hash: node.hash, category: 'canonical-source' }]);
   assert.match(proposed.context.designHash, /^[a-f0-9]{8,}$/);
+  // The context from the levels around the scope is recorded by category (Wave 3c).
+  assert.deepEqual(proposed.context.outline, { category: 'outline', count: graph.readingOrder.length, truncated: false });
+  assert.deepEqual(proposed.context.settings, { category: 'document-settings', designHash: proposed.context.designHash });
+  assert.deepEqual(proposed.context.contracts, []);
+  assert.equal(proposed.context.hierarchyConfirmed, false, 'with no gateway, the record says it is what Frige sent');
   assert.ok((await readFile(file)).equals(original), 'the proposal is inert');
 
   const accepted = await call(`/scopes/${nodeId}/changes/decide${book}`, { method: 'POST', payload: { changeSetId: proposed.id, nodeId, decision: 'accept' } });
@@ -237,4 +242,26 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   assert.equal((await call(`/project/contracts${book}`, { method: 'DELETE' })).status, 405);
   assert.equal((await call(`/contracts/${proposed.id}/revert${book}`)).status, 405, 'rollback is never a GET');
   assert.equal((await call(`/contracts/not-a-contract${book}`)).status, 404);
+});
+
+test('a contract records the context the gateway reports it forwarded, marked as confirmed', async (context) => {
+  // A stub gateway that proposes one change and reports a trimmed outline and one contract forwarded.
+  const gateway = http.createServer(async (request, response) => {
+    let raw = ''; for await (const chunk of request) raw += chunk;
+    const turn = JSON.parse(raw); const source = turn.scopeSources[0];
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ commentary: 'Stub proposal.', changes: [{ nodeId: source.nodeId, source: `${source.source}\nFrom the stub.\n`, summary: 'Stub' }], parts: [], meta: { model: 'stub', usage: { transport: 'stub' }, forwardedContext: { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: [] } } }));
+  });
+  await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+  context.after(() => gateway.close());
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-confirmed-'));
+  await startFrige(root, 4418, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: '', TEXGRAPH_INFERENCE_MODE: '', STEX_INFERENCE_URL: `http://127.0.0.1:${gateway.address().port}`, STEX_INFERENCE_SHARED_SECRET: 'test-only' });
+  const prefix = 'http://127.0.0.1:4418/frige/api/stex/publishing/v1';
+  const post = async (route, payload) => (await fetch(`${prefix}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })).json();
+  const project = await post('/books', { title: 'Confirmed Fixture' });
+  const graph = await (await fetch(`${prefix}/project/graph?book=${project.id}`)).json();
+  const turn = await post(`/scopes/${graph.readingOrder[0]}/turn?book=${project.id}`, { message: 'Propose something.' });
+  assert.deepEqual(turn.changeSet.context.outline, { category: 'outline', count: 1, truncated: true }, 'what the gateway forwarded, not what Frige sent');
+  assert.equal(turn.changeSet.context.hierarchyConfirmed, true);
+  assert.deepEqual(turn.changeSet.context.contracts, []);
 });
