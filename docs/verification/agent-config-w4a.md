@@ -15,12 +15,13 @@ contract `stex.hermes.agent-config.v1`
 ([protocol](../../protocol/hermes/README.md#agent-configuration-v1)).
 
 **Status:** implemented and tested locally, with two independent review rounds.
-Not pushed to `main`, not merged, not deployed. No live provider or Hermes
-call was made.
+The suite side is merged to suite `main` (PR 6, `51577f1`, 2026-11-19). The
+stex-igor side is not pushed or deployed. No live provider or Hermes call was
+made.
 
 | Item | Value |
 | --- | --- |
-| Suite branch | `feat/frige-change-contracts` (draft PR 6) |
+| Suite branch | `feat/frige-change-contracts`, merged by PR 6 |
 | stex-igor branch | `feat/agent-config` (local), on `a8880aa` |
 | Dates | 2026-11-18 to 2026-11-19 |
 | Environment | Windows 11, Node 24.18, headless Chrome |

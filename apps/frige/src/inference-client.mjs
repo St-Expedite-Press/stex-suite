@@ -121,7 +121,8 @@ function fakeScopeTurn(message, sources = []) {
  * Reads the optional `layout` field of a scope-turn reply: one proposed layout
  * change for the conversation's own section or piece. Only its shape is
  * checked here; the engine validates every value before it becomes a contract.
- * The STEX gateway does not produce this field yet (program Wave 4).
+ * The STEX gateway produces it from the director's proposal block in a
+ * section or piece conversation (program Wave 4, D-017).
  *
  * @param {unknown} value
  * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}

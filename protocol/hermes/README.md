@@ -33,6 +33,21 @@ classified as `UNCONFIGURED`, `CANCELLED`, `HERMES_TIMEOUT`, `HERMES_AUTH`,
 
 The v1 contract does not replace TexGraph's versioned scope-turn contract.
 
+**Director proposals in a scope turn** (program Wave 4,
+[D-017](../../docs/program/DECISIONS.md)). The inference service's
+scope-turn adapter sends trusted instructions, before the untrusted
+context, telling the director how to propose: one fenced `stex-proposal`
+block of JSON at the end of its prose reply. The adapter reads that block
+into the v3 reply's existing `changes` and `layout` fields, keeping only the
+pieces the turn offered, and a layout change only in a section or piece
+conversation. It removes the block from the prose and says in the reply what
+it set aside. Frige validates both fields as before, and nothing changes
+until the author accepts. A reply cut short at its output limit proposes
+nothing, and neither does a simulated reply. A remote reply's `meta.model`
+names the model the turn requested (the task's configured model), and
+`meta.taskId` names its agent-configuration task. A simulated reply keeps
+its `stex.hermes.fake` label. No field was removed or retyped.
+
 ## Agent configuration v1
 
 `stex.hermes.agent-config.v1` ([schema](agent-config.v1.schema.json)) is

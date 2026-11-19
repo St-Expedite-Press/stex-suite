@@ -5,9 +5,14 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 
 ## Current wave
 
-**Wave 3 — section and book intelligence.** Waves 2, 3a, 3b, 3c, 3d and 3e are
-implemented, reviewed and committed on local branches (`feat/frige-change-contracts`
-in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
+**Wave 4 — Igor integration for Frige.** Waves 2, 3 and the suite side of
+4a are merged to suite `main` (PR 6, `51577f1`, 2026-11-19). Wave 4b (director
+proposals) is implemented and reviewed on local branches
+(`feat/director-proposals` in both repositories); its live verification needs
+the owner's approval of a paid call. The stex-igor side of 3c, 4a and 4b is
+unreleased. Evidence:
+[Wave 4b](../verification/director-proposals-w4.md),
+[Wave 4a](../verification/agent-config-w4a.md),
 [Wave 2](../verification/frige-change-contracts-w2.md),
 [Wave 3a](../verification/frige-layout-overrides-w3a.md),
 [Wave 3b](../verification/frige-layout-contracts-w3b.md),
@@ -39,6 +44,9 @@ in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
 | W4a-2 | Igor: "The Company" screen and relay routes | 4a | Done (same reviews) | [Wave 4a report](../verification/agent-config-w4a.md) |
 | W4a-3 | Suite entry points: Pantheon shell link, `/igor/team` route, Frige menu, Seaxneat control | 4a | Done (same reviews) | [Wave 4a report](../verification/agent-config-w4a.md) |
 | W4a-4 | Charter rules for agent configuration | 4a | Done in both root charters and the Igor, inference, Frige and Pantheon charters | `AGENTS.md` files |
+| W4-0 | Wave 4 specification and the proposal channel ([D-017](DECISIONS.md)) | 4 | Done; open to owner review | [Master plan](MASTER-PLAN.md#wave-4-specification--proposals-from-a-real-director) |
+| W4-b | Director proposals: trusted instructions, proposal reading, requested model recorded | 4 | Done; two review rounds, findings fixed; round-2 fixes verified by tests only | [Wave 4b report](../verification/director-proposals-w4.md) |
+| W4-c | A live director proposal against hosted Hermes | 4 | Waiting on the owner: a paid call, its budget, and the stex-igor release | — |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 
@@ -47,13 +55,14 @@ in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
 | Item | Waiting on |
 | --- | --- |
 | Any change to `stex-igor` reaching `main` | Owner authorization for a named release |
-| Proposals from a real director (Wave 4) | A local `stex-igor` branch first; live verification needs authorization for paid calls |
-| Suite PR 5 merge | Owner |
-| Pushing `feat/frige-change-contracts` | Owner authorization |
+| A live director proposal (W4-c) | Owner approval of a paid call and budget, after the stex-igor release |
+| Wider turn budgets for long pieces | Owner decision (30 s and 20,000 output characters today) |
 
 ## Next actions
 
-1. Owner: review the Wave 3 specification and the open decisions in the
-   [handoff](HANDOFF.md#decisions-waiting-on-the-owner).
-2. Owner: review the Company screen's wording, and decide whether to release the stex-igor branch.
-3. Wave 4: proposals from a real director (stex-igor adapter; live verification needs authorization for a paid call).
+1. Owner: review the Company screen's wording, and decide whether to release
+   the stex-igor branches (3c, 4a, 4b; a push to its `main` deploys).
+2. Owner: approve one live director proposal with a budget (W4-c), and decide
+   whether long pieces need wider turn budgets.
+3. Then: bounded specialist investigation (Wave 4), which needs a parked
+   profile activated and is the owner's decision.

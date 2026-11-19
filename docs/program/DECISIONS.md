@@ -195,6 +195,26 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   configuration), `protocol/`, Pantheon, Frige, Seaxneat and both
   repositories' charters. Specified as program Wave 4a.
 
+## D-017 — How the director proposes Frige changes
+
+- **Decided by:** principal agent, 2026-11-19, under the program directive
+  (Wave 4's local work proceeds before authorization). Open to owner review.
+- **Decision:** the director writes its proposal as one fenced
+  `stex-proposal` block of JSON at the end of an ordinary prose reply. The
+  inference service's scope-turn adapter tells the director the format in
+  trusted instructions and reads the block into the existing
+  `stex.texgraph.scope-turn.v3` reply fields `changes` and `layout`. No new
+  cross-application contract is added: Frige already validates those
+  fields.
+- **Why not structured output:** a JSON-schema `response_format` would
+  depend on Hermes passing it through and on each model supporting it.
+  The user may choose any catalog model for a task (D-016). A fenced block
+  works with any chat model. It is read with bounded rules, and a reply
+  without one is still a useful conversation.
+- **Affects:** `stex-igor/services/inference` (the adapter and the Hermes
+  client's system envelope), and comments in Frige. Frige's behaviour is
+  unchanged.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
