@@ -1,5 +1,7 @@
 .development-workspace { min-width: 0; }
 .workspace-heading h1 { margin: 0; }
+/* Labelled utility navigation under the heading: settings live here, not in a card. */
+.workspace-utilities { display: flex; flex-wrap: wrap; gap: var(--stex-space-2); margin-top: var(--stex-space-3); }
 .workspace-layout { display: grid; grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr); gap: var(--stex-space-5); }
 .workspace-layout aside { border-right: 1px solid var(--stex-border-decor); padding-right: 24px; }
 .workspace-layout form { display: grid; gap: 12px; margin: 16px 0 24px; }

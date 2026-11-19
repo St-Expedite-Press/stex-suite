@@ -58,6 +58,8 @@ const measure = `(async () => {
     masked: Boolean(mask && mask !== 'none'),
     viewport: [innerWidth, innerHeight], scrollWidth: document.documentElement.scrollWidth,
     current: [...document.querySelectorAll('.tabs [aria-current="page"]')].map((link) => link.textContent),
+    // The Company utility link (Wave 4a): beside the tabs, never one of them, and on screen.
+    company: (() => { const link = document.querySelector('.tabs > a.utility-link'); if (!link) return null; const box = link.getBoundingClientRect(); return { href: link.getAttribute('href'), label: link.firstChild.textContent, inList: !!link.closest('ul'), height: box.height, onScreen: box.width > 0 && box.left >= 0 && box.right <= innerWidth }; })(),
   };
 })()`;
 
@@ -117,6 +119,7 @@ async function main() {
       check(result.scrollWidth <= width, `${label}: horizontal overflow (${result.scrollWidth}px).`);
       check(artHeight <= height * 0.2 + 0.5, `${label}: masthead art is ${(100 * artHeight / height).toFixed(1)}% of the viewport (limit 20%).`);
       check(JSON.stringify(result.current) === '["Home"]', `${label}: tab state ${JSON.stringify(result.current)}.`);
+      check(result.company?.href === '/igor/team' && result.company.label === 'Company' && !result.company.inList && result.company.onScreen && result.company.height >= 24, `${label}: Company link ${JSON.stringify(result.company)}.`);
       // Map P11 frame coordinates into the crop the build recorded for this
       // still (manifest "crop" = w:h:x:y of the 1920x1080 master), then through
       // object-fit: cover.
@@ -193,12 +196,12 @@ async function main() {
     const { data: igorShot } = await tab.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(outDirectory, 'home-igor-1440x900.png'), Buffer.from(igorShot, 'base64'));
 
-    // Keyboard: skip link first, then the brand, then the tabs in order.
+    // Keyboard: skip link first, then the brand, then the tabs in order, then the Company utility link.
     await tab.go(`${base}/home/`); await settle(tab);
     const order = [];
-    for (let index = 0; index < 8; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
+    for (let index = 0; index < 9; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
     report.keyboard = order;
-    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2).join('|') === 'Home|Projects|Studios|Igor|Graph|Activity', `Keyboard order: ${order.join(' → ')}.`);
+    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2, 8).join('|') === 'Home|Projects|Studios|Igor|Graph|Activity' && order[8].startsWith('Company'), `Keyboard order: ${order.join(' → ')}.`);
     await tab.close();
 
     // Motion: plays by default; reduced motion fetches no masthead video at all.

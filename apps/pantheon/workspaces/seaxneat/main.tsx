@@ -14,6 +14,8 @@ async function api<T>(route: string, payload?: object): Promise<T> {
   return value.result as T;
 }
 const message = (error: unknown) => error instanceof Error ? error.message : 'Seaxneat is unavailable.';
+/** The shared Company screen (agent configuration, Wave 4a), served by Igor and filtered to this studio's tasks. A plain link: this workspace holds no agent settings. */
+const companyHref: string = '/igor/team?app=seaxneat';
 function Workspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
@@ -95,7 +97,8 @@ function Workspace() {
     await refresh(selected.id); await select(project); setNotice('Restored as a new validated revision.');
   }); };
   return <div className="development-workspace" aria-busy={busy}>
-    <div className="workspace-heading"><p className="eyebrow">Seaxneat</p><h1>Website workspace</h1><p className="stex-meta">Edits are simulated proposals. Apply explicitly to build and validate a revision.</p></div>
+    <div className="workspace-heading"><p className="eyebrow">Seaxneat</p><h1>Website workspace</h1><p className="stex-meta">Edits are simulated proposals. Apply explicitly to build and validate a revision.</p>
+      <nav className="workspace-utilities" aria-label="Workspace settings"><a className="stex-button stex-button--secondary" href={companyHref}>Company &amp; models</a></nav></div>
     <p className="workspace-notice" role="status">{notice}</p>
     <div className="workspace-layout">
       <aside aria-label="Website projects">

@@ -233,6 +233,61 @@ category and revision, and categories are never merged.
 - Free-form LaTeX at any level.
 - Section boundaries that are not folders.
 
+## Wave 4a specification — the company: agent configuration
+
+Owner decision [D-016](DECISIONS.md). Goal: the user configures the team
+(the eight native profiles) as a game of building a company. Each member
+gets a persona, a loadout of skills and a model for each task, from
+OpenRouter's live catalog, with Grok by default. It is one shared
+capability hosted on the VM, opened from the command center and from each
+application's menu.
+
+- **Contract:** `stex.hermes.agent-config.v1`
+  ([protocol](../../protocol/hermes/README.md#agent-configuration-v1)).
+- **Owner:** the inference service (`stex-igor/services/inference`). It
+  holds state in `STEX_INFERENCE_STATE_DIR`, caches the catalog, keeps the
+  history, and applies per-request models (`provider: "openrouter"` plus the
+  task's model on each Hermes request).
+- **Hermes pins:** `deploy/hermes/apply-igor-profile.sh` sets the Grok
+  default and pins every side model to Grok: compression, titles, vision,
+  background review, delegation, an empty `fallback_providers`, and no
+  multi-model presets. A test fails if any non-Grok model or Claude
+  appears there.
+- **Screen:** the Igor application serves "The Company" at `/team`
+  (hosted) and `/igor/team` (composed in Pantheon):
+  - a roster of eight character cards;
+  - a character sheet with Persona (name, title, sigil, up to three
+    temperaments, voice), Loadout (skills), Mind (model with catalog stats)
+    and Quests (that member's tasks);
+  - a quest board of every task by application;
+  - a save bar with the change summary, stale handling and a reset to Grok;
+  - the chronicle (history).
+
+  Parked members are labelled parked, and editing them activates nothing.
+- **Entry points:**
+  - Pantheon: a labelled utility link in the shell ("Company").
+  - Frige: its settings menu item replaces the dead model dialog and opens
+    `/igor/team?app=frige`.
+  - Seaxneat: a utility control.
+  - Igor: a header button.
+- **Rules:** both repositories' root charters, and the Igor, Frige,
+  Pantheon and inference charters.
+- **Acceptance:**
+  - choosing a model for a task changes the model sent on the next turn
+    (fake and stub transports);
+  - Claude ids are refused;
+  - a stale save is refused;
+  - parked members stay parked;
+  - the screen works by keyboard and at phone width;
+  - the existing suites pass;
+  - browser checks pass for the command center link and the Frige menu.
+- **Not in 4a:**
+  - deploying (a push to stex-igor `main` needs the owner);
+  - live paid turns;
+  - activating specialists;
+  - writing personas into parked profiles' Hermes homes;
+  - new profiles.
+
 ## Standards
 
 All code is structured to each language's professional conventions and

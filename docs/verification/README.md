@@ -9,6 +9,7 @@ then use a report here to inspect the command output and limits behind it.
 | Area | Report | Current limit |
 | --- | --- | --- |
 | Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Local branch only; simulator and stub proposals; element scope in the browser; Chrome only |
+| The Company: agent configuration (program Wave 4a) | [Wave 4a evidence](agent-config-w4a.md) | Both repositories on local branches; fake and stub transports; no live Hermes, OpenRouter or VM |
 | Frige stable section identity (program Wave 3e) | [Wave 3e evidence](frige-section-identity-w3e.md) | Local branch only; synthetic books; no browser check specific to renames |
 | Frige hierarchical context (program Wave 3c) | [Wave 3c evidence](frige-hierarchical-context-w3c.md) | Both repositories on local branches; fake and stub transports only |
 | Frige all-or-nothing acceptance (program Wave 3d) | [Wave 3d evidence](frige-atomic-acceptance-w3d.md) | Local branch only; failures and stops simulated in tests |

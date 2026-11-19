@@ -21,7 +21,10 @@ Update this file whenever the state below changes.
   suite's submodule pointer stays at `d0598d8`: never stage `stex-igor` in a
   suite commit while the branch is unpushed. Local only: a push to
   stex-igor `main` deploys, and pushing needs the owner's approval.
-- **Current work:** Wave 3 is complete; Wave 4 (proposals from a real
+- **stex-igor `feat/agent-config`:** local branch for Wave 4a (the Company),
+  on top of `feat/frige-scope-context`. Not pushed: a push to stex-igor
+  `main` deploys.
+- **Current work:** Waves 3 and 4a are complete; Wave 4 (proposals from a real
   director) is next. Its live verification needs the owner's approval of a
   paid call and a budget. See [progress](PROGRESS.md) for package states and the
   [Wave 2 report](../verification/frige-change-contracts-w2.md) for evidence.

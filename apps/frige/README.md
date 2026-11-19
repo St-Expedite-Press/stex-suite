@@ -329,5 +329,5 @@ creation, Unicode/indentation-preserving save, stale-write refusal, visible
 proposal/explicit acceptance, rendered compiler-mapped PDF, the proof recorded
 on the change contract, rollback to the exact prior text, a rejected proposal,
 profile freshness,
-model-settings styling, keyboard focus, tablet drawer and five widths. It
+the settings menu's link to the shared Company screen, keyboard focus, tablet drawer and five widths. It
 saves screenshots/report outside the repository (`--out <directory>`).

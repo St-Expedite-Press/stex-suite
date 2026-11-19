@@ -1,6 +1,5 @@
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
-import { createModelSettings } from './model-settings.js';
 import { appUrl } from './base-path.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -597,8 +596,8 @@ async function bootstrap() {
   renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor();
   $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign); $('#design-panel').addEventListener('input', () => { state.designDirty = true; });
   $('#turn-form').addEventListener('submit', sendTurn);
-  const modelSettings = createModelSettings({ request, onSaved: refreshIgor });
-  $('#configure-models').addEventListener('click', () => { $('#settings-menu').open = false; modelSettings.open(); });
+  // Settings is a disclosure holding one link, to the shared Company screen
+  // (/igor/team?app=frige, served by Igor); a click anywhere else closes it.
   document.addEventListener('click', (event) => { if (!$('#settings-menu').contains(event.target)) $('#settings-menu').open = false; });
   // Enter sends; Shift+Enter starts a new line; the box grows with its text.
   $('#message').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendTurn(); } });

@@ -19,11 +19,6 @@ await writeFile(path.join(bookRoot, 'README.md'), '# Fixture Book (verification)
 const base = 'http://127.0.0.1:4438'; const apiPrefix = base + '/frige/api/stex/publishing/v1';
 const stub = http.createServer(async (request, response) => {
   if (request.url.startsWith('/health')) { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"transport":"fake"}'); return; }
-  if (request.url === '/v1/settings/models' && request.method === 'GET') {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ builtIn: ['pantheon-director'], usedBy: {}, roles: [{ id: 'pantheon-director', name: 'Igor', description: 'Verification fixture', stack: [], temperature: null, maxOutputTokens: null }] })); return;
-  }
-  if (request.url === '/v1/models/catalog') { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"available":false,"models":[]}'); return; }
   if (request.url !== '/v1/texgraph/scope-turn') { response.writeHead(404); response.end(); return; }
   let raw = ''; for await (const chunk of request) raw += chunk;
   const turn = JSON.parse(raw); const source = turn.scopeSources[0];
@@ -142,12 +137,16 @@ try {
   await until(async () => !(await api('/project/design?book=fixture-book')).design.nodes, 'layout change rolled back');
   await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after layout rollback');
   report.workflow.push('a layout change is proposed in conversation, accepted into the profile, proved by a real proof, and rolled back');
-  await evaluate(`document.querySelector('#settings-menu').open = true`); await click('#configure-models');
-  await until(() => evaluate(`!!document.querySelector('.model-settings input')`), 'model settings');
-  const dialogStyle = await evaluate(`(() => { const dialog = document.querySelector('.model-settings'); const input = dialog.querySelector('input'); return { scoped: !!dialog.closest('.frige-workstation'), height: input.getBoundingClientRect().height, background: getComputedStyle(input).backgroundColor, border: getComputedStyle(dialog.querySelector('.role-card')).borderTopStyle }; })()`);
-  assert.ok(dialogStyle.scoped && dialogStyle.height >= 40); assert.equal(dialogStyle.border, 'solid');
-  await tab.key('Escape', 'Escape', 27); assert.equal(await evaluate(`document.querySelector('.model-settings').open`), false);
-  report.workflow.push('model settings remains scoped, styled, keyboard-accessible and closable');
+  // Settings → "Company & models" opens the shared Company screen (Wave 4a) filtered to Frige.
+  // The link is checked in place, not followed: this stack runs no Igor server.
+  await evaluate(`document.querySelector('#settings-menu summary').focus()`); await tab.key('Enter', 'Enter', 13, '\r');
+  assert.equal(await evaluate(`document.querySelector('#settings-menu').open`), true, 'Settings opens from the keyboard');
+  await tab.key('Tab', 'Tab', 9);
+  const company = await evaluate(`(() => { const link = document.activeElement; const box = link.getBoundingClientRect(); return { id: link.id, href: link.getAttribute('href'), label: link.textContent.trim(), height: box.height, visible: box.width > 0, outline: getComputedStyle(link).outlineStyle, retired: !!document.querySelector('#configure-models, .model-settings') }; })()`);
+  assert.deepEqual({ id: company.id, href: company.href, label: company.label, visible: company.visible, outline: company.outline, retired: company.retired }, { id: 'company-settings', href: '/igor/team?app=frige', label: 'Company & models', visible: true, outline: 'solid', retired: false });
+  assert.ok(company.height >= 40, JSON.stringify(company));
+  await click('#source'); assert.equal(await evaluate(`document.querySelector('#settings-menu').open`), false, 'a click elsewhere closes Settings');
+  report.workflow.push('Settings opens by keyboard to a focusable "Company & models" link to /igor/team?app=frige, and closes on an outside click');
   for (const [width, height] of [[1440, 900], [1024, 768], [768, 1024], [390, 844], [320, 568]]) {
     await tab.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');

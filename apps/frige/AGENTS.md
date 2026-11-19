@@ -57,6 +57,12 @@ Never report a tool result, test, review or remote action that did not occur.
    Writes go through one serialized path that rejects stale bases.
 7. Publication readiness is its own state, established by preflight and
    printer requirements, never by a successful build.
+8. Frige keeps no model settings. The model for a book, section or piece
+   conversation is the shared company configuration's `frige.book`,
+   `frige.section` or `frige.piece` task, chosen in the Company screen that
+   the workstation's settings menu opens (`/igor/team?app=frige`). A model
+   choice never changes what a proposal may do: it is still a proposal that
+   needs the author's acceptance.
 
 ## Working loop
 

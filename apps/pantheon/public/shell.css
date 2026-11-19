@@ -50,6 +50,11 @@
   .tabs ul { flex: 1 1 100%; flex-wrap: wrap; overflow: visible; }
   .tabs a { padding: var(--stex-space-3) var(--stex-space-3); }
 }
+/* Utility link (Company): a boxed control beside the tabs, never one of them. It keeps
+   the bar's height on wide screens and drops to the wrapped second row on phones. */
+.utility-link { flex: none; display: inline-flex; align-items: center; min-height: 36px; margin-block: var(--stex-space-1); padding: 0 var(--stex-space-3); border: var(--stex-hairline) solid var(--stex-border-control); border-radius: var(--stex-radius-control); color: var(--stex-text-secondary); font: 500 14px / 1.2 var(--stex-font-sans); text-decoration: none; white-space: nowrap; }
+.utility-link:hover { color: var(--stex-text); background: var(--stex-surface-hover); }
+.utility-link[aria-current="page"] { color: var(--stex-text); border-color: var(--stex-accent); }
 .motion-toggle { flex: none; min-height: 24px; padding: 0 var(--stex-space-1); border: 0; background: none; color: var(--stex-text-muted); font: 400 13px / 1.4 var(--stex-font-sans); text-decoration: underline; text-decoration-color: var(--stex-border-decor); text-underline-offset: 3px; cursor: pointer; }
 .motion-toggle:hover { color: var(--stex-text); text-decoration-color: currentColor; }
 
