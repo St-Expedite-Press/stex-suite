@@ -7,8 +7,19 @@ is not a separate agent: every reply comes from the existing director through
 
 `stex-igor/apps/igor` owns conversation records (titles, messages, ordering, pending and
 failed state). It does not own Hermes profiles, models, credentials, sessions,
-or memory. Pantheon uses only the creation endpoint (the handoff); everything
-else is Igor's own frontend.
+or memory. Pantheon composes the private renderer through an additive HTTP
+descriptor, proxies its APIs/assets and creates conversations for explicit
+handoffs. Conversation records and the inference secret stay in Igor.
+
+`GET /igor/api/interface` returns `stex.igor.interface.v1` with `entrypoint`,
+`styles` and `policy: "igor-page.v1"`. All asset paths must match
+`/igor/assets/[A-Za-z0-9._-]+.js|css`; the server verifies Vite manifest files
+exist. Missing/malformed builds return 503. Existing sign-in protects this
+endpoint. Pantheon loads it into `#root[data-stex-composed="true"]`, supplies
+the common navigation and preserves `img-src 'self' data:; object-src 'none';
+base-uri 'self'` in its page CSP. Standalone Igor retains its masthead.
+See [explicit project context](../context/README.md) for the separate
+`stex.igor.context.v1` snapshot and epoch contract.
 
 ## Mount and security
 
@@ -21,7 +32,8 @@ Every mutating request (`POST`, `PATCH`, `DELETE`) must have
 no cross-site `Origin` or `Sec-Fetch-Site`; otherwise `415` or `403`. Bodies
 are limited to 64 KB. The inference shared secret never reaches a browser.
 
-**Hosted mode.** When `STEX_IGOR_PUBLIC_ORIGIN` is set (for example
+**Hosted Access mode.** When `STEX_IGOR_PUBLIC_ORIGIN` is set without password
+mode (for example
 `https://igor.stexpedite.press`), Igor runs behind Cloudflare Tunnel and
 Cloudflare Access:
 
@@ -35,6 +47,14 @@ Cloudflare Access:
 - The public host is allowed as `Host`, and only the https public origin is
   allowed as `Origin`, alongside loopback.
 - Igor will not start in hosted mode without its Access settings.
+
+**Hosted password mode.** With `STEX_IGOR_AUTH=password`, Igor uses its
+own email/password sign-in and signed session cookie. Signed-out pages
+redirect to `/igor/login`; protected APIs, including interface/context, return
+401. The public HTTPS origin is required. Sign-out (durably, across
+restarts), password-hash changes and disabled users invalidate sessions. This is the current hosted configuration;
+Access mode remains a supported alternative. Local Pantheon's entry is still
+single-user navigation without authentication.
 
 ## Data
 
@@ -64,6 +84,16 @@ type ConversationSummary = Pick<Conversation, 'id' | 'title' | 'createdAt' | 'up
   & { state: 'idle' | 'pending' | 'failed'; messageCount: number };
 ```
 
+**Ownership.** Every conversation belongs to one principal: the signed-in
+username in password mode, the Access token's email in Access mode, or the
+single local user. Every endpoint below acts only on the caller's own
+conversations. Another principal's conversation is indistinguishable from a
+missing one (`404 NOT_FOUND`), and listings contain only the caller's own. The
+owner is stored server-side and is not part of the `Conversation` shape above.
+Conversations written before ownership existed are assigned once to a
+configured legacy owner (see the Igor README); Igor refuses to start rather
+than expose them to every account.
+
 An automatic title is the first user message's first line, whitespace
 collapsed, cut at a word boundary to at most 60 characters (with `…`). An
 empty conversation is titled "New conversation". Renaming sets `titleSource`
@@ -85,7 +115,8 @@ to `user`, and automatic titling never overrides it.
 | `POST /api/conversations/:id/messages/:messageId/retry` | `{}` | `202` `{ conversation }`; `409` unless `:messageId` is a failed assistant message that is the latest message |
 
 `route` is `/igor/c/<id>`. `idempotencyKey` matches `[A-Za-z0-9_-]{8,80}` and is
-remembered per Igor data directory. Errors are `{ error, code }`:
+remembered per principal in the Igor data directory, so the same key from
+two accounts creates two conversations. Errors are `{ error, code }`:
 
 | Status | Code | When |
 | --- | --- | --- |

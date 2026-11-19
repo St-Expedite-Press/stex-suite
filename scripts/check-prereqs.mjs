@@ -59,6 +59,10 @@ const checks = [
     run: () => { const found = probe('git', ['lfs', 'version']); return found && firstLine(found); },
   },
   {
+    level: 'required', name: 'uv', need: 'Python platform API (test:platform); uv provisions the pinned Python 3.12',
+    run: () => { const found = probe('uv', ['--version']); return found && firstLine(found); },
+  },
+  {
     level: 'recommended', name: 'LuaLaTeX', need: 'Frige proofs; proof tests skip without it',
     run: () => { const found = probe('lualatex', ['--version']); return found && firstLine(found); },
   },

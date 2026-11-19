@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import http from 'node:http';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -12,12 +13,16 @@ import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/de
 // project needs a Next.js build per run, and the stub can show states a fresh
 // install cannot). Then checks layout, the masthead against P11's focal
 // regions, real-data rendering, an unavailable studio, Igor, motion, and the
-// keyboard, and saves screenshots.
+// keyboard, and saves screenshots. The Python platform API runs beside them and
+// Pantheon must render from it; STEX_VERIFY_PLATFORM=off leaves it stopped to
+// verify the browser's per-studio fallback instead.
 //   corepack pnpm verify:home [--out <directory>]
 
 const viewports = [[1920, 1080], [1440, 789], [1366, 657], [1280, 689], [1100, 700], [1024, 768], [768, 1024], [390, 844], [320, 568]];
 // igor points at a port nothing listens on: this stack runs no Igor server.
-const ports = { pantheon: 4426, seaxneat: 4427, frige: 4428, igor: 4429 };
+const ports = { pantheon: 4426, seaxneat: 4427, frige: 4428, igor: 4429, platform: 4430 };
+const platformMode = process.env.STEX_VERIFY_PLATFORM !== 'off';
+const expectedSource = platformMode ? 'platform' : 'studios';
 const outDirectory = outDirectoryFromArgs('stex-home-verification');
 const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
@@ -62,6 +67,9 @@ async function main() {
   const stills = manifest.assets.find((asset) => asset.id === 'P02').derivatives;
   const focal = { face: p11.focal.face, fingertips: p11.focal.fingertips, sun: [(p11.focal.sun[0] + p11.focal.sun[2]) / 2, (p11.focal.sun[1] + p11.focal.sun[3]) / 2] };
   await mkdir(outDirectory, { recursive: true });
+  // Prepare the platform environment before anything is started, so a failure leaves nothing running.
+  const python = path.join(repositoryRoot, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  if (platformMode && (spawnSync('uv', ['sync', '--frozen'], { cwd: repositoryRoot, stdio: 'inherit' }).status !== 0 || !existsSync(python))) throw new Error('uv sync --frozen failed.');
 
   const data = await mkdtemp(path.join(os.tmpdir(), 'stex-verify-home-'));
   const book = path.join(data, 'books', 'fixture-book');
@@ -77,13 +85,18 @@ async function main() {
   const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), env: { ...process.env, ...env } });
   const children = [
     node('apps/frige', { STEX_FRIGE_PORT: String(ports.frige), STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_FRIGE_PROJECT_DIR: data, STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_SHELL_URL: '/home/' }),
-    node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${ports.seaxneat}`, STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_IGOR_URL: `http://127.0.0.1:${ports.igor}` }),
+    node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${ports.seaxneat}`, STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_IGOR_URL: `http://127.0.0.1:${ports.igor}`, STEX_PLATFORM_URL: `http://127.0.0.1:${ports.platform}` }),
   ];
-  const failures = []; const report = { viewports: [], data: {}, igor: {}, motion: {} };
+  const names = ['Frige', 'Pantheon'];
+  if (platformMode) {
+    children.push(spawn(python, ['-m', 'stex'], { cwd: repositoryRoot, env: { ...process.env, STEX_PLATFORM_PORT: String(ports.platform), STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: `http://127.0.0.1:${ports.seaxneat}` } }));
+    names.push('Platform API');
+  }
+  const failures = []; const report = { platformMode, viewports: [], data: {}, igor: {}, motion: {} };
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   let browser;
   try {
-    await Promise.all(children.map((child, index) => started(child, /ready|listening|running/i, ['Frige', 'Pantheon'][index])));
+    await Promise.all(children.map((child, index) => started(child, /ready|listening|running/i, names[index])));
     browser = await launchBrowser();
     const { devtools } = browser; report.browser = browser.browserPath;
     const base = `http://127.0.0.1:${ports.pantheon}`;
@@ -137,10 +150,12 @@ async function main() {
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await tab.go(`${base}/home/`); await settle(tab);
     report.data.home = await tab.evaluate(`({
+      source: document.documentElement.dataset.projectsSource,
       continueTitle: document.querySelector('.continue-title')?.textContent, continueHref: document.querySelector('.continue .stex-button')?.getAttribute('href'), continueApp: document.querySelector('.continue')?.dataset.stexApp,
       rows: [...document.querySelectorAll('.project-row')].map((row) => [row.querySelector('.project-title').textContent, row.querySelector('.status').textContent, row.getAttribute('href')]),
     })`);
     const home = report.data.home;
+    check(home.source === expectedSource, `Projects rendered from ${home.source}, expected ${expectedSource}.`);
     check(home.continueTitle === 'Fixture Site (verification stub)' && home.continueHref === '/seaxneat/?project=fixture-site' && home.continueApp === 'seaxneat', `Continue working shows ${home.continueTitle} → ${home.continueHref}.`);
     check(home.rows.map((row) => row[0]).join('|') === 'Fixture Site (verification stub)|Fixture Book (verification)|Old Site (verification stub)', `Recent projects order: ${home.rows.map((row) => row[0]).join(', ')}.`);
     check(/^Building · 10 minutes ago$/.test(home.rows[0]?.[1]) && /^Edited 1 hour ago$/.test(home.rows[1]?.[1]) && /^Build failed · 3 days ago$/.test(home.rows[2]?.[1]), `Status text: ${home.rows.map((row) => row[1]).join(' / ')}.`);
@@ -160,8 +175,8 @@ async function main() {
     // An unavailable studio is named, and the other studio's projects remain.
     stubState.failing = true;
     await tab.go(`${base}/home/`); await settle(tab);
-    report.data.unavailable = await tab.evaluate(`({ notes: [...document.querySelectorAll('.notice')].map((note) => note.textContent), rows: document.querySelectorAll('.project-row').length })`);
-    check(report.data.unavailable.notes.length === 1 && report.data.unavailable.notes[0].startsWith('Seaxneat is not responding') && report.data.unavailable.rows === 1, `Unavailable studio: ${JSON.stringify(report.data.unavailable)}.`);
+    report.data.unavailable = await tab.evaluate(`({ source: document.documentElement.dataset.projectsSource, notes: [...document.querySelectorAll('.notice')].map((note) => note.textContent), rows: document.querySelectorAll('.project-row').length })`);
+    check(report.data.unavailable.notes.length === 1 && report.data.unavailable.notes[0].startsWith('Seaxneat is not responding') && report.data.unavailable.rows === 1 && report.data.unavailable.source === expectedSource, `Unavailable studio: ${JSON.stringify(report.data.unavailable)}.`);
     stubState.failing = false;
 
     // Igor: the home composer hands off to stex-igor/apps/igor. This stack runs no Igor
@@ -181,9 +196,9 @@ async function main() {
     // Keyboard: skip link first, then the brand, then the tabs in order.
     await tab.go(`${base}/home/`); await settle(tab);
     const order = [];
-    for (let index = 0; index < 7; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
+    for (let index = 0; index < 8; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.textContent || '').trim().replace(/\\s+/g, ' ')`)); }
     report.keyboard = order;
-    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2).join('|') === 'Home|Projects|Studios|Graph|Activity', `Keyboard order: ${order.join(' → ')}.`);
+    check(order[0] === 'Skip to content' && order[1].includes('Pantheon') && order.slice(2).join('|') === 'Home|Projects|Studios|Igor|Graph|Activity', `Keyboard order: ${order.join(' → ')}.`);
     await tab.close();
 
     // Motion: plays by default; reduced motion fetches no masthead video at all.

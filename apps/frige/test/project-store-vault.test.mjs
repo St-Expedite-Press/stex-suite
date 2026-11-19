@@ -170,16 +170,6 @@ test('compiles a multi-page proof whose page map matches LuaLaTeX output', { ski
   assert.deepEqual(diagnostics.filter((entry) => entry.code === 'empty-editorial-note').map((entry) => entry.nodePath), ['00_Front_Matter/Bare.md']);
   for (const page of map.pages.filter((entry) => entry.blank)) assert.equal(page.side, 'verso', 'only verso padding pages are blank');
 });
-test('reviews a proposed change as a line diff that collapses distant unchanged lines', async () => {
-  const { lineDiff } = await import('../public/line-diff.js');
-  const before = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'old line', 'f'].join('\n');
-  const after = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'new line', 'f', 'added'].join('\n');
-  assert.deepEqual(lineDiff(before, after), [
-    { type: 'skip', count: 4 }, { type: 'same', text: 'd' }, { type: 'same', text: 'e' },
-    { type: 'del', text: 'old line' }, { type: 'add', text: 'new line' }, { type: 'same', text: 'f' }, { type: 'add', text: 'added' },
-  ]);
-  assert.deepEqual(lineDiff('same', 'same'), [{ type: 'skip', count: 1 }]);
-});
 test('concurrent decisions are serialized: one write wins, the other is stale or refused', async (context) => {
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
   const graph = await store.graph(); const page = graph.readingOrder[0]; const section = graph.book.sections[0].id;

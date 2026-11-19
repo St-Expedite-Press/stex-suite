@@ -9,8 +9,17 @@ This charter supplements, never replaces, the root charter and the more
 specific application charters. When instructions conflict, preserve security,
 data integrity, accessibility, and the owning application's behaviour; report
 unresolved conflicts rather than silently overriding them. The visual doctrine
-is [docs/DESIGN-SYSTEM.md](../../docs/DESIGN-SYSTEM.md); artwork rules are in
-[assets/README.md](../../assets/README.md).
+is [docs/DESIGN-SYSTEM.md](https://github.com/St-Expedite-Press/stex-suite/blob/main/docs/DESIGN-SYSTEM.md); artwork rules are in
+[assets/README.md](https://github.com/St-Expedite-Press/stex-suite/blob/main/assets/README.md).
+
+Paths describing the platform below are stex-suite-relative. In the synced
+stex-igor copy, apply the visual rules to its local Igor renderer and use that
+repository's [root charter](../../AGENTS.md). The source of this charter and
+its shim remains stex-suite; synchronize vendor copies rather than editing
+them independently. Codex reviewers are development roles, not Hermes agents.
+Python backend and first-class Obsidian integration are root architectural
+targets; neither authorizes a UI redesign or backend rewrite during release.
+Preserve the approved splash/artwork bytes and motion/responsive behavior.
 
 ## 1. Mission
 
@@ -46,7 +55,7 @@ The interface type is **CSS-first, platform-native web UI**:
 
 - Shared tokens, typography, and components come only from
   `@stex/design-system` (`src/stex.css`). Never duplicate palette values in an
-  application; Seaxneat's light theme is legacy pending migration.
+  application. Seaxneat's platform-owned workspace now uses these tokens.
 - Plain CSS in cascade layers `stex.tokens, stex.base, stex.components`;
   application CSS stays unlayered so it always wins. No component framework,
   Tailwind, CSS-in-JS, or runtime theme engine. React apps use the same class
@@ -99,11 +108,12 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   add account creation or present the entry as authentication until an
   identity milestone is authorised.
 - `/home/` — command center: P11 masthead, tabs (Home, Projects, Studios,
-  Graph, Activity), Continue working, Igor, the four studios, and Recent
+  Igor, Graph, Activity), Continue working, Igor, the four studios, and Recent
   projects. Project data comes only from each studio's
   `stex.projects.summary.v1` endpoint (`protocol/projects`), with honest empty,
-  unavailable, and deferred states. Graph and Activity render "not built yet"
-  until real features exist; never fill them with sample data. No permanent
+  unavailable, and deferred states. Graph renders optional real knowledge
+  metadata and relationships; Activity remains "not built yet". Never fill
+  either with sample data. No permanent
   sidebar.
 - **Igor** is the user-facing name of the assistant; Hermes stays the internal
   name. Igor turns go browser → the Igor application (`stex-igor/apps/igor`, proxied at
@@ -113,6 +123,16 @@ focus, keyboard access, labels, adequate targets, and reduced-motion support.
   navigation, not a decorative card.
 - Studio homes: project selection/creation and domain tools. Global
   navigation returns to Pantheon without destroying editing state.
+- Pantheon progressively owns workspace presentation while engines own state
+  and validation. Seaxneat's UI lives in `apps/pantheon/workspaces/seaxneat`
+  and uses the common shell at `/workspaces/seaxneat/`; its engine owns Git,
+  proposals, builds and preview lifecycle. Frige's library/workstation now live
+  in `apps/pantheon/workspaces/frige`, with the shared header and navigation;
+  the instrumental view uses a compact header. Igor's private renderer is
+  composed through a versioned HTTP descriptor with a compact toolbar and
+  explicit project-context consent. See
+  [its migration gate](https://github.com/St-Expedite-Press/stex-suite/blob/main/docs/PLATFORM-TRANSITION.md).
+  Generated preview documents remain sandboxed outside the trusted UI.
 
 ## 7. Artwork
 
@@ -158,7 +178,7 @@ same files. The integrating agent owns the final review and status evidence.
 | A | Baseline, tokens, specimen proving all five accents | Done |
 | B | Pantheon public entrance (splash) | Done; real identity deferred |
 | C | Pantheon command center from real data | Done; Igor on the fake transport |
-| D | Frige and Seaxneat adoption without workflow regressions | Frige done (D4); Seaxneat planned |
+| D | Frige and Seaxneat adoption without workflow regressions | Frige done (D4); Seaxneat platform workspace in P1 (see STATUS evidence) |
 | E | Ēostre and Woden foundations on authentic placeholders | Planned |
 | F | Stabilisation: trim, consolidate, compare to approved art | Planned |
 

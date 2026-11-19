@@ -8,12 +8,18 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
-| Hermes / Igor H1 | [H1 preparation](hermes-h1-preparation.md) | One direct, tool-free OpenRouter turn is verified; product remote workflows are not |
+| Platform release / instruction reconciliation | [Release audit and evidence](platform-release.md) | BLOCKED on permitted CI access; preparation verified, no main merge/deployment or post-merge acceptance claimed |
+| Pantheon consumes the platform API M2a | [M2a report](platform-m2a-pantheon-consumption.md) | Project pages only; browser fallback retained; Chrome only |
+| Python platform foundation M1 | [M1 report](platform-m1-python-foundation.md) | Additive FastAPI service beside Node; read-only project list; CI step unrun |
+| Platform transition P0/P1 | [P1 report](platform-transition-p1.md) | First composed workspace; subsequent stages have separate reports below |
+| Platform publishing P2 | [P2 report](platform-transition-p2.md) | Mature Frige UI composed in Pantheon; real PDF and stub inference, Chrome only |
+| Contextual Igor / knowledge foundation P3/P4 | [P3/P4 report](platform-transition-p3-p4.md) | Local composed interface, exact explicit context and metadata projections; fake/stub inference, Chrome only; no production release |
+| Hermes / Igor H1 | [H1 preparation](hermes-h1-preparation.md) | Direct runtime evidence; later I1/I2 reports establish bounded Igor integration/hosting, not Frige remote behavior |
 | Pantheon consolidation | [Consolidation report](pantheon-consolidation-report.md) | Fake inference and local workflows only |
 | Frige design system (D4) | [D4 report](frige-d4-design-system.md) | Chrome only; conversation cards and a typeset proof not rendered in the browser |
 | Deployment hardening (D1) | [D1 summary](stex-deployment-d1.md) | Public summary only; the full report is private in stex-igor |
-| stex-igor split (I3) | [I3 report](stex-igor-split.md) | Automated deploy verified once; rollback path not yet exercised |
-| Hosted Igor (I2) | [I2 report](igor-i2-hosted.md) | Owner browser sign-in and egress lockdown outstanding |
+| stex-igor split (I3) | [I3 report](stex-igor-split.md) | Later D1 evidence records exercised rollback and restore; see current status |
+| Hosted Igor (I2) | [I2 report](igor-i2-hosted.md) | Historical Access-era report; current password sign-in is verified, egress/owner-run hardening remains pending in STATUS |
 | Igor application (I1) | [Igor I1 report](igor-i1-application.md) | Browser evidence on stub inference; five live turns on a local Windows gateway |
 | Command center | [Command-center report](command-center-report.md) | Browser evidence uses the fake transport |
 | Splash and identity | [Identity and splash](identity-splash-report.md) | Chrome coverage; Safari and Firefox remain unrun |

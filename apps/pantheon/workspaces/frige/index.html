@@ -1,0 +1,34 @@
+<div class="publishing-toolbar"><p>Frige &middot; Publishing</p><a class="quiet-button" href="/frige/">Book projects</a><details id="settings-menu" class="settings-menu"><summary>Settings</summary><div class="settings-items" role="menu"><button id="configure-models" type="button" role="menuitem">Configure models</button></div></details></div>
+    <nav class="workspace-views" aria-label="Workspace views">
+      <button type="button" data-view="contents" aria-controls="navigator">Contents</button><button type="button" data-view="editor" aria-controls="conversation">Editor</button><button type="button" data-view="proof" aria-controls="preview">Proof</button>
+    </nav>
+    <div class="studio-shell" data-view="editor">
+      <aside id="navigator" class="navigator" aria-label="Manuscript graph">
+        <section class="book-card"><p class="eyebrow">Book</p><h1 id="book-title">Loading…</h1></section>
+        <div class="navigator-toolbar"><button id="refresh" class="quiet-button" type="button">Refresh vault</button><span id="diagnostics"></span></div>
+        <nav id="book-tree" class="book-tree" aria-label="Book contents"></nav>
+      </aside>
+      <div class="drawer-scrim" hidden></div>
+      <section id="conversation" class="conversation" aria-label="Conversation and Markdown editor">
+        <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Igor</span></header>
+        <div class="view-switch" role="tablist" aria-label="Conversation or source"><button id="show-thread" type="button" role="tab" aria-selected="true">Conversation</button><button id="show-source" type="button" role="tab" aria-selected="false">Source</button></div>
+        <section id="source-panel" class="source-panel hidden" aria-label="Markdown source"><div class="source-meta"><span id="source-label">Canonical Markdown</span><span id="source-hash"></span></div><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source"></textarea><div class="source-actions"><span id="save-state"></span><span class="source-buttons"><button id="node-pages" type="button" class="quiet-button hidden"></button><button id="save-source" type="button" class="quiet-button">Save Markdown</button></span></div></section>
+        <div id="turns" class="thread" aria-live="polite"></div>
+        <form id="turn-form" class="composer"><div class="composer-box"><textarea id="message" rows="1" aria-label="Message" placeholder="Message…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><span id="composer-scope" class="composer-scope"></span><span class="composer-actions"><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><span id="attachment-state"></span><button id="attach" type="button" class="icon-button" title="Attach files" aria-label="Attach files">+</button><button type="submit" class="send-button" aria-label="Send">Send</button></span></div></div></form>
+      </section>
+      <section id="preview" class="preview" aria-label="LuaLaTeX full-book preview">
+        <header class="panel-header preview-header"><div><h2 id="preview-title">Proof</h2></div><div class="production-actions"><button id="build" type="button" class="build-button">Typeset proof</button><button id="build-book" type="button" class="quiet-button hidden" title="Typeset the whole book in table-of-contents order">Whole book</button><button id="open-design" type="button" class="quiet-button" aria-expanded="false" aria-controls="design-panel">Design</button><button id="send-live-build" type="button" class="quiet-button" disabled>Send to live build</button></div></header>
+        <div class="preview-meta"><p id="live-build-state" class="live-build-state"></p></div>
+        <form id="design-panel" class="design-panel hidden" aria-label="Publication profile">
+          <fieldset><legend>Page</legend><label>Trim<select name="trimSize"></select></label><label>Top<input name="margins.top"></label><label>Bottom<input name="margins.bottom"></label><label>Inside<input name="margins.inner"></label><label>Outside<input name="margins.outer"></label></fieldset>
+          <fieldset><legend>Type</legend><label>Body font<input name="bodyFont" list="font-names"></label><label>Size<input name="fontSize"></label><label>Leading<input name="leading"></label></fieldset>
+          <fieldset><legend>Book</legend><label>Running-head title<input name="headTitle" placeholder="Book title"></label><label class="check"><input type="checkbox" name="runningHeads">Running heads</label><label class="check"><input type="checkbox" name="folios">Folios</label><label class="check"><input type="checkbox" name="rectoOpeners">Openers on a recto</label></fieldset>
+          <datalist id="font-names"><option value="Latin Modern Roman"><option value="TeX Gyre Pagella"><option value="TeX Gyre Termes"><option value="EB Garamond"><option value="Libertinus Serif"><option value="Crimson Pro"></datalist>
+          <div class="design-actions"><span id="design-state"></span><button type="button" id="design-cancel" class="quiet-button">Close</button><button type="submit">Save profile</button></div>
+        </form>
+        <div id="pdf-wrap" class="pdf-wrap"><div id="empty-preview" class="empty-preview"><span class="empty-glyph" aria-hidden="true"></span><h3>No proof yet</h3><p>Typeset to see it here.</p></div><div id="proof-viewer" class="proof-viewer hidden"></div><iframe id="pdf" title="Book PDF preview" class="hidden"></iframe></div>
+        <details id="preflight-section" class="build-log-section preflight-section"><summary class="log-heading"><span>Preflight</span><span id="preflight-state">Not checked</span></summary><ul id="preflight-list" class="preflight-list"></ul></details>
+        <details id="build-log-section" class="build-log-section"><summary class="log-heading"><span>Build log</span><span id="build-state">Not built</span></summary><pre id="build-log"></pre></details>
+      </section>
+      <footer id="production-status" class="production-status" aria-label="Production status" aria-live="polite"></footer>
+    </div>

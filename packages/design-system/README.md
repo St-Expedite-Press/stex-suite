@@ -3,8 +3,13 @@
 The shared STEX interface foundation, delivered as plain CSS, self-hosted
 fonts, and SVG marks. No build step is needed to consume it, and React,
 vanilla, and server-rendered pages use the same class names. The doctrine it
-implements is [docs/DESIGN-SYSTEM.md](../../docs/DESIGN-SYSTEM.md); agent rules
+implements is [docs/DESIGN-SYSTEM.md](https://github.com/St-Expedite-Press/stex-suite/blob/main/docs/DESIGN-SYSTEM.md); agent rules
 are in [AGENTS.md](AGENTS.md).
+
+Pantheon also uses this foundation for its composed Seaxneat workspace at
+`/workspaces/seaxneat/`. Presentation ownership can move upward without moving
+engine state or leaking interface styles into generated preview documents.
+See [the transition plan](https://github.com/St-Expedite-Press/stex-suite/blob/feat/pantheon-platform-p1/docs/PLATFORM-TRANSITION.md).
 
 | Path | Contents |
 | --- | --- |

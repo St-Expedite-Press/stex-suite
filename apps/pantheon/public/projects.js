@@ -52,13 +52,50 @@ async function loadStudio(application) {
   }
 }
 
+// Preferred source: the platform API's merged list (stex.platform.projects.v1),
+// which applies the same rules server-side. Any doubt about its answer throws,
+// and loadAll falls back to polling each studio from the browser as before.
+async function loadFromPlatform(active) {
+  const response = await fetch('/api/platform/v1/projects', { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(4_000) });
+  if (!response.ok) throw new Error(String(response.status));
+  const merged = await response.json();
+  const byId = new Map(active.map((application) => [application.id, application]));
+  if (merged?.schemaVersion !== 'stex.platform.projects.v1' || !Array.isArray(merged.studios) || !Array.isArray(merged.projects)
+    || merged.studios.length !== byId.size || new Set(merged.studios.map((studio) => studio?.id)).size !== byId.size
+    || !merged.studios.every((studio) => byId.has(studio?.id) && ['available', 'unavailable'].includes(studio.state))) {
+    throw new Error('invalid platform list');
+  }
+  // Same entries, same links as loadStudio: href is rebuilt here, never taken from the reply,
+  // and an unavailable studio contributes no projects.
+  const available = new Set(merged.studios.filter((studio) => studio.state === 'available').map((studio) => studio.id));
+  const projects = merged.projects.filter((project) => validProject(project) && available.has(project.studio))
+    .map((project) => ({ ...project, href: `${byId.get(project.studio).route}${project.openPath.slice(1)}` }));
+  const results = merged.studios.map((studio) => ({
+    application: byId.get(studio.id),
+    ...(studio.state === 'unavailable' ? { unavailable: true } : {}),
+    projects: projects.filter((project) => project.studio === studio.id),
+  }));
+  return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };
+}
+
+async function loadFromStudios(active) {
+  const results = await Promise.all(active.map(loadStudio));
+  const projects = results.flatMap((result) => result.projects).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
+  return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };
+}
+
 async function loadAll() {
   const registry = await (await fetch('/api/applications', { headers: { accept: 'application/json' } })).json();
   // Only studios publish projects; other applications (Igor) are never polled.
   const active = registry.applications.filter((application) => application.kind === 'studio' && application.state === 'active');
-  const results = await Promise.all(active.map(loadStudio));
-  const projects = results.flatMap((result) => result.projects).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
-  return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };
+  try {
+    const data = await loadFromPlatform(active);
+    document.documentElement.dataset.projectsSource = 'platform';
+    return data;
+  } catch {
+    document.documentElement.dataset.projectsSource = 'studios';
+    return loadFromStudios(active);
+  }
 }
 
 const unavailableNote = (ids) => ids.length ? element('p', { class: 'stex-meta notice' }, `${ids.map((id) => names[id] || id).join(' and ')} ${ids.length > 1 ? 'are' : 'is'} not responding, so ${ids.length > 1 ? 'their' : 'its'} projects are missing here.`) : null;

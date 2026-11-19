@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { appBase, appUrl } from '../public/base-path.js';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -20,14 +19,6 @@ async function startFrige(root, port, context, environment = { STEX_FRIGE_SHELL_
   });
 }
 
-test('builds Frige URLs from the mounted application path without changing direct compatibility URLs', () => {
-  assert.equal(appBase('http://127.0.0.1:4310/'), '');
-  assert.equal(appUrl('/api/project/graph', 'http://127.0.0.1:4310/'), '/api/project/graph');
-  assert.equal(appBase('http://127.0.0.1:4300/frige/?book=fixture'), '/frige');
-  assert.equal(appUrl('/api/project/graph', 'http://127.0.0.1:4300/frige/?book=fixture'), '/frige/api/project/graph');
-  assert.throws(() => appUrl('api/project/graph', 'http://127.0.0.1:4300/frige/'), /start with/);
-});
-
 test('serves Frige APIs and runtime configuration under its shell mount', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-'));
   await startFrige(root, 4410, context);
@@ -39,11 +30,45 @@ test('serves Frige APIs and runtime configuration under its shell mount', async 
   assert.equal(unmapped.status, 404);
 });
 
+test('cold context and knowledge routes reject manuscript links before creating any graph state', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-cold-context-'));
+  const book = path.join(root, 'books', 'linked-book'); const outside = path.join(root, 'outside');
+  await mkdir(book, { recursive: true }); await mkdir(outside);
+  const privateText = '# Programme\n\nPRIVATE linked content\n';
+  await writeFile(path.join(outside, 'Programme.md'), privateText);
+  await symlink(outside, path.join(book, 'manuscript'), process.platform === 'win32' ? 'junction' : 'dir');
+  await startFrige(root, 4427, context);
+  const base = 'http://127.0.0.1:4427/frige/api/stex/context/v1/projects/';
+  for (const [route, options] of [['linked-book', {}], ['linked-book/observation', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"sources":[]}' }]]) {
+    const result = await fetch(base + route, options); assert.equal(result.status, 403);
+    assert.ok(!(await result.text()).includes('PRIVATE'));
+    await assert.rejects(access(path.join(book, '.texgraph')), { code: 'ENOENT' });
+  }
+  assert.equal((await fetch(base + 'missing-book')).status, 404);
+  assert.equal(await readFile(path.join(outside, 'Programme.md'), 'utf8'), privateText);
+});
+
 test('returns to the Pantheon command center by default when mounted', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-shell-'));
   await startFrige(root, 4412, context, { STEX_FRIGE_SHELL_URL: '', TEXGRAPH_SHELL_URL: '' });
   const runtime = await fetch('http://127.0.0.1:4412/frige/runtime-config.js');
   assert.match(await runtime.text(), /STEX_SHELL_URL="\/home\/"/);
+});
+
+test('preserves the legacy books directory alias and refuses opaque/foreign browser mutations', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-legacy-'));
+  const books = path.join(root, 'selected-books');
+  await mkdir(path.join(books, 'existing', 'manuscript'), { recursive: true });
+  await writeFile(path.join(books, 'existing', 'manuscript', 'Programme.md'), '# Programme\n');
+  await startFrige(root, 4420, context, { STEX_FRIGE_BOOKS_DIR: '', TEXGRAPH_BOOKS_DIR: '', STEX_BOOKS_DIR: books, STEX_PANTHEON_URL: 'http://127.0.0.1:4300' });
+  const route = 'http://127.0.0.1:4420/frige/api/stex/legacy-books/v1';
+  assert.equal((await (await fetch(route)).json())[0].id, 'existing');
+  for (const origin of ['null', 'https://foreign.invalid', 'http://127.0.0.1:9999']) {
+    const response = await fetch(route, { method: 'POST', headers: { origin, 'x-forwarded-host': origin.replace('http://', ''), 'content-type': 'text/plain' }, body: JSON.stringify({ ticket: { title: 'Forbidden' } }) });
+    assert.equal(response.status, 403);
+  }
+  const allowed = await fetch(route, { method: 'POST', headers: { origin: 'http://127.0.0.1:4300', 'content-type': 'application/json' }, body: JSON.stringify({ ticket: { title: 'Allowed' } }) });
+  assert.equal(allowed.status, 201);
 });
 
 test('serves stex.projects.summary.v1 from file times without touching the manuscript', async (context) => {
@@ -120,45 +145,24 @@ test('serves its own masthead media, byte-identical to Pantheon, with byte range
   assert.match(range.headers.get('content-range'), /^bytes 0-99\/\d+$/); assert.equal((await range.arrayBuffer()).byteLength, 100);
 });
 
-test('heads the project library and the workstation with the P11 masthead and a motion control', async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-masthead-'));
-  await startFrige(root, 4417, context);
-  const base = 'http://127.0.0.1:4417/frige';
-  const manifest = JSON.parse(await readFile(path.join(repositoryRoot, 'assets', 'manifest.json'), 'utf8'));
-  const codecs = new Map(manifest.assets.flatMap((asset) => asset.derivatives || []).filter((entry) => entry.codecs).map((entry) => [entry.path, entry.codecs]));
-  const pages = { lobby: await (await fetch(`${base}/`)).text(), workstation: await (await fetch(`${base}/?book=fixture`)).text() };
-  for (const [name, html] of Object.entries(pages)) {
-    assert.match(html, /<html lang="en" data-stex-app="frige">/, name);
-    const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((match) => match[1]);
-    assert.deepEqual(sheets, ['./design-system/src/stex.css', './masthead.css', name === 'lobby' ? './lobby.css' : './style.css'], name);
-    assert.match(html, new RegExp(`<header class="masthead masthead--${name === 'lobby' ? 'full' : 'compact'}">`), name);
-    assert.match(html, /<img class="masthead-still" alt=""[^>]* src="\.\/media\/masthead\/pantheon-masthead-still-1920w\.webp"/, name);
-    assert.match(html, /<video class="masthead-motion" muted loop playsinline preload="none"/, name);
-    assert.match(html, /<button class="motion-toggle" type="button" hidden>/, name);
-    assert.match(html, /class="back-link" href="\/home\/" data-shell-link hidden/, name);
-    assert.match(html, /<script type="module" src="\.\/masthead\.js"><\/script>/, name);
-    assert.doesNotMatch(html, /palette\.js|living\.css/, name);
-    let sources = 0;
-    for (const [, src, codec] of html.matchAll(/<source[^>]*src="\.\/([^"]+)"[^>]*codecs="([^"]+)"/g)) { assert.equal(codec, codecs.get(`apps/frige/public/${src}`), src); sources += 1; }
-    assert.equal(sources, 6, name);
-    // Every local file the page names is served.
-    for (const [, reference] of html.matchAll(/(?:src|href|srcset)="\.\/([^"? ]+)/g)) {
-      const response = await fetch(`${base}/${reference}`);
-      assert.equal(response.status, 200, `${name}: ${reference}`); await response.arrayBuffer();
-    }
-  }
-  const motion = await readFile(path.join(appDirectory, 'public', 'masthead.js'), 'utf8');
-  assert.match(motion, /'stex\.pantheon\.motion'/); assert.match(motion, /prefers-reduced-motion: reduce/); assert.match(motion, /saveData/); assert.match(motion, /IntersectionObserver/); assert.match(motion, /visibilitychange/);
-});
-
-test('offers a mount-aware Frige project selector and creates an isolated book project', async (context) => {
+test('redirects presentation to Pantheon and creates an isolated book through publishing v1', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-lobby-'));
   await startFrige(root, 4411, context);
-  const lobby = await fetch('http://127.0.0.1:4411/frige/');
-  assert.equal(lobby.status, 200); assert.match(await lobby.text(), /Book projects/);
-  const created = await fetch('http://127.0.0.1:4411/frige/api/books', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'New Fixture', author: 'A. Author' }) });
+  const lobby = await fetch('http://127.0.0.1:4411/frige/', { redirect: 'manual' });
+  assert.equal(lobby.status, 308); assert.equal(lobby.headers.get('location'), 'http://127.0.0.1:4300/frige/');
+  const created = await fetch('http://127.0.0.1:4411/frige/api/stex/publishing/v1/books', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'New Fixture', author: 'A. Author' }) });
   assert.equal(created.status, 201); const project = await created.json(); assert.match(project.id, /^new-fixture-/);
+  assert.equal(created.headers.get('x-stex-contract'), 'stex.frige.publishing.v1');
   assert.match(await readFile(path.join(root, 'books', project.id, 'manuscript', 'Programme.md'), 'utf8'), /New Fixture/);
-  const listed = await fetch('http://127.0.0.1:4411/frige/api/books');
+  const listed = await fetch('http://127.0.0.1:4411/frige/api/stex/publishing/v1/books');
   assert.equal((await listed.json())[0].id, project.id);
+  const prefix = `http://127.0.0.1:4411/frige/api/stex/publishing/v1`;
+  const graph = await (await fetch(`${prefix}/project/graph?book=${project.id}`)).json();
+  const node = await (await fetch(`${prefix}/nodes/${graph.readingOrder[0]}?book=${project.id}`)).json();
+  const save = await fetch(`${prefix}/nodes/${node.id}?book=${project.id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: '# Revised synthetic title\n', baseHash: node.hash }) });
+  assert.equal(save.status, 200);
+  const stale = await fetch(`${prefix}/nodes/${node.id}?book=${project.id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: 'stale', baseHash: node.hash }) });
+  assert.equal(stale.status, 409);
+  assert.equal((await fetch(`${prefix}/books`, { method: 'DELETE' })).status, 405);
+  assert.equal((await fetch(`${prefix}/stex/legacy-books/v1`)).status, 404);
 });

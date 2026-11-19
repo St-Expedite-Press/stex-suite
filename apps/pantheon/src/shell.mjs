@@ -62,3 +62,39 @@ export function proxyApplication(request, response, target, url, prefix) {
     request.pipe(upstream);
   });
 }
+
+// Read-only routes into the Python platform API (backend/, protocol/platform).
+// Only these exact paths are forwarded; nothing from the browser request except
+// the method is passed on, so cookies and other headers never reach it.
+const platformRoutes = new Map([['/api/platform/v1/projects', '/api/v1/projects']]);
+export const platformPath = (pathname) => platformRoutes.get(pathname) || null;
+
+export class PlatformUnavailable extends Error {}
+
+// Only a 200 JSON answer is relayed; anything else (unreachable, timeout,
+// redirect, other status, compressed or oversized body) is PlatformUnavailable.
+export async function requestPlatform(target, upstreamPath, { timeoutMs = 5_000, maxBytes = 4_000_000 } = {}) {
+  const signal = AbortSignal.timeout(timeoutMs);
+  let reply;
+  try {
+    reply = await fetch(new URL(upstreamPath, target), { headers: { accept: 'application/json', 'accept-encoding': 'identity' }, redirect: 'manual', signal });
+  } catch { throw new PlatformUnavailable('The platform API is not reachable.'); }
+  const refuse = async (reason) => { await reply.body?.cancel().catch(() => {}); throw new PlatformUnavailable(reason); };
+  if (reply.status !== 200) return refuse(`The platform API answered ${reply.status}.`);
+  if (!/^application\/json\b/i.test(reply.headers.get('content-type') || '')) return refuse('The platform API did not answer with JSON.');
+  // Refusing any content-encoding keeps the bound on bytes actually received.
+  if ((reply.headers.get('content-encoding') || 'identity').toLowerCase() !== 'identity') return refuse('The platform API answer is compressed.');
+  if (Number(reply.headers.get('content-length') || 0) > maxBytes) return refuse('The platform API answer is too large.');
+  const chunks = []; let size = 0;
+  try {
+    for await (const chunk of reply.body) {
+      size += chunk.length;
+      if (size > maxBytes) return refuse('The platform API answer is too large.');
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    if (error instanceof PlatformUnavailable) throw error;
+    throw new PlatformUnavailable('The platform API answer was interrupted.');
+  }
+  return { status: 200, body: Buffer.concat(chunks) };
+}

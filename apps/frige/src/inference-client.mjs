@@ -4,8 +4,8 @@ function assistantResult(commentary, availability = 'available', graphSuggestion
   return { commentary, availability, proposal: null, graphSuggestions };
 }
 
-// A conversation turn with Hermes about a whole book, a section or a page
-// (stex.texgraph.scope-turn.v3). Hermes sees the scope's offered sources and may
+// A conversation turn with Igor about a whole book, a section or a page
+// (stex.texgraph.scope-turn.v3). Igor sees the scope's offered sources and may
 // reply with typed parts and with changes for those nodes only; Frige
 // re-validates every change against what it offered and stores the parts.
 const empty = { changes: [], parts: [], droppedParts: [], meta: null };
@@ -13,7 +13,7 @@ const gatewayHeaders = () => ({ 'content-type': 'application/json', ...(process.
 const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.env.TEXGRAPH_INFERENCE_MODE) === 'fake';
 
 function fakeScopeTurn(message) {
-  const text = `Deterministic Hermes simulator received: ${String(message || '').trim().slice(0, 240)}`;
+  const text = `Deterministic Igor simulator received: ${String(message || '').trim().slice(0, 240)}`;
   return {
     commentary: `${text}. No canonical source was changed.`, availability: 'available', changes: [], graphSuggestions: [],
     parts: [{ type: 'text', text: `${text}. Review and source changes remain author-controlled.` }], droppedParts: [],
@@ -24,7 +24,7 @@ function fakeScopeTurn(message) {
 export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
   if (deterministic()) return fakeScopeTurn(message);
   const endpoint = process.env.STEX_INFERENCE_URL;
-  if (!endpoint) return { ...assistantResult('Hermes did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
+  if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
@@ -46,7 +46,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     if (!response.ok) {
       // The gateway explains its failures with a code and a message safe to show.
       const failure = await response.json().catch(() => ({}));
-      return { ...assistantResult(`Hermes did not reply: ${String(failure.error || `the gateway returned ${response.status}`).replace(/\.$/, '')}. Your message was saved; nothing was changed.`, failure.code === 'UNCONFIGURED' ? 'unconfigured' : 'unavailable'), ...empty, failure: { status: response.status, code: failure.code || null } };
+      return { ...assistantResult(`Igor did not reply: ${String(failure.error || `the gateway returned ${response.status}`).replace(/\.$/, '')}. Your message was saved; nothing was changed.`, failure.code === 'UNCONFIGURED' ? 'unconfigured' : 'unavailable'), ...empty, failure: { status: response.status, code: failure.code || null } };
     }
     const payload = await response.json();
     const commentary = typeof payload.commentary === 'string' ? payload.commentary : '';
@@ -60,7 +60,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta };
   } catch (error) {
     const reason = error.name === 'AbortError' ? 'the gateway timed out' : 'the gateway is unreachable';
-    return { ...assistantResult(`Hermes did not reply: ${reason}. Your message was saved, but nothing was changed.`, 'unavailable'), ...empty };
+    return { ...assistantResult(`Igor did not reply: ${reason}. Your message was saved, but nothing was changed.`, 'unavailable'), ...empty };
   } finally {
     clearTimeout(timeout);
   }

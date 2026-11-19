@@ -17,6 +17,10 @@ application alone resolves and authorizes them.
 Pantheon reads v2. Consumers that list studios or projects filter on
 `kind === "studio"`.
 
+Registry routes are stable navigation inputs, not frontend ownership. In P1,
+`/seaxneat/` redirects to Pantheon's `/workspaces/seaxneat/`; its API subtree
+continues to proxy the engine. This does not change v2 or grant capabilities.
+
 ## v1 (historical)
 
 `registry.v1.json` (schema `registry.v1.schema.json`) lists only the four
