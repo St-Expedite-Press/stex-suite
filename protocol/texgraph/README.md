@@ -64,6 +64,36 @@ its text become image artifacts. The reply also carries `meta` (`model`,
 unavailable) for provenance. These fields are additive; readers ignore ones
 they do not know.
 
+**Request `outline`, `documentSettings`, `approvedContracts`** (optional,
+added 2026-11-17) — context from the levels around the conversation's scope,
+each with its own `category` and none holding manuscript text. Piece titles
+are their headings, offered as identifying metadata.
+
+| Field | Category | Content |
+| --- | --- | --- |
+| `outline` | `outline` | `{entries, truncated}`: pieces in reading order with `nodeId`, `title`, `relativePath`, `kind`, `hash`, `section`, and book `pages` only from a verified proof that still matches the text, profile and reading order; at most 20,000 UTF-8 bytes, with `truncated` when pieces were left out |
+| `documentSettings` | `document-settings` | `{designHash, book, scope}`: the publication profile and, for a section or piece, the size and leading in force there, where they come from, and the scope's own override |
+| `approvedContracts` | `approved-contract` | `{entries, unavailable?}`: at most eight accepted change contracts relevant to the scope, as targets. The author's `request` is included only for contracts written in the same conversation, since it may quote any piece |
+
+The scope's own text stays in `scopeSources`, separate from these. The STEX
+inference adapter forwards them to Hermes under `context.legacy`, keeping
+only known fields with bounded lengths, and trims the outline first, then
+approved contracts, while the request exceeds 90,000 UTF-8 bytes. Sources and
+the conversation are never trimmed, so a turn whose sources and recent turns
+alone exceed the budget is still refused. The reply's `meta.forwardedContext`
+(`{outline: {count, truncated}, documentSettings, approvedContracts}`) reports
+what was forwarded after trimming. A reader that does not know these fields
+ignores them.
+
+**Reply `layout`** (optional, added 2026-11-17) — one proposed change to the
+layout override of the conversation's own section or piece:
+`{ set: { fontSize, leading, opensRecto, headText }, summary }`, where a
+`null` value removes that setting, or `{ clear: true, summary }`. Frige
+validates it and records it as a
+[layout change contract](../frige/README.md#change-contracts-v1); it never
+applies it without the author's acceptance. The STEX inference gateway does
+not produce this field yet; readers that do not know it ignore it.
+
 **Request `answer`** — `{ promptId, values }` when the author answers a choice
 or form. The product validates the answer against the stored prompt (known
 option ids, required fields) and sends a readable summary as `message`.

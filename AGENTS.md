@@ -255,6 +255,43 @@ workflow requires it.
   state implicitly. TexGraph v3 endpoints are compatibility adapters over
   `stex.hermes.turn.v1`; retired provider-roster endpoints stay `410 Gone`.
 
+## Agent configuration and models
+
+The company (team) configuration is one shared capability, hosted on the VM
+([D-016](docs/program/DECISIONS.md); contract
+`stex.hermes.agent-config.v1` in `protocol/hermes/`).
+
+- **One owner.** `stex-igor/services/inference` owns personas, equipped
+  skills, default models, per-task models, the model catalog cache and the
+  change history. Applications keep no model settings of their own, and no
+  second roster, role registry or model router exists anywhere.
+- **One screen, many doors.** The Igor application serves "The Company"
+  (`/team` hosted, `/igor/team` in Pantheon). Pantheon's shell links to it
+  as a global setting, and each application's menu opens it filtered to its
+  own tasks (`?app=`). Product servers relay with the shared secret and the
+  signed-in actor. Pantheon and browsers hold no secret.
+- **Grok by default; never Claude.** Defaults are xAI Grok models through
+  OpenRouter. A user may choose any model in OpenRouter's catalog for a task,
+  but Anthropic and Claude models, and routers that choose a model for
+  themselves (such as `openrouter/auto`, which may pick Claude), are refused
+  at every layer: the catalog, the API, Hermes side-model pins and tests. Hermes's own side calls
+  (compression, titles, vision, background review, delegation) are pinned to
+  Grok in `stex-igor/deploy/hermes/apply-igor-profile.sh`, with no fallback
+  providers and no multi-model presets. Never use a session `/model` command:
+  it overrides per-request selection.
+- **Configuration grants nothing.** The eight profile ids, their discipline,
+  mission, runtime state and allowed skills are fixed by their
+  specifications. Editing a persona, loadout or model never activates a
+  parked profile, enables a toolset, widens a budget or authorizes a paid
+  call. Persona text is always followed by the fixed STEX boundaries.
+- **Only the owner changes the company.** Any signed-in user may view it, but
+  saves are the owner's alone, because a save changes every user's turns.
+- **Every change is checked and recorded.** Updates carry the revision they
+  were made from; stale ones are refused. Each accepted change is appended
+  to the history with its actor. A configuration change in a repository
+  (defaults, task ids, pins) needs tests that fail on a Claude id or a
+  missing pin.
+
 ## Application invariants
 
 ### Frige

@@ -12,17 +12,156 @@ const empty = { changes: [], parts: [], droppedParts: [], meta: null };
 const gatewayHeaders = () => ({ 'content-type': 'application/json', ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}) });
 const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.env.TEXGRAPH_INFERENCE_MODE) === 'fake';
 
-function fakeScopeTurn(message) {
-  const text = `Deterministic Igor simulator received: ${String(message || '').trim().slice(0, 240)}`;
+/** A message in this form asks the simulator for one labelled change. */
+const SIMULATED_CHANGE = /^simulate change:\s*(\S[\s\S]*)$/i;
+/** A message in this form asks the simulator for one labelled layout change (see `simulatedLayout`). */
+const SIMULATED_LAYOUT = /^simulate layout:\s*(\S[\s\S]*)$/i;
+
+/**
+ * Reads a simulated layout request. Forms, case-insensitive:
+ * `<size>/<leading>` (for example `15pt/18pt`), `size inherit`,
+ * `recto on|off|inherit`, `head <text>`, `head inherit`, and `clear`.
+ * The engine validates every value; this only shapes the request.
+ *
+ * @param {string} request  The text after `Simulate layout:`.
+ * @returns {{ clear?: boolean, set?: Record<string, unknown> } | null}  `null` for an unrecognised form.
+ */
+function simulatedLayout(request) {
+  const text = request.trim();
+  if (/^clear$/i.test(text)) return { clear: true };
+  const size = /^(\S+)\s*\/\s*(\S+)$/.exec(text);
+  if (size) return { set: { fontSize: size[1], leading: size[2] } };
+  if (/^size inherit$/i.test(text)) return { set: { fontSize: null, leading: null } };
+  const recto = /^recto (on|off|inherit)$/i.exec(text);
+  if (recto) return { set: { opensRecto: { on: true, off: false, inherit: null }[recto[1].toLowerCase()] } };
+  const head = /^head (.+)$/i.exec(text);
+  if (head) return { set: { headText: /^inherit$/i.test(head[1].trim()) ? null : head[1].trim() } };
+  return null;
+}
+
+/**
+ * Shortens text to at most 240 characters, counted in code points so a
+ * character outside the Basic Multilingual Plane is never cut in half.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+const clip = (text) => [...text].slice(0, 240).join('');
+
+/**
+ * The simulator's plain acknowledgement of a message. It proposes nothing.
+ *
+ * @param {string} message
+ * @returns {string}
+ */
+const simulatorReceipt = (message) => `Deterministic Igor simulator received: ${clip(String(message || '').trim())}`;
+
+/**
+ * The deterministic simulator's reply to a scope turn. It never calls a model.
+ *
+ * By default it proposes nothing. `Simulate layout: <request>` yields one
+ * proposed layout change for the conversation's own section or piece (see
+ * `simulatedLayout`). A message of the form
+ * `Simulate change: <line>` yields one proposed change that appends `<line>`
+ * as a new closing stanza to the first offered piece, so the path from
+ * conversation to change contract can be exercised without a provider. The
+ * proposal is labelled as simulated and, like any proposal, is inert until
+ * the author accepts it. The table of contents is never the target: appending
+ * prose to it would not be a meaningful editorial change.
+ *
+ * @param {string} message
+ * @param {Array<{ nodeId: string, title: string, kind?: string, source: string }>} [sources]  Sources offered this turn.
+ * @returns {object}  A reply in the shape `requestScopeTurn` returns.
+ */
+function fakeScopeTurn(message, sources = []) {
+  const received = String(message || '').trim();
+  const meta = (output) => ({ model: 'stex/hermes-fake', usage: { inputChars: received.length, outputChars: output.length, transport: 'fake' } });
+  // One line of verse: whitespace folded, leading Markdown markers dropped so the
+  // line cannot become a heading (and retitle the piece) or a quotation.
+  const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
+  const layoutRequest = SIMULATED_LAYOUT.exec(received)?.[1];
+  if (layoutRequest) {
+    const layout = simulatedLayout(clip(layoutRequest.replace(/\s+/g, ' ')));
+    const text = layout
+      // Frige decides whether the request becomes a suggestion, so the simulator does not claim one.
+      ? 'Deterministic Igor simulator passed a simulated layout request to Frige for this conversation’s section or piece. If it would change anything, it appears below as a suggestion; nothing changes until you accept it.'
+      : 'Deterministic Igor simulator did not recognise that layout request. Try “Simulate layout: 15pt/18pt”, “recto on”, “head <text>” or “clear”.';
+    return {
+      commentary: text, availability: 'available', changes: [], graphSuggestions: [],
+      ...(layout ? { layout: { ...layout, summary: 'Simulated layout change (deterministic simulator, not a model).' } } : {}),
+      parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+    };
+  }
+  if (requested) {
+    const target = sources.find((entry) => entry.kind !== 'programme');
+    if (!target) {
+      const text = 'Deterministic Igor simulator: this conversation offered no piece to change (a whole-book conversation offers only its table of contents), so no change was simulated. Select a section or a piece and ask again.';
+      return { commentary: text, availability: 'available', changes: [], graphSuggestions: [], parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text) };
+    }
+    const lineEnd = target.source.includes('\r\n') ? '\r\n' : '\n';
+    // A new closing stanza: a blank line, then the line. An empty piece gets the line alone.
+    const lead = target.source === '' ? '' : `${target.source.endsWith('\n') ? '' : lineEnd}${lineEnd}`;
+    const source = `${target.source}${lead}${requested}${lineEnd}`;
+    const text = `Deterministic Igor simulator prepared one simulated change to “${target.title}”: a closing line is added. Nothing changes until you accept it.`;
+    return {
+      commentary: text, availability: 'available', graphSuggestions: [],
+      changes: [{ nodeId: target.nodeId, source, summary: 'Simulated addition of a closing line (deterministic simulator, not a model).' }],
+      parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+    };
+  }
+  const text = simulatorReceipt(received);
   return {
     commentary: `${text}. No canonical source was changed.`, availability: 'available', changes: [], graphSuggestions: [],
     parts: [{ type: 'text', text: `${text}. Review and source changes remain author-controlled.` }], droppedParts: [],
-    meta: { model: 'stex/hermes-fake', usage: { inputChars: String(message || '').length, outputChars: text.length, transport: 'fake' } },
+    meta: meta(text),
   };
 }
 
-export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, approvedSourceExcerpts = [], turns, message, answer = null }) {
-  if (deterministic()) return fakeScopeTurn(message);
+/**
+ * Reads the optional `layout` field of a scope-turn reply: one proposed layout
+ * change for the conversation's own section or piece. Only its shape is
+ * checked here; the engine validates every value before it becomes a contract.
+ * The STEX gateway does not produce this field yet (program Wave 4).
+ *
+ * @param {unknown} value
+ * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
+ */
+/**
+ * Reads the gateway's report of the context it forwarded to the director after
+ * trimming (`meta.forwardedContext`), so the contract can record what the
+ * director was given. Only the expected shape is kept.
+ *
+ * @param {unknown} value
+ * @returns {{ outline: { count: number, truncated: boolean } | null, documentSettings: boolean, approvedContracts: string[] | null } | null}
+ */
+function forwardedFrom(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const outline = value.outline && typeof value.outline === 'object' && Number.isInteger(value.outline.count) && value.outline.count >= 0
+    ? { count: value.outline.count, truncated: value.outline.truncated === true } : null;
+  const approvedContracts = Array.isArray(value.approvedContracts) ? value.approvedContracts.filter((id) => typeof id === 'string').slice(0, 20) : null;
+  return { outline, documentSettings: value.documentSettings === true, approvedContracts };
+}
+
+export function layoutFrom(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const summary = typeof value.summary === 'string' ? { summary: value.summary.slice(0, 500) } : {};
+  if (value.clear === true) return { clear: true, ...summary };
+  // An override has four settings; a reply with many keys is malformed, not a proposal.
+  if (value.set && typeof value.set === 'object' && !Array.isArray(value.set) && Object.keys(value.set).length <= 8) return { set: value.set, ...summary };
+  return null;
+}
+
+/**
+ * One editorial turn with the director for a book, a section or a piece
+ * (`stex.texgraph.scope-turn.v3`). `hierarchy`, when given, adds the scope's
+ * outline, settings in force and approved contracts as three separately
+ * labelled request fields (see `ProjectStore#hierarchy`).
+ *
+ * @param {object} input
+ * @returns {Promise<object>}  The labelled reply; never throws for an unavailable gateway.
+ */
+export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null }) {
+  if (deterministic()) return fakeScopeTurn(message, sources);
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
   const controller = new AbortController();
@@ -37,6 +176,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         scopeSources: sources.map(({ nodeId, relativePath, title, kind, hash, source }) => ({ nodeId, relativePath, title, kind, sourceHash: hash, source })),
         withheldNodes: withheld,
         graph,
+        // Additive v3 fields: each carries its own category and none holds manuscript text.
+        ...(hierarchy ? { outline: hierarchy.outline, documentSettings: hierarchy.settings, approvedContracts: hierarchy.contracts } : {}),
         approvedSourceExcerpts: approvedSourceExcerpts.map((entry) => ({ id: entry.id, name: entry.name, excerpt: String(entry.excerpt || '').slice(0, 6000) })).slice(0, 8),
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
@@ -56,8 +197,10 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     const droppedParts = Array.isArray(payload.droppedParts) ? payload.droppedParts.slice(0, 20) : [];
     // Models passed over in the director's stack are kept so the reply can say so.
     const skipped = Array.isArray(payload.meta?.skipped) ? payload.meta.skipped.slice(0, 6).map((entry) => String(entry?.model || '').slice(0, 120)).filter(Boolean) : [];
-    const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}) } : null;
-    return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta };
+    const forwarded = forwardedFrom(payload.meta?.forwardedContext);
+    const meta = payload.meta && typeof payload.meta === 'object' ? { model: String(payload.meta.model || '').slice(0, 120), usage: payload.meta.usage || null, ...(skipped.length ? { skipped } : {}), ...(forwarded ? { forwardedContext: forwarded } : {}) } : null;
+    const layout = layoutFrom(payload.layout);
+    return { commentary, availability: 'available', changes, graphSuggestions, parts, droppedParts, meta, ...(layout ? { layout } : {}) };
   } catch (error) {
     const reason = error.name === 'AbortError' ? 'the gateway timed out' : 'the gateway is unreachable';
     return { ...assistantResult(`Igor did not reply: ${reason}. Your message was saved, but nothing was changed.`, 'unavailable'), ...empty };
@@ -93,7 +236,8 @@ export async function gatewaySettings(method, pathname, payload) {
 }
 
 export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {
-  if (deterministic()) return assistantResult(`${fakeScopeTurn(message).commentary}\n\nNo source proposal was generated by the deterministic simulator.`, 'available');
+  // The one-page book has no simulated changes; it only acknowledges the message.
+  if (deterministic()) return assistantResult(`${simulatorReceipt(message)}. No canonical source was changed.\n\nNo source proposal was generated by the deterministic simulator.`, 'available');
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) {
     return assistantResult('The inference gateway is not configured. Your message was saved, but no revision was proposed.', 'unconfigured');

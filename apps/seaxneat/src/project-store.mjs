@@ -30,8 +30,19 @@ function projectId(value) {
   return value;
 }
 
+/**
+ * Text that is safe as the content of the starter's `<h1>` JSX element.
+ * Angle brackets would open or close an element and braces would start a
+ * JavaScript expression evaluated at build time, so all four are removed.
+ * Used for both the project title and the simulator's proposed heading.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+const headingText = (value) => String(value).replace(/[<>{}]/g, '');
+
 function sourceFor(title) {
-  const heading = String(title).replace(/[<>{}]/g, '');
+  const heading = headingText(title);
   return `export default function Home() {\n  return (\n    <main>\n      <p>STEX / Seaxneat draft</p>\n      <h1>${heading}</h1>\n      <p>Nothing here is published. This local preview is a working draft.</p>\n    </main>\n  );\n}\n`;
 }
 
@@ -128,8 +139,9 @@ export class SeaxneatStore {
   async proposal(id, input) {
     const project = this.get(id); const request = String(input?.message || '').trim().slice(0, 800);
     if (!request) throw new Error('An edit request is required.');
-    const source = await readFile(this.pagePath(project.id), 'utf8'); const target = request.replace(/[<>]/g, '').replace(/\s+/g, ' ').slice(0, 140);
-    const next = source.replace(/<h1>[^<]*<\/h1>/, `<h1>${target}</h1>`);
+    const source = await readFile(this.pagePath(project.id), 'utf8'); const target = headingText(request).replace(/\s+/g, ' ').slice(0, 140);
+    // A replacer function, so `$&`, `$'` and similar in the request stay literal text.
+    const next = source.replace(/<h1>[^<]*<\/h1>/, () => `<h1>${target}</h1>`);
     if (next === source) throw new Error('The starter site no longer has the bounded editable heading.');
     const proposal = { id: `proposal-${randomUUID().slice(0, 12)}`, kind: 'bounded-heading-edit', path: 'app/page.tsx', baseHash: digest(source), source: next, request, createdAt: this.clock(), simulator: 'deterministic' };
     project.messages.push({ id: `msg-${randomUUID().slice(0, 12)}`, role: 'user', content: request, createdAt: this.clock() }, { id: `msg-${randomUUID().slice(0, 12)}`, role: 'assistant', content: 'The deterministic simulator prepared a bounded heading edit. Review and apply it explicitly.', createdAt: this.clock(), simulator: 'deterministic' });

@@ -27,6 +27,12 @@ Python/FastAPI is the future backend target in the root plan, not a release
 rewrite. Obsidian is the first-class future knowledge interface; do not build
 sync or move engine state into a vault as part of presentation work.
 
+The company (agent configuration) is shared and owned on the VM by the
+inference service. Pantheon only links to Igor's Company screen: the shell's
+global "Company" utility link, and each workspace's menu entry with its
+`?app=` filter. It never stores, proxies with a secret, or duplicates model or
+persona settings.
+
 Keep generated previews opaque/sandboxed, Markdown inert, credentials
 server-side, API paths bounded and foreign origins refused. Preserve unsaved
 draft protection, global navigation, focus restoration, keyboard operation,

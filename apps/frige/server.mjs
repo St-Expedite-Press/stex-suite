@@ -262,14 +262,30 @@ async function scopeTurn(store, scopeId, payload) {
   }
   try {
     const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    // Context from the levels around the scope (outline, settings in force, approved contracts), labelled by category.
+    const hierarchy = await store.hierarchy(context.scope, context.graph);
     const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
     if (reservation) {
       // Hermes did not receive the answer: leave the question open and say why.
       if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
       userTurn = await store.commitAnswer(reservation);
     }
-    const { changeSet, dropped } = result.changes.length ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes }, context.sources) : { changeSet: null, dropped: [] };
+    // What the contract records about this turn: who asked, which model answered, and
+    // what it was shown beyond the offered sources. Categories stay separate in the record.
+    const provenance = {
+      request: (reservation || userTurn).message, userTurnId: userTurn?.id || null,
+      model: result.meta?.model || null, transport: result.meta?.usage?.transport || null,
+      withheld: context.withheld, references: approvedSourceExcerpts.map(({ id, name }) => ({ id, name })),
+      designHash: designHash(await store.design()),
+      // What the director was given: the gateway's report after trimming when it sends one, else what Frige sent, marked unconfirmed.
+      hierarchy: result.meta?.forwardedContext
+        ? { outline: result.meta.forwardedContext.outline?.count ?? 0, outlineTruncated: result.meta.forwardedContext.outline?.truncated === true, settingsHash: result.meta.forwardedContext.documentSettings ? hierarchy.settings.designHash : null, contracts: result.meta.forwardedContext.approvedContracts ?? [], confirmed: true }
+        : { outline: hierarchy.outline.entries.length, outlineTruncated: hierarchy.outline.truncated, settingsHash: hierarchy.settings.designHash, contracts: hierarchy.contracts.entries.map((entry) => entry.contractId), confirmed: false },
+    };
+    // A reply proposes text changes, or (from the simulator, until the director can) one layout change.
+    const proposes = result.changes.length || result.layout;
+    const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);
     const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
     return { userTurn, assistantTurn, changeSet, availability: result.availability };
@@ -329,6 +345,15 @@ async function vaultApi(request, response, url, store) {
     const payload = await body(request);
     return json(response, 201, await store.queueLiveBuild(payload.scopeId || 'book'));
   }
+  // Change contracts: the history of proposals for this book, one contract in
+  // full, and the rollback of a contract's accepted changes.
+  if (request.method === 'GET' && url.pathname === '/api/project/contracts') return json(response, 200, await store.contracts({ scopeId: url.searchParams.get('scope'), nodeId: url.searchParams.get('node') }));
+  const contractRoute = url.pathname.match(/^\/api\/contracts\/([0-9a-f-]{36})(\/revert)?$/);
+  if (contractRoute && request.method === 'GET' && !contractRoute[2]) {
+    const record = await store.contract(contractRoute[1]);
+    return record ? json(response, 200, record) : json(response, 404, { error: 'Change contract not found.', code: 'CONTRACT_NOT_FOUND' });
+  }
+  if (contractRoute && request.method === 'POST' && contractRoute[2]) { const payload = await body(request); return json(response, 200, await store.revertChanges(contractRoute[1], { nodeId: payload?.nodeId || null })); }
   const scoped = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/);
   if (scoped) {
     const [, scopeId, action] = scoped;
@@ -387,6 +412,18 @@ async function api(request, response, url, store) {
   }
   return false;
 }
+
+/**
+ * HTTP status for an error the engine classified by `code`. Anything
+ * unclassified is a 400. A conflict (409) means the request was well formed
+ * but the manuscript or conversation has moved on since the caller last read it.
+ *
+ * @type {Record<string, number>}
+ */
+const STATUS_BY_CODE = {
+  STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409,
+  CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
+};
 
 const legacyBooks = legacyBooksApi(booksDirectory);
 await defaultStore.initialize();
@@ -451,7 +488,7 @@ http.createServer(async (request, response) => {
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return json(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);
   } catch (error) {
-    json(response, error.status || (error.code === 'STALE_SOURCE' || error.code === 'STALE_PROPOSAL' || error.code === 'ALREADY_ANSWERED' ? 409 : error.code === 'HERMES_UNAVAILABLE' ? 503 : 400), { error: error.message || 'Unexpected server error.', ...(error.code ? { code: error.code } : {}) });
+    json(response, error.status || STATUS_BY_CODE[error.code] || 400, { error: error.message || 'Unexpected server error.', ...(error.code ? { code: error.code } : {}) });
   }
 }).listen(port, '127.0.0.1', () => {
   console.log(`Frige Studio is ready at http://127.0.0.1:${port}${mountedAt || '/'}`);

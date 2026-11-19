@@ -17,7 +17,7 @@ const publishingTemplates = {
   library: await readFile(path.join(publishingDirectory, 'lobby.html'), 'utf8'),
   workstation: await readFile(path.join(publishingDirectory, 'index.html'), 'utf8'),
 };
-const publishingAssets = new Set(['app.js', 'base-path.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'model-settings.js', 'proof-viewer.js', 'style.css', 'thread.js', 'workspace.js']);
+const publishingAssets = new Set(['app.js', 'base-path.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'proof-viewer.js', 'style.css', 'thread.js', 'workspace.js']);
 const port = Number(process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || 4300);
 const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v2.json');
 let applications = shellApplications;
@@ -98,9 +98,13 @@ http.createServer(async (request, response) => {
       return;
     }
     if (url.pathname === '/igor') { response.writeHead(308, { location: `/igor/${url.search}` }); response.end(); return; }
-    if (['/igor/', '/igor/new'].includes(url.pathname) || /^\/igor\/c\/[^/]+\/?$/.test(url.pathname)) {
+    // Igor's page routes are composed here; everything else under /igor/ (its API and
+    // assets) is proxied below. /igor/team is the shared Company screen (Wave 4a); its
+    // query (for example ?app=frige) is read by Igor's renderer, not by Pantheon.
+    const companyRoute = /^\/igor\/team\/?$/.test(url.pathname);
+    if (companyRoute || ['/igor/', '/igor/new'].includes(url.pathname) || /^\/igor\/c\/[^/]+\/?$/.test(url.pathname)) {
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: 'Method not allowed.' });
-      return sendPage(response, directorPage(), { 'content-security-policy': "img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'" });
+      return sendPage(response, directorPage({ view: companyRoute ? 'company' : 'conversations' }), { 'content-security-policy': "img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'" });
     }
     if (url.pathname === '/frige') { response.writeHead(308, { location: `/frige/${url.search}` }); response.end(); return; }
     if (url.pathname === '/frige/' && ['GET', 'HEAD'].includes(request.method)) {

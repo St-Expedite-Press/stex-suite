@@ -1,0 +1,724 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/frige/change-contract.v1.schema.json",
+  "title": "Frige change contract v1",
+  "description": "The stored record of one proposed change to canonical manuscript source (record schema 3). Frige is the only producer and writer. A change set from before contracts (record schema 2) is not described here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contract",
+    "id",
+    "scopeId",
+    "scope",
+    "createdAt",
+    "request",
+    "commentary",
+    "origin",
+    "context",
+    "status",
+    "changes",
+    "dropped",
+    "effects",
+    "conflicts",
+    "approval",
+    "rollback",
+    "proof"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 3
+    },
+    "contract": {
+      "const": "stex.frige.change-contract.v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "scopeId": {
+      "type": "string",
+      "pattern": "^(book|[a-z][a-z0-9-]{5,80})$"
+    },
+    "scope": {
+      "description": "The conversation that proposed the change.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(book|[a-z][a-z0-9-]{5,80})$"
+        },
+        "kind": {
+          "enum": [
+            "book",
+            "section",
+            "front-matter",
+            "back-matter",
+            "node"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "request": {
+      "description": "The proposed action, in the author's words.",
+      "type": "string",
+      "maxLength": 12000
+    },
+    "commentary": {
+      "description": "The director's reason.",
+      "type": "string",
+      "maxLength": 12000
+    },
+    "origin": {
+      "description": "The turn that produced the proposal. Values are recorded as reported, not interpreted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "userTurnId",
+        "model",
+        "transport"
+      ],
+      "properties": {
+        "userTurnId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "transport": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        }
+      }
+    },
+    "context": {
+      "description": "What the director was shown, by category. Categories are never merged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offered",
+        "withheld",
+        "references",
+        "designHash"
+      ],
+      "properties": {
+        "offered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "relativePath",
+              "hash",
+              "category"
+            ],
+            "properties": {
+              "nodeId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{5,80}$"
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "category": {
+                "const": "canonical-source"
+              }
+            }
+          }
+        },
+        "withheld": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "title"
+            ],
+            "properties": {
+              "nodeId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "category"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "category": {
+                "const": "approved-reference"
+              }
+            }
+          }
+        },
+        "designHash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "outline": {
+          "description": "The book outline offered with the turn (Wave 3c): how many pieces it listed, and whether it was cut short. No manuscript text.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "count",
+            "truncated"
+          ],
+          "properties": {
+            "category": {
+              "const": "outline"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        "settings": {
+          "description": "The settings in force offered with the turn, by profile hash.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "designHash"
+          ],
+          "properties": {
+            "category": {
+              "const": "document-settings"
+            },
+            "designHash": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 120
+            }
+          }
+        },
+        "contracts": {
+          "description": "Approved contracts offered with the turn as context.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "contractId",
+              "category"
+            ],
+            "properties": {
+              "contractId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "category": {
+                "const": "approved-contract"
+              }
+            }
+          }
+        },
+        "hierarchyConfirmed": {
+          "description": "True when the inference gateway reported the outline, settings and contracts it forwarded to the director (after trimming); false when the contract records what Frige sent, unconfirmed.",
+          "type": "boolean"
+        }
+      }
+    },
+    "status": {
+      "description": "Pending while any change is pending.",
+      "enum": [
+        "pending",
+        "resolved"
+      ]
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "nodeId",
+              "relativePath",
+              "title",
+              "baseHash",
+              "afterHash",
+              "before",
+              "source",
+              "summary",
+              "lines",
+              "status"
+            ],
+            "properties": {
+              "kind": {
+                "const": "replace-node-source"
+              },
+              "nodeId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{5,80}$"
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "baseHash": {
+                "description": "SHA-256 of `before`.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "afterHash": {
+                "description": "SHA-256 of `source`.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "before": {
+                "description": "The exact prior text.",
+                "type": "string",
+                "maxLength": 400000
+              },
+              "source": {
+                "description": "The exact proposed text.",
+                "type": "string",
+                "maxLength": 400000
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "lines": {
+                "description": "A summary only: lines compared as multisets, ignoring line endings.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "before",
+                  "after",
+                  "added",
+                  "removed"
+                ],
+                "properties": {
+                  "before": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "after": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "added": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "removed": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "accepted",
+                  "rejected",
+                  "stale",
+                  "failed",
+                  "superseded",
+                  "reverted"
+                ]
+              },
+              "decidedAt": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "revertedAt": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "supersededBy": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "error": {
+                "description": "Why an acceptance or rollback did not write.",
+                "type": "string"
+              }
+            },
+            "description": "A replacement of one piece of manuscript text."
+          },
+          {
+            "description": "A change to one section's or one piece's own layout settings (Wave 3b). A contract holds either text changes or exactly one layout change.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "level",
+              "target",
+              "nodeId",
+              "title",
+              "before",
+              "after",
+              "baseHash",
+              "afterHash",
+              "pieces",
+              "inherited",
+              "summary",
+              "status"
+            ],
+            "properties": {
+              "kind": {
+                "const": "set-layout"
+              },
+              "level": {
+                "enum": [
+                  "section",
+                  "node"
+                ]
+              },
+              "target": {
+                "description": "Section folder, or node id.",
+                "type": "string",
+                "maxLength": 255
+              },
+              "nodeId": {
+                "description": "The piece, for a piece override; null for a section.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "before": {
+                "description": "The target's own override before the change; null for none. Its settings are validated by the publication profile rules, not by this schema.",
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "after": {
+                "description": "The proposed override; null clears it.",
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "baseHash": {
+                "description": "Publication profile hash the change was proposed against.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{16}$"
+              },
+              "afterHash": {
+                "description": "Publication profile hash once accepted; rollback requires it.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{16}$"
+              },
+              "inherited": {
+                "description": "What applies to the target without its own override.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fontSize",
+                  "leading",
+                  "sizeFrom",
+                  "opensRecto",
+                  "headText"
+                ],
+                "properties": {
+                  "fontSize": {
+                    "type": "string"
+                  },
+                  "leading": {
+                    "type": "string"
+                  },
+                  "sizeFrom": {
+                    "enum": [
+                      "book",
+                      "section",
+                      "element"
+                    ]
+                  },
+                  "opensRecto": {
+                    "type": "boolean"
+                  },
+                  "headText": {
+                    "description": "The running head a section shows without its own; null for a piece.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "accepted",
+                  "rejected",
+                  "stale",
+                  "failed",
+                  "superseded",
+                  "reverted"
+                ]
+              },
+              "decidedAt": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "revertedAt": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "supersededBy": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "error": {
+                "description": "Why an acceptance or rollback did not write.",
+                "type": "string"
+              },
+              "pieces": {
+                "description": "Pieces in the reading order the override applied to when proposed. A build proves the change only if it typeset all of them that are still in the book.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "dropped": {
+      "description": "Proposed changes that were refused before the contract was stored.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nodeId",
+          "reason"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "proof-stale"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "description": "Undecided changes to the same piece or the same layout target in another conversation, as found when this contract was proposed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contractId",
+          "scopeId",
+          "nodeId"
+        ],
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "What both would change; absent in contracts made before layout changes.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "granularity"
+      ],
+      "properties": {
+        "required": {
+          "const": "author"
+        },
+        "granularity": {
+          "const": "per-change"
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "requires"
+      ],
+      "properties": {
+        "strategy": {
+          "const": "restore-before"
+        },
+        "requires": {
+          "const": "current-hash-equals-after-hash"
+        }
+      }
+    },
+    "proof": {
+      "description": "The strongest successful build that typeset every accepted change at its accepted text, or null.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "completedAt",
+        "scopeId",
+        "mode",
+        "paginationVerified",
+        "designHash",
+        "sourceHashes"
+      ],
+      "properties": {
+        "completedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "scopeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "prefix",
+            "isolated",
+            null
+          ]
+        },
+        "paginationVerified": {
+          "type": "boolean"
+        },
+        "designHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceHashes": {
+          "description": "Accepted pieces and the hashes that were typeset.",
+          "type": "object"
+        }
+      }
+    },
+    "applying": {
+      "description": "Present while an acceptance is writing. Left in place only if the engine stopped, or a piece could not be read to settle its outcome. Such a record is settled (each piece holding the proposed text restored, the changes marked failed) before anything else acts on the contract, and the first time the book is used after a start.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "nodeIds"
+      ],
+      "properties": {
+        "startedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { designDocument, designHash } from './design-settings.mjs';
+import { designDocument, designHash, resolveLayout } from './design-settings.mjs';
 import { compilerFindings } from './preflight.mjs';
-import { writeAtomic } from './project-store.mjs';
+import { sourceHash, writeAtomic } from './project-store.mjs';
 import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
 
 // Typographic spaces are authorial spacing; Latin Modern has no glyphs for them, so they become explicit space.
@@ -107,7 +107,15 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
   const settings = await store.design(); const designId = designHash(settings);
   const sections = []; const units = []; let numbering = { startPage: 1, basis: 'book-order', footnotes: 0 };
   const parsed = new Map();
-  for (const node of nodes) parsed.set(node.id, parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
+  // The proof's source hashes are taken from the text that is actually typeset,
+  // not from the graph read a moment earlier: a save landing between the two
+  // would otherwise record a hash for text this proof never contained.
+  const typesetHashes = new Map();
+  for (const node of nodes) {
+    const source = await readFile(store.sourcePath(node.relativePath), 'utf8');
+    typesetHashes.set(node.id, sourceHash(source));
+    parsed.set(node.id, parseManuscript(source).blocks);
+  }
   if (isolated) {
     let footnotes = 0;
     for (const node of preceding) footnotes += footnoteCount(parseManuscript(await readFile(store.sourcePath(node.relativePath), 'utf8')).blocks);
@@ -123,18 +131,35 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
     units.push(unit);
     // A node without print content occupies no page, so it gets no markers.
     if (!unit.printable) { sections.push(`% texgraph-node:${node.id} (no print content)`); continue; }
-    // Each unit starts a new page; openers start on a recto when the profile asks, decided in TeX from the folio.
-    const opensRecto = settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note');
-    // The recto running head names the section a page belongs to.
-    // The recto head uses the section opener's own heading when it has one, so head and opener agree.
+    const section = sectionOf(node.id);
+    const layout = resolveLayout(settings, { sectionKey: section?.folder || null, nodeId: node.id });
+    // Each unit starts a new page. Whether it opens on a recto is decided by the
+    // nearest setting: the piece's own, else its section's if it opens the
+    // section, else the book rule for openers. TeX then decides from the folio.
+    // The first piece of a section that prints opens it: an anchor with nothing to
+    // print (a note-only piece) has already been skipped above. A folder split into
+    // separate runs in the reading order is a separate section each time.
+    const opensSection = Boolean(section) && section !== markedSection;
+    const opensRecto = layout.nodeOpensRecto ?? (opensSection ? layout.sectionOpensRecto : undefined)
+      ?? (settings.rectoOpeners && (node.kind === 'front-matter' || node.kind === 'section-note' || node.kind === 'cycle-note'));
+    // The page map records the settings each piece was typeset with.
+    unit.layout = { fontSize: layout.fontSize, leading: layout.leading, sizeFrom: layout.sizeFrom, opensRecto };
+    // The recto running head names the section a page belongs to: the section's
+    // override text if set, else the section opener's own heading (so head and
+    // opener agree), else the section title.
     const opener = node.kind === 'section-note' ? blocks.find((block) => block.type === 'heading')?.text : null;
-    const section = sectionOf(node.id); const mark = section && section !== markedSection ? `\\markright{${opener ? inlineTeX(opener) : escapeTeX(section.title)}}` : '';
+    const headText = layout.headText ? escapeTeX(layout.headText) : opener ? inlineTeX(opener) : section ? escapeTeX(section.title) : '';
+    const mark = section && section !== markedSection ? `\\markright{${headText}}` : '';
     if (section) markedSection = section;
-    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${manuscriptBody(blocks, node.kind)}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
+    // A size set by a section or the piece applies inside a group around that
+    // piece only. Values come from the validated profile, never from text.
+    const body = manuscriptBody(blocks, node.kind);
+    const typeset = layout.sizeFrom === 'book' ? body : `{\\fontsize{${layout.fontSize}}{${layout.leading}}\\selectfont\n${body}\n\\par}`;
+    sections.push(`% texgraph-node:${node.id}\n${opensRecto ? '\\tgrecto\n' : ''}\\tgmark{start}{${node.id}}${mark}\n${typeset}\n\\tgmark{end}{${node.id}}\n\\clearpage`);
   }
   const headTitle = await resolveHeadTitle(store, graph, settings);
   const document = designDocument(settings, { title: headTitle }).replace('%TEXGRAPH-BODY%', () => `${COMPOSITION_MACROS}\n${sections.join('\n')}`);
-  const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, node.hash]));
+  const sourceHashes = Object.fromEntries(nodes.map((node) => [node.id, typesetHashes.get(node.id)]));
   return { document, units, graph, settings, headTitle, designHash: designId, scope, mode: isolated ? 'isolated' : 'prefix', numbering, includedNodeIds: nodes.map((node) => node.id), sourceHashes };
 }
 

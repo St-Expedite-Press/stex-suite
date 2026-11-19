@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -57,11 +57,17 @@ test('a change set keeps only changes to offered nodes, and accepting never over
   const both = [...section.sources, ...pageContext.sources];
   const pair = (await store.createChangeSet(sectionId, { changes: [{ nodeId: second, source: '# Second\n\nFrom Hermes.\n' }, { nodeId: first, source: '# First\n\nFrom Hermes.\n' }] }, both)).changeSet;
   const edited = await store.node(first); await store.updateNode(first, '# First\n\nBy hand.\n', edited.hash);
+  // Accepting both together is all-or-nothing (program Wave 3d): the edited piece is
+  // stale, so neither is written, and the other stays pending to decide again.
   const decided = await store.decideChanges(sectionId, pair.id, { decision: 'accept' });
-  assert.deepEqual(decided.changes.map((change) => change.status), ['accepted', 'stale']); assert.equal(decided.status, 'resolved');
-  assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
+  assert.deepEqual(decided.changes.map((change) => change.status), ['pending', 'stale']); assert.equal(decided.status, 'pending');
+  assert.doesNotMatch(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
   assert.match(await readFile(path.join(root, 'manuscript', '01', 'First.md'), 'utf8'), /By hand/);
   assert.equal((await store.turns(sectionId)).at(-1).kind, 'changes-decided');
+  // The remaining piece can still be accepted on its own.
+  const second2 = await store.decideChanges(sectionId, pair.id, { decision: 'accept' });
+  assert.deepEqual(second2.changes.map((change) => change.status), ['accepted', 'stale']); assert.equal(second2.status, 'resolved');
+  assert.match(await readFile(path.join(root, 'manuscript', '02', 'Second.md'), 'utf8'), /From Hermes/);
   await assert.rejects(() => store.decideChanges(sectionId, pair.id, { decision: 'accept' }), /No pending change/);
 });
 test('assembles table-of-contents order and prints editorial notes as footnotes where they occur', async (context) => {
@@ -306,4 +312,262 @@ test('an answer Hermes never received leaves the question open to answer again',
   store.releaseAnswer(pending);
   assert.deepEqual((await store.recordAnswer('book', parts[0].promptId, { selected: ['b'] })).values, { selected: ['b'] });
   assert.equal((await store.turns('book')).filter((turn) => turn.kind === 'answer').length, 1);
+});
+
+// --- Stable section identity (program Wave 3e) ------------------------------------
+
+/**
+ * A book with section folder `01_Cycle` holding Alpha then Beta, and `02_End`.
+ *
+ * @param {import('node:test').TestContext} context
+ */
+async function cycleBook(context) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'frige-sections-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  for (const folder of ['01_Cycle', '02_End']) await mkdir(path.join(root, 'manuscript', folder), { recursive: true });
+  await writeFile(path.join(root, 'manuscript', '01_Cycle', 'Alpha.md'), '# Alpha\n\nOne.\n');
+  await writeFile(path.join(root, 'manuscript', '01_Cycle', 'Beta.md'), '# Beta\n\nTwo.\n');
+  await writeFile(path.join(root, 'manuscript', '02_End', 'End.md'), '# End\n\nThree.\n');
+  const programme = (first) => `- [x](01_Cycle/${first}.md)\n- [x](01_Cycle/Beta.md)\n- [x](02_End/End.md)\n`;
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), programme('Alpha'));
+  const store = new ProjectStore(root); await store.initialize();
+  return { root, store, programme };
+}
+
+test('a section keeps its id, conversation and proposals when its first piece is renamed or reordered', async (context) => {
+  const { root, store, programme } = await cycleBook(context);
+  const before = (await store.graph()).book.sections[0];
+  assert.match(before.id, /^section-[a-f0-9]{16}$/);
+  await store.appendTurn(before.id, { role: 'user', message: 'About the cycle.' });
+  const { sources } = await store.scopeContext(before.id);
+  const { changeSet } = await store.createChangeSet(before.id, { changes: [{ nodeId: sources[1].nodeId, source: '# Beta\n\nTwo, revised.\n' }] }, sources);
+  // The first piece is renamed (a new node id), then the two pieces swap places.
+  await rename(path.join(root, 'manuscript', '01_Cycle', 'Alpha.md'), path.join(root, 'manuscript', '01_Cycle', 'Aleph.md'));
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), programme('Aleph'));
+  await store.refreshGraph();
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](01_Cycle/Beta.md)\n- [x](01_Cycle/Aleph.md)\n- [x](02_End/End.md)\n');
+  const after = (await store.refreshGraph()).book.sections[0];
+  assert.equal(after.id, before.id, 'the id follows the folder, not the first piece');
+  assert.deepEqual((await store.turns(after.id)).map((turn) => turn.message), ['About the cycle.']);
+  assert.equal((await store.changeSet(after.id)).id, changeSet.id);
+  assert.deepEqual((await store.contracts({ scopeId: after.id })).map((entry) => entry.id), [changeSet.id]);
+});
+
+test('conversations and contracts recorded under a section id from before stable ids stay attached, even after later renames', async (context) => {
+  const { root, store, programme } = await cycleBook(context);
+  const graph = await store.graph();
+  const section = graph.book.sections[0];
+  const oldId = `scope-${section.anchorNodeId}`;
+  assert.ok(section.legacyIds.includes(oldId), 'the id it would have had before is an alias');
+  // Data written by the earlier version, under the old id.
+  await writeFile(path.join(root, '.texgraph', 'conversations', `${oldId}.jsonl`), `${JSON.stringify({ id: 'old-turn', at: '2026-01-01T00:00:00.000Z', role: 'user', message: 'Under the old id.', scopeId: oldId })}\n`);
+  const { sources } = await store.scopeContext(section.id);
+  const { changeSet } = await store.createChangeSet(oldId, { changes: [{ nodeId: sources[0].nodeId, source: '# Alpha\n\nOne, revised.\n' }] }, sources);
+  assert.equal(changeSet.scopeId, section.id, 'a proposal addressed by the old id is recorded under the current one');
+  const legacy = { ...changeSet, id: '0b7253f0-0000-4000-8000-000000000000', scopeId: oldId };
+  await writeFile(path.join(root, '.texgraph', 'contracts', `${legacy.id}.json`), JSON.stringify(legacy));
+
+  assert.equal((await store.scope(oldId)).id, section.id, 'the old id resolves to the section');
+  assert.deepEqual((await store.turns(section.id)).map((turn) => turn.message), ['Under the old id.']);
+  assert.ok((await store.contracts({ scopeId: section.id })).some((entry) => entry.id === legacy.id), 'contracts under the old id are listed with the section');
+  const appended = await store.appendTurn(oldId, { role: 'user', message: 'Addressed by the old id.' });
+  assert.equal(appended.scopeId, section.id);
+
+  // The first piece is then renamed: the old id is still remembered through the previous graph.
+  await rename(path.join(root, 'manuscript', '01_Cycle', 'Alpha.md'), path.join(root, 'manuscript', '01_Cycle', 'Aleph.md'));
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), programme('Aleph'));
+  const renamed = (await store.refreshGraph()).book.sections[0];
+  assert.equal(renamed.id, section.id); assert.ok(renamed.legacyIds.includes(oldId));
+  assert.deepEqual((await store.turns(section.id)).map((turn) => turn.message), ['Under the old id.', 'Addressed by the old id.']);
+});
+
+test('a folder that appears in two places in the reading order gives two sections with distinct, stable ids', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](01_Cycle/Alpha.md)\n- [x](02_End/End.md)\n- [x](01_Cycle/Beta.md)\n');
+  const sections = (await store.refreshGraph()).book.sections;
+  assert.deepEqual(sections.map((section) => section.folder), ['01_Cycle', '02_End', '01_Cycle']);
+  assert.equal(sections[2].id, `${sections[0].id}-2`);
+  assert.equal(new Set(sections.map((section) => section.id)).size, 3);
+});
+
+test('when one run of a split folder disappears, the other keeps its own id and never takes over the vanished run', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](01_Cycle/Alpha.md)\n- [x](02_End/End.md)\n- [x](01_Cycle/Beta.md)\n');
+  const [first, , second] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(first.id, { role: 'user', message: 'About Alpha only.' });
+  await store.appendTurn(second.id, { role: 'user', message: 'About Beta only.' });
+  const { sources } = await store.scopeContext(first.id);
+  const { changeSet } = await store.createChangeSet(first.id, { changes: [{ nodeId: sources[0].nodeId, source: '# Alpha\n\nChanged.\n' }] }, sources);
+  // Alpha leaves the table of contents: the first run vanishes.
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](02_End/End.md)\n- [x](01_Cycle/Beta.md)\n');
+  const remaining = (await store.refreshGraph()).book.sections.find((section) => section.folder === '01_Cycle');
+  assert.equal(remaining.id, second.id, 'the surviving run keeps the id it shares pieces with');
+  assert.deepEqual((await store.turns(remaining.id)).map((turn) => turn.message), ['About Beta only.']);
+  assert.equal(await store.changeSet(remaining.id), null, 'the vanished run\u2019s proposal is not inherited');
+  // Restoring Alpha brings both runs back under their own ids.
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [x](01_Cycle/Alpha.md)\n- [x](02_End/End.md)\n- [x](01_Cycle/Beta.md)\n');
+  const restored = (await store.refreshGraph()).book.sections;
+  assert.equal(restored[0].id, first.id); assert.equal(restored[2].id, second.id);
+  assert.equal((await store.changeSet(first.id)).id, changeSet.id);
+});
+
+test('a contract change to a piece outside its conversation’s section is never applied', async (context) => {
+  const { root, store } = await cycleBook(context);
+  const graph = await store.graph({ refresh: true });
+  const [cycle, end] = graph.book.sections;
+  // A contract recorded for the cycle section that names the End piece (as an alias mix-up could).
+  const endSources = (await store.scopeContext(end.id)).sources;
+  const { changeSet } = await store.createChangeSet(cycle.id, { changes: [{ nodeId: endSources[0].nodeId, source: '# End\n\nChanged from the wrong section.\n' }] }, endSources);
+  const decided = await store.decideChanges(cycle.id, changeSet.id, { decision: 'accept' });
+  assert.equal(decided.changes[0].status, 'stale'); assert.match(decided.changes[0].error, /no longer part of this conversation/);
+  assert.equal(await readFile(path.join(root, 'manuscript', '02_End', 'End.md'), 'utf8'), '# End\n\nThree.\n');
+});
+
+test('old-form section ids stay attached through many renames, a lost graph, and a case-only folder rename', async (context) => {
+  const { root, store } = await cycleBook(context);
+  const section = (await store.graph()).book.sections[0];
+  const oldId = `scope-${section.anchorNodeId}`;
+  await writeFile(path.join(root, '.texgraph', 'conversations', `${oldId}.jsonl`), `${JSON.stringify({ id: 'old', at: '2026-01-01T00:00:00.000Z', role: 'user', message: 'Old data.', scopeId: oldId })}\n`);
+  // Turns kept in the first piece's own file by older versions, tagged with the section id.
+  await writeFile(path.join(root, '.texgraph', 'conversations', `${section.anchorNodeId}.jsonl`), `${JSON.stringify({ id: 'anchor', at: '2026-01-02T00:00:00.000Z', role: 'user', message: 'Anchor-file turn.', scopeId: oldId })}\n`);
+  await store.refreshGraph();
+  // The first piece is renamed again and again.
+  let name = 'Alpha';
+  for (let round = 0; round < 25; round += 1) {
+    const next = `Alpha${round}`;
+    await rename(path.join(root, 'manuscript', '01_Cycle', `${name}.md`), path.join(root, 'manuscript', '01_Cycle', `${next}.md`));
+    await writeFile(path.join(root, 'manuscript', 'Programme.md'), `- [x](01_Cycle/${next}.md)\n- [x](01_Cycle/Beta.md)\n- [x](02_End/End.md)\n`);
+    await store.refreshGraph(); name = next;
+  }
+  const expected = ['Old data.', 'Anchor-file turn.'];
+  assert.deepEqual((await store.turns(section.id)).map((turn) => turn.message), expected, 'kept after 25 renames');
+  // The graph file is lost and rebuilt.
+  await rm(path.join(root, '.texgraph', 'graph.json'));
+  const rebuilt = new ProjectStore(root); await rebuilt.initialize();
+  assert.equal((await rebuilt.graph()).book.sections[0].id, section.id);
+  assert.deepEqual((await rebuilt.turns(section.id)).map((turn) => turn.message), expected, 'kept after the graph is rebuilt');
+  // A case-only folder rename keeps the section id (as node ids already ignore case).
+  await rename(path.join(root, 'manuscript', '01_Cycle'), path.join(root, 'manuscript', '01_cycle'));
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), `- [x](01_cycle/${name}.md)\n- [x](01_cycle/Beta.md)\n- [x](02_End/End.md)\n`);
+  assert.equal((await rebuilt.refreshGraph()).book.sections[0].id, section.id);
+  // No alias belongs to two sections.
+  const all = (await rebuilt.graph()).book.sections.flatMap((entry) => entry.legacyIds);
+  assert.equal(new Set(all).size, all.length);
+});
+
+test('a graph from before stable ids is rebuilt on first use, and records, artifacts and proofs addressed by old ids resolve to the section', async (context) => {
+  const { root, store } = await cycleBook(context);
+  const graph = await store.graph(); const section = graph.book.sections[0];
+  const oldId = `scope-${section.anchorNodeId}`;
+  // A graph as the earlier version wrote it: old-form section ids and no aliases.
+  const old = { ...graph, book: { ...graph.book, sections: graph.book.sections.map(({ legacyIds, ...rest }) => ({ ...rest, id: `scope-${rest.anchorNodeId}` })) } };
+  await writeFile(path.join(root, '.texgraph', 'graph.json'), JSON.stringify(old));
+  const fresh = new ProjectStore(root); await fresh.initialize();
+  assert.equal((await fresh.graph()).book.sections[0].id, section.id, 'rebuilt with stable ids at once');
+  const stored = await fresh.storeParts(oldId, [{ type: 'artifact', kind: 'document', title: 'Notes', content: 'x' }]);
+  assert.equal((await fresh.artifact(stored.parts[0].artifactId)).scopeId, section.id, 'artifacts use the current id');
+  // A proof made under the old id still counts for the section's live build.
+  const assembled = await assembleBook(fresh, { scopeId: section.id });
+  await writeFile(fresh.previewPath(), '%PDF-test');
+  await fresh.recordBuild({ ok: true, targetScope: { ...section, id: oldId }, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap: { schemaVersion: 3, mode: 'prefix', designHash: assembled.designHash, pagination: { verified: true } }, log: '' });
+  assert.equal((await fresh.queueLiveBuild(section.id)).status, 'queued-locally');
+});
+
+/**
+ * Adds pieces to the cycle book: `01_Cycle/<name>.md` for each name, and a
+ * `03_Coda/Coda.md` piece used to split a folder into more runs.
+ *
+ * @param {string} root
+ * @param {string[]} names
+ */
+async function addCyclePieces(root, names) {
+  for (const name of names) await writeFile(path.join(root, 'manuscript', '01_Cycle', `${name}.md`), `# ${name}\n\nMore.\n`);
+  await mkdir(path.join(root, 'manuscript', '03_Coda'), { recursive: true });
+  await writeFile(path.join(root, 'manuscript', '03_Coda', 'Coda.md'), '# Coda\n\nLast.\n');
+}
+
+/** @param {string[]} entries  Paths under `manuscript/`, in reading order. */
+const contents = (entries) => entries.map((entry) => `- [x](${entry})\n`).join('');
+
+test('a split run whose every piece was renamed keeps its id when nothing else is ambiguous', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Beta.md']));
+  const [, , second] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(second.id, { role: 'user', message: 'About Beta.' });
+  await rename(path.join(root, 'manuscript', '01_Cycle', 'Beta.md'), path.join(root, 'manuscript', '01_Cycle', 'Bet.md'));
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Bet.md']));
+  const renamed = (await store.refreshGraph()).book.sections[2];
+  assert.equal(renamed.id, second.id);
+  assert.deepEqual((await store.turns(renamed.id)).map((turn) => turn.message), ['About Beta.']);
+});
+
+test('a new run never inherits a vanished run while another run of the folder is also unmatched', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await addCyclePieces(root, ['Gamma', 'Delta']);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '01_Cycle/Beta.md', '02_End/End.md', '01_Cycle/Gamma.md']));
+  const [cycle, , gamma] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(gamma.id, { role: 'user', message: 'About Gamma.' });
+  // Gamma goes, Delta arrives, and Alpha and Beta are split apart: Beta and Delta are both new
+  // runs, so neither can be told apart as Gamma's successor.
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Beta.md', '03_Coda/Coda.md', '01_Cycle/Delta.md']));
+  const sections = (await store.refreshGraph()).book.sections.filter((section) => section.folder === '01_Cycle');
+  assert.equal(sections[0].id, cycle.id);
+  for (const section of sections.slice(1)) {
+    assert.notEqual(section.id, gamma.id);
+    assert.deepEqual(await store.turns(section.id), []);
+  }
+});
+
+test('a run keeps the id of the earlier run it shares the most pieces with, not the first in reading order', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await addCyclePieces(root, ['Gamma']);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Beta.md', '01_Cycle/Gamma.md']));
+  const [, , later] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(later.id, { role: 'user', message: 'About Beta and Gamma.' });
+  // The runs merge: two of the three pieces were the later run's.
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '01_Cycle/Beta.md', '01_Cycle/Gamma.md', '02_End/End.md']));
+  const merged = (await store.refreshGraph()).book.sections[0];
+  assert.equal(merged.id, later.id);
+  assert.deepEqual((await store.turns(merged.id)).map((turn) => turn.message), ['About Beta and Gamma.']);
+});
+
+test('a section id once retired is never issued again, so a new run cannot inherit its records', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await addCyclePieces(root, ['Gamma']);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Beta.md']));
+  const [first, , second] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(second.id, { role: 'user', message: 'About Beta, split off.' });
+  // Beta rejoins Alpha: the second run's id is retired (its records stay on disk).
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '01_Cycle/Beta.md', '02_End/End.md']));
+  assert.equal((await store.refreshGraph()).book.sections[0].id, first.id);
+  // A new piece then forms a second run; it gets an id never issued before.
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '01_Cycle/Beta.md', '02_End/End.md', '01_Cycle/Gamma.md']));
+  const fresh = (await store.refreshGraph()).book.sections[2];
+  assert.notEqual(fresh.id, second.id);
+  assert.deepEqual(await store.turns(fresh.id), []);
+  const memory = JSON.parse(await readFile(path.join(root, '.texgraph', 'section-aliases.json'), 'utf8'));
+  assert.deepEqual(Object.keys(memory.sections).filter((id) => id === second.id || id === fresh.id).length, 2);
+});
+
+test('a damaged line in a piece file read for old section turns does not break the section thread', async (context) => {
+  const { root, store } = await cycleBook(context);
+  const section = (await store.graph()).book.sections[0];
+  const oldId = `scope-${section.anchorNodeId}`;
+  const good = JSON.stringify({ id: 'anchor', at: '2026-01-02T00:00:00.000Z', role: 'user', message: 'Anchor-file turn.', scopeId: oldId });
+  await writeFile(path.join(root, '.texgraph', 'conversations', `${section.anchorNodeId}.jsonl`), `{"truncated\n${good}\n`);
+  assert.deepEqual((await store.turns(section.id)).map((turn) => turn.message), ['Anchor-file turn.']);
+});
+
+test('with the graph lost, a split folder’s runs recover their own ids by their pieces, not their positions', async (context) => {
+  const { root, store } = await cycleBook(context);
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Alpha.md', '02_End/End.md', '01_Cycle/Beta.md']));
+  const [alpha, , beta] = (await store.refreshGraph()).book.sections;
+  await store.appendTurn(beta.id, { role: 'user', message: 'About Beta.' });
+  // The graph is lost while the runs swap places.
+  await rm(path.join(root, '.texgraph', 'graph.json'));
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), contents(['01_Cycle/Beta.md', '02_End/End.md', '01_Cycle/Alpha.md']));
+  const rebuilt = new ProjectStore(root); await rebuilt.initialize();
+  const [first, , last] = (await rebuilt.graph()).book.sections;
+  assert.equal(first.id, beta.id); assert.equal(last.id, alpha.id);
+  assert.deepEqual((await rebuilt.turns(beta.id)).map((turn) => turn.message), ['About Beta.']);
 });

@@ -133,6 +133,16 @@ book in table-of-contents order through the selected scope.
   their title, folios and recto openers, and drives the LuaLaTeX preamble.
   The defaults reproduce proofs made before profiles existed. A proof
   records its profile hash; changing the profile makes the proof stale.
+- With a section or piece selected, the Design panel also shows that
+  scope's own settings: body size and leading (set together), whether it
+  opens on a recto, and, for a section, the recto running-head text. Blank
+  fields follow the level above: a piece follows its section, a section
+  follows the book. Page size, margins, body font, folios and running heads
+  stay book-wide. The assembler sets an override inside a group around that
+  piece only, and the page-map entry of each piece that prints records the
+  size, leading and recto setting it was typeset with. Only pieces in the
+  table of contents offer their own settings
+  ([layout overrides](../../protocol/frige/README.md#layout-overrides)).
 - Preflight (`GET /api/project/preflight`) checks the proof on screen: the
   source-to-page map, PDF page count, trim size of every page, font
   embedding (via `pdffonts` when installed, otherwise reported as not
@@ -181,9 +191,23 @@ credentials. A0 defaults to a deterministic no-change transport.
 
 In a manuscript book, the conversation belongs to the selected scope: the
 whole book, a section, or a page each keep their own thread in
-`.texgraph/conversations/<scope>.jsonl`. A turn calls
+`.texgraph/conversations/<scope>.jsonl`. A section is identified by its folder,
+so renaming or reordering its first piece keeps its conversation and
+contracts; threads recorded under its earlier ids are still read with it. A turn calls
 `STEX_INFERENCE_URL/v1/texgraph/scope-turn` (`protocol/texgraph`, scope turn
 v3) with the scope's offered sources and at most ten recent turns.
+
+Each turn is also offered context from the levels around its scope, labelled
+by category and never merged with the sources: the book outline (pieces'
+titles, places and hashes without text, with page ranges only from a proof
+that still matches the book; cut short for a very long book), the settings
+in force (and, for a section or piece, where its size and leading come from),
+and up to eight accepted contracts relevant to the scope. The author's request
+behind a contract is offered only to the conversation that wrote it. A whole-book
+conversation can therefore reason about the book's structure while still
+being offered only its table of contents as text. The contract records which
+of this context the director was given, as the gateway reports it, or what
+Frige sent, marked unconfirmed, when no gateway reports it.
 
 Hermes replies in typed parts:
 
@@ -195,10 +219,70 @@ Hermes replies in typed parts:
 - **Choices and forms** are interactive. An answer is validated against the
   stored prompt (known options, required fields, value types), recorded once,
   and sent back to Hermes as the next turn; the prompt then shows the answer.
-- **Changes** to offered nodes become one pending change set per scope
-  (`.texgraph/proposals/<scope>.json`), shown as line diffs. Accepting writes
-  the node only if it is unchanged since the suggestion (otherwise it is
-  marked stale), refreshes the graph and editor, and typesets the scope again.
+- **Changes** to offered nodes become one pending change contract per scope,
+  shown as line diffs (next section). Accepting writes the node only if it is
+  unchanged since the suggestion (otherwise it is marked stale), refreshes
+  the graph and editor, and typesets the scope again.
+
+### Change contracts
+
+A proposal is stored as a change contract
+([`stex.frige.change-contract.v1`](../../protocol/frige/README.md#change-contracts-v1)).
+The contract is the whole record of one proposed change:
+
+- **What was asked and why:** the author's request and the director's reason.
+- **The exact change:** each piece's prior and proposed text with their
+  SHA-256 hashes, plus line counts.
+- **What the director was shown,** by category: manuscript pieces offered
+  (canonical source), author-approved references, pieces withheld as too
+  long, and the publication profile in force.
+- **Effects and conflicts:** proofs that include the pieces become stale;
+  undecided proposals to the same piece from another conversation are named.
+- **Approval and rollback terms,** and the proof that typeset the accepted
+  text once one is built.
+
+Each contract is one file in `.texgraph/contracts/` and is kept after it is
+decided. `.texgraph/proposals/<scope>.json` only points at the scope's current
+contract. A newer proposal in the same conversation marks an undecided one
+*superseded*; it is never erased. A change set written before contracts that
+is still undecided stays decidable, and joins the history when it is decided
+or superseded. One already decided before contracts existed is not in the
+history and cannot be rolled back.
+
+**Roll back** (beside an accepted change in the thread) restores the exact
+prior text and hash and keeps the piece's identity. It is refused, and nothing
+is written, if the piece changed after it was accepted. The workstation then
+typesets the scope again.
+
+Restoration is byte-exact for valid UTF-8, including a byte-order mark, line
+endings and a missing final newline. A piece that is not valid UTF-8 is never
+overwritten at all — by a save, an acceptance or a rollback — because its
+bytes could not be restored (`400 SOURCE_NOT_UTF8`).
+
+A contract keeps the strongest proof that typeset all its accepted text: a
+compiler-verified book-order proof is not displaced by a piece typeset alone.
+Accepting another piece of the same contract clears the proof until one
+covers that piece too.
+
+A source save must carry the base hash of the text it replaces; one without is
+refused with `400 BASE_HASH_REQUIRED`.
+
+The deterministic simulator (`STEX_FRIGE_INFERENCE_MODE=fake`, the `dev:alpha`
+default) proposes nothing unless the message begins `Simulate change:`. It then
+proposes one labelled change that appends the rest of the message as a closing
+line to the first offered piece, never to the table of contents. This
+exercises the contract path without a provider. The inference service itself
+does not yet return changes from a real director.
+
+A section's or a piece's conversation can also propose a **layout change**:
+setting or clearing that section's or piece's own size and leading, recto
+opening or (section) running head. The card lists each setting from what it
+follows now to the proposed value. Acceptance and **Roll back** check the
+whole publication profile instead of a piece's text: either is refused if
+the profile changed in between. With the simulator, write
+`Simulate layout: 15pt/18pt`, `recto on`, `recto off`, `recto inherit`,
+`size inherit`, `head <text>`, `head inherit` or `clear`. A contract holds
+either text changes or one layout change.
 
 The Hermes pill reports whether the local fake transport or optional remote
 Hermes boundary is available. A failed turn is saved with a safe reason and
@@ -235,13 +319,15 @@ compatibility. The platform consumes
 Push-Location apps/frige
 corepack pnpm test
 Pop-Location
-corepack pnpm verify:frige   # Chrome: platform create/save/stale-save/accept/proof/profile, 5 widths
+corepack pnpm verify:frige   # Chrome: platform create/save/stale-save/accept/proof/rollback/reject/profile, 5 widths
 ```
 
 Proof tests compile synthetic books with LuaLaTeX and skip when it is absent.
 `verify:frige` requires LuaLaTeX for its real PDF evidence. It starts Pantheon,
 Frige and a labelled local inference stub with disposable books. It covers
 creation, Unicode/indentation-preserving save, stale-write refusal, visible
-proposal/explicit acceptance, rendered compiler-mapped PDF, profile freshness,
-model-settings styling, keyboard focus, tablet drawer and five widths. It
+proposal/explicit acceptance, rendered compiler-mapped PDF, the proof recorded
+on the change contract, rollback to the exact prior text, a rejected proposal,
+profile freshness,
+the settings menu's link to the shared Company screen, keyboard focus, tablet drawer and five widths. It
 saves screenshots/report outside the repository (`--out <directory>`).

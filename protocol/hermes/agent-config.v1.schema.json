@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/hermes/agent-config.v1.schema.json",
+  "title": "stex.hermes.agent-config.v1",
+  "description": "The company (team) configuration owned by the STEX inference service: each native Hermes profile's persona, skills and default model, and the model chosen for each task. Product servers relay it with the shared secret; browsers never call the inference service. See README.md#agent-configuration-v1.",
+  "oneOf": [
+    { "$ref": "#/$defs/document" },
+    { "$ref": "#/$defs/update" },
+    { "$ref": "#/$defs/catalog" },
+    { "$ref": "#/$defs/history" }
+  ],
+  "$defs": {
+    "profileId": {
+      "description": "One of the eight persistent native profiles. The set is fixed by the charters; the configuration never adds, renames or removes a profile.",
+      "enum": ["igor", "architect", "developer", "designer", "artist", "editor", "knowledge", "auditor"]
+    },
+    "modelId": {
+      "description": "An OpenRouter model id (vendor/model, optional :variant). Refused whatever the catalog says: any id or name naming Anthropic or Claude, and any router that chooses a model for itself (the `openrouter/` vendor, an id or name containing `route`, `router` or `routing`, or `auto` as a word or `:auto` variant), because a router may pick Claude.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*(:[a-z0-9._-]+)?$",
+      "maxLength": 120
+    },
+    "revision": {
+      "description": "Opaque revision of the whole configuration (16 lower-case hex). An update must name the revision it was made from; a stale one is refused with STALE_CONFIG.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{16}$"
+    },
+    "sigil": {
+      "description": "A typographic emblem drawn from a fixed set of glyphs (text, never generated artwork).",
+      "enum": ["mercury", "saturn", "sun", "moon", "jupiter", "venus", "mars", "star", "flower", "hedera", "caduceus", "scales"]
+    },
+    "persona": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "title", "sigil", "temperaments", "voice"],
+      "properties": {
+        "displayName": { "description": "Presentation name. The profile id never changes.", "type": "string", "minLength": 1, "maxLength": 40 },
+        "title": { "type": "string", "maxLength": 80 },
+        "sigil": { "$ref": "#/$defs/sigil" },
+        "temperaments": {
+          "description": "Up to three temperament ids from the document's `temperaments` list; pairs it marks as opposed are refused.",
+          "type": "array", "maxItems": 3, "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z-]{1,31}$" }
+        },
+        "voice": { "description": "Free text added to the profile's persona (its Hermes SOUL). It cannot remove the fixed STEX boundaries, which are always appended after it.", "type": "string", "maxLength": 4000 }
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "discipline", "mission", "state", "persona", "skills", "allowedSkills", "defaultModel", "personaApplication"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profileId" },
+        "discipline": { "description": "Read-only: the profile's name in its specification.", "type": "string" },
+        "mission": { "description": "Read-only: the mission in the profile specification.", "type": "string" },
+        "state": { "description": "Read-only runtime state from runtime-profiles.json. Configuration never activates a parked profile.", "enum": ["conversation-only", "parked"] },
+        "persona": { "$ref": "#/$defs/persona" },
+        "skills": { "description": "Equipped skills: a subset of allowedSkills.", "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "allowedSkills": { "description": "Read-only: the skills the profile specification lists.", "type": "array", "items": { "type": "string" } },
+        "defaultModel": { "$ref": "#/$defs/modelId" },
+        "personaApplication": {
+          "description": "Read-only: how the persona reaches Hermes. `per-request` means each turn carries it; `profile-sync` means an operator step writes it to the profile; `parked` means the profile runs no turns, so its persona, loadout and default model are recorded for when it is activated.",
+          "enum": ["per-request", "profile-sync", "parked"]
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "app", "label", "profile", "model", "defaultModel", "requires", "application"],
+      "properties": {
+        "id": { "description": "Stable task id, `<app>.<task>`.", "type": "string", "pattern": "^[a-z]+\\.[a-z][a-z-]*$" },
+        "app": { "enum": ["igor", "frige", "seaxneat", "hermes"] },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "profile": { "$ref": "#/$defs/profileId" },
+        "model": { "$ref": "#/$defs/modelId" },
+        "defaultModel": { "$ref": "#/$defs/modelId" },
+        "requires": { "description": "Capabilities a chosen model must report in the catalog.", "type": "array", "items": { "enum": ["tools", "structured_outputs", "reasoning", "vision"] } },
+        "application": { "description": "Read-only: `per-request` tasks take effect on the next turn; `profile-sync` tasks (Hermes's own side calls) take effect when the operator applies the profile.", "enum": ["per-request", "profile-sync"] }
+      }
+    },
+    "document": {
+      "description": "GET /v1/agent-config.",
+      "type": "object",
+      "required": ["schemaVersion", "revision", "updatedAt", "provider", "stack", "team", "tasks", "temperaments", "boundaries"],
+      "properties": {
+        "schemaVersion": { "const": "stex.hermes.agent-config.v1" },
+        "revision": { "$ref": "#/$defs/revision" },
+        "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+        "provider": { "const": "openrouter" },
+        "stack": {
+          "description": "The default model stack (Grok through OpenRouter). Reset restores these.",
+          "type": "object", "additionalProperties": false, "required": ["high", "medium", "long"],
+          "properties": { "high": { "$ref": "#/$defs/modelId" }, "medium": { "$ref": "#/$defs/modelId" }, "long": { "$ref": "#/$defs/modelId" } }
+        },
+        "team": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "$ref": "#/$defs/member" } },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "boundaries": { "description": "Read-only: the fixed STEX boundaries appended after every persona. Shown to the user, never editable.", "type": "string" },
+        "temperaments": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "label", "instruction"],
+            "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "instruction": { "type": "string" }, "opposes": { "type": "array", "items": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "update": {
+      "description": "PUT /v1/agent-config. Partial: only named members and tasks change. `reset: true` restores the defaults and ignores team and tasks.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseRevision"],
+      "properties": {
+        "baseRevision": { "$ref": "#/$defs/revision" },
+        "reset": { "type": "boolean" },
+        "team": {
+          "type": "array", "maxItems": 8,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["profile"],
+            "properties": {
+              "profile": { "$ref": "#/$defs/profileId" },
+              "persona": { "$ref": "#/$defs/persona" },
+              "skills": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+              "defaultModel": { "$ref": "#/$defs/modelId" }
+            }
+          }
+        },
+        "tasks": {
+          "type": "array", "maxItems": 64,
+          "items": { "type": "object", "additionalProperties": false, "required": ["id", "model"], "properties": { "id": { "type": "string" }, "model": { "$ref": "#/$defs/modelId" } } }
+        }
+      }
+    },
+    "catalog": {
+      "description": "GET /v1/agent-config/catalog: OpenRouter's public model list, filtered (never Anthropic or Claude), cached by the inference service.",
+      "type": "object",
+      "required": ["schemaVersion", "source", "fetchedAt", "stale", "models"],
+      "properties": {
+        "schemaVersion": { "const": "stex.hermes.model-catalog.v1" },
+        "source": { "description": "`openrouter` when fresh, `cache` when the last good copy is served, `defaults` when only the default stack is known.", "enum": ["openrouter", "cache", "defaults"] },
+        "fetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "stale": { "type": "boolean" },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "vendor", "contextLength", "pricing", "capabilities", "recommended"],
+            "properties": {
+              "id": { "$ref": "#/$defs/modelId" },
+              "name": { "type": "string" },
+              "vendor": { "type": "string" },
+              "contextLength": { "type": ["integer", "null"] },
+              "pricing": {
+                "description": "US dollars per million tokens, as OpenRouter reports them; null when unknown.",
+                "type": "object", "required": ["promptPerMillion", "completionPerMillion"],
+                "properties": { "promptPerMillion": { "type": ["number", "null"] }, "completionPerMillion": { "type": ["number", "null"] } }
+              },
+              "capabilities": { "type": "array", "items": { "enum": ["tools", "structured_outputs", "reasoning", "vision"] } },
+              "recommended": { "description": "True for the default Grok stack.", "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "history": {
+      "description": "GET /v1/agent-config/history: the newest changes first.",
+      "type": "object",
+      "required": ["schemaVersion", "entries"],
+      "properties": {
+        "schemaVersion": { "const": "stex.hermes.agent-config-history.v1" },
+        "entries": {
+          "type": "array", "maxItems": 100,
+          "items": {
+            "type": "object", "required": ["at", "actor", "revision", "summary"],
+            "properties": {
+              "at": { "type": "string", "format": "date-time" },
+              "actor": { "description": "The signed-in principal the product server reports, or `local`.", "type": "string", "maxLength": 120 },
+              "revision": { "$ref": "#/$defs/revision" },
+              "summary": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

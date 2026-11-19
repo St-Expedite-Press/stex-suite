@@ -99,6 +99,14 @@ test('owns the publishing library and workstation inside the platform shell even
   }
   assert.match(library, /Book projects/); assert.match(workspace, /id="source"/); assert.match(workspace, /id="proof-viewer"/);
   for (const asset of ['app.js', 'base-path.js', 'lobby.js', 'style.css', 'proof-viewer.js', 'thread.js', 'workspace.js']) assert.equal((await fetch(base + '/frige/' + asset)).status, 200);
+  // Settings opens the shared Company screen filtered to Frige; the retired model dialog is gone.
+  assert.match(workspace, /<details id="settings-menu" class="settings-menu"><summary>Settings<\/summary><div class="settings-items"><a id="company-settings" href="\/igor\/team\?app=frige">Company &amp; models<\/a><\/div><\/details>/);
+  assert.doesNotMatch(workspace, /configure-models|role="menu"/);
+  const retiredDialog = await fetch(base + '/frige/model-settings.js');
+  assert.notEqual(retiredDialog.status, 200, 'the retired dialog module is no longer served by Pantheon'); await retiredDialog.arrayBuffer();
+  assert.doesNotMatch(await readFile(path.join(appDirectory, 'workspaces', 'frige', 'app.js'), 'utf8'), /model-settings|createModelSettings|configure-models/);
+  // Seaxneat's workspace links the same screen, filtered to Seaxneat, as labelled utility navigation.
+  assert.match(await readFile(path.join(appDirectory, 'workspaces', 'seaxneat', 'main.tsx'), 'utf8'), /const companyHref: string = '\/igor\/team\?app=seaxneat';[\s\S]*<nav className="workspace-utilities" aria-label="Workspace settings"><a className="stex-button stex-button--secondary" href=\{companyHref\}>Company &amp; models<\/a><\/nav>/);
   const api = await fetch(base + '/frige/api/stex/publishing/v1/project/graph?book=fixture');
   assert.equal(api.status, 502);
 });
@@ -130,7 +138,8 @@ async function assertReferences(html, base) {
   const types = { '.webm': 'video/webm', '.mp4': 'video/mp4', '.webp': 'image/webp', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
   const references = new Set([...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map(([, reference]) => reference));
   for (const [, list] of html.matchAll(/srcset="([^"]+)"/g)) for (const candidate of list.split(',')) references.add(candidate.trim().split(/\s+/)[0]);
-  for (const reference of [...references].filter((entry) => !entry.endsWith('/'))) {
+  // Page routes end in "/", except the Company screen (/igor/team), whose route is checked by the Igor composition test.
+  for (const reference of [...references].filter((entry) => !entry.endsWith('/') && entry !== '/igor/team')) {
     const asset = await fetch(`${base}${reference}`, { method: 'HEAD' });
     assert.equal(asset.status, 200, reference);
     assert.equal(asset.headers.get('content-type'), types[path.extname(reference)], reference);
@@ -148,6 +157,9 @@ test('serves the command-center pages with honest states and no mockup records',
     const page = await (await fetch(`${base}/${tab}/`)).text();
     assert.match(page, new RegExp(`<a href="/${tab}/" aria-current="page">`), tab);
     assert.equal((page.match(/aria-current="page"/g) || []).length, 1, tab);
+    // The Company utility link is on every page, outside the tab list, and not current here.
+    assert.match(page, /<\/ul><a class="utility-link" href="\/igor\/team">Company<span class="stex-visually-hidden"> — agent configuration<\/span><\/a>/, tab);
+    assert.doesNotMatch(page, /<li><a[^>]*href="\/igor\/team"/, tab);
     assert.doesNotMatch(/<video[^>]*>/.exec(page)[0], /autoplay/, tab);
     assert.doesNotMatch(page, /Marriage of Heaven|stexpedite\.press|Pantheon Interface|Build completed|undefined/, tab);
   }
@@ -213,6 +225,25 @@ test('proxies Igor, publishes the v2 registry, and no longer relays turns itself
   assert.match(await composed.text(), /data-stex-composed="true"/);
   assert.match(composed.headers.get('content-security-policy'), /img-src 'self' data:/);
   assert.deepEqual(await (await fetch(`${base}/igor/api/interface`)).json(), { path: '/igor/api/interface', prefix: '/igor' });
+  // The Company screen is composed like the other Igor pages, with or without a trailing
+  // slash and an app filter; the Company link, not the Igor tab, is the current location.
+  for (const route of ['/igor/team', '/igor/team/', '/igor/team?app=frige', '/igor/team/?app=seaxneat']) {
+    const before = seen.length;
+    const team = await fetch(`${base}${route}`);
+    assert.equal(team.status, 200, route);
+    assert.match(team.headers.get('content-security-policy'), /frame-ancestors 'self'/, route);
+    const html = await team.text();
+    assert.match(html, /data-stex-composed="true"/, route); assert.match(html, /<script type="module" src="\/igor-interface.js">/, route);
+    assert.match(html, /<a class="utility-link" href="\/igor\/team" aria-current="page">Company/, route);
+    assert.match(html, /<a href="\/igor\/">Igor<\/a>/, route);
+    assert.equal((html.match(/aria-current="page"/g) || []).length, 1, route);
+    assert.equal(seen.length, before, `${route} is composed by Pantheon, not proxied`);
+  }
+  assert.match(await (await fetch(`${base}/igor/`)).text(), /<a href="\/igor\/" aria-current="page">Igor<\/a>[\s\S]*<a class="utility-link" href="\/igor\/team">Company/);
+  const teamWrite = await fetch(`${base}/igor/team`, { method: 'POST' });
+  assert.equal(teamWrite.status, 405); await teamWrite.arrayBuffer();
+  // Only the exact page route is composed; neighbouring paths still reach Igor.
+  assert.deepEqual(await (await fetch(`${base}/igor/teams`)).json(), { path: '/igor/teams', prefix: '/igor' });
   const created = await fetch(`${base}/igor/api/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });
   assert.equal(created.status, 201); await created.arrayBuffer();
   assert.deepEqual(seen.at(-1), { method: 'POST', path: '/igor/api/conversations', host: '127.0.0.1:4409', forwardedHost: '127.0.0.1:4410', body: JSON.stringify({ idempotencyKey: 'handoff-key', message: 'Hello' }) });

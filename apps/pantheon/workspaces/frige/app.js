@@ -1,13 +1,12 @@
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
-import { createModelSettings } from './model-settings.js';
 import { appUrl } from './base-path.js';
 
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/igor/new?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Discuss with Igor'; document.querySelector('.publishing-toolbar').append(link); }
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/graph/?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Project knowledge'; document.querySelector('.publishing-toolbar').append(link); }
-const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
+const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
 const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -23,7 +22,8 @@ function scopes() {
   return [canonical, ...(canonical.sections || [])];
 }
 function scopeFor(id) {
-  const found = scopes().find((scope) => scope.id === id);
+  // A section is also found by an earlier id (its `legacyIds`), as the engine resolves it.
+  const found = scopes().find((scope) => scope.id === id) || scopes().find((scope) => scope.legacyIds?.includes(id));
   if (found) return found;
   const node = state.graph.nodes.find((entry) => entry.id === id);
   return node ? { id: node.id, kind: 'node', title: node.title, anchorNodeId: node.id, nodeIds: [node.id], buildThroughNodeId: node.id } : null;
@@ -102,7 +102,7 @@ function renderTurns({ follow = false } = {}) {
   const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
-    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, drafts: state.drafts, onDecide: decide, onAnswer: sendAnswer,
+    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, contracts: state.contracts, drafts: state.drafts, onDecide: decide, onRevert: revert, onAnswer: sendAnswer,
     artifactUrl: (id, { download = false } = {}) => apiUrl(`/api/artifacts/${id}/content${download ? '?download=1' : ''}`),
     empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
@@ -206,7 +206,7 @@ const isStale = (staleness) => Boolean(staleness && (staleness.changed || stalen
 
 function proofIsCurrent() {
   const staleness = proofStaleness();
-  return Boolean(state.build?.ok && state.build.targetScope?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
+  return Boolean(state.build?.ok && scopeFor(state.build.targetScope?.id)?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
 }
 
 function statusItem(name, value, tone = '', detail = '') {
@@ -263,12 +263,66 @@ async function refreshPreflight() { try { state.preflight = await request('/api/
 
 // Each control is one saved profile setting; saving makes the current proof stale until it is typeset again.
 const designField = (form, name) => form.elements.namedItem(name);
+/**
+ * Where the selected scope's own settings are stored in the profile: a section
+ * by its top-level folder, a piece by its node id. The whole book has no
+ * override; its settings are the profile itself.
+ *
+ * @param {object | null} scope
+ * @returns {{ field: 'sections' | 'nodes', key: string, label: string } | null}
+ */
+function overrideTarget(scope) {
+  // Only a piece in the reading order is typeset, so only such a piece can have its own settings.
+  if (scope?.kind === 'node') return state.graph.readingOrder.includes(scope.id) ? { field: 'nodes', key: scope.id, label: 'This piece' } : null;
+  if (scope && scope.kind !== 'book' && scope.folder) return { field: 'sections', key: scope.folder, label: 'This section' };
+  return null;
+}
+
+/** Shows the selected scope's own settings, with the book's values as the placeholders they fall back to. */
+function fillOverride() {
+  const form = $('#design-panel'); const target = overrideTarget(state.scope); const box = $('#scope-override');
+  box.hidden = !target; if (!target) return;
+  const own = state.design[target.field]?.[target.key] || {};
+  $('#override-legend').textContent = `${target.label} · ${state.scope.title}`;
+  $('#override-head').hidden = target.field !== 'sections';
+  designField(form, 'override.fontSize').value = own.fontSize || ''; designField(form, 'override.fontSize').placeholder = state.design.fontSize;
+  designField(form, 'override.leading').value = own.leading || ''; designField(form, 'override.leading').placeholder = state.design.leading;
+  designField(form, 'override.opensRecto').value = own.opensRecto === undefined ? '' : String(own.opensRecto);
+  // The blank choice follows the level above: a piece's section, or a section's book rule.
+  designField(form, 'override.opensRecto').options[0].textContent = target.field === 'nodes' ? 'As its section' : 'As the book';
+  designField(form, 'override.headText').value = own.headText || ''; designField(form, 'override.headText').placeholder = state.scope.title;
+  $('#override-note').textContent = target.field === 'nodes'
+    ? 'Blank fields follow this piece’s section, then the book. Size and leading are set together.'
+    : 'Blank fields follow the book. A piece’s own settings take precedence. Size and leading are set together.';
+}
+
+/**
+ * The selected scope's override as the profile API takes it: the values set
+ * replace its override, and nothing set clears it (`null`).
+ *
+ * @returns {object}  `{}` for the whole book.
+ */
+function readOverride() {
+  const target = overrideTarget(state.scope); if (!target) return {};
+  const form = $('#design-panel'); const value = (name) => designField(form, `override.${name}`).value.trim();
+  const override = {};
+  if (value('fontSize') || value('leading')) { override.fontSize = value('fontSize'); override.leading = value('leading'); }
+  if (value('opensRecto')) override.opensRecto = value('opensRecto') === 'true';
+  if (target.field === 'sections' && value('headText')) override.headText = value('headText');
+  return { [target.field]: { [target.key]: Object.keys(override).length ? override : null } };
+}
+
 function fillDesign() {
   const form = $('#design-panel'); const design = state.design;
   designField(form, 'trimSize').replaceChildren(...state.trimSizes.map((size) => new Option(size, size)));
   for (const name of ['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle']) designField(form, name).value = design[name];
   for (const side of ['top', 'bottom', 'inner', 'outer']) designField(form, `margins.${side}`).value = design.margins[side];
   for (const name of ['runningHeads', 'folios', 'rectoOpeners']) designField(form, name).checked = design[name];
+  fillOverride();
+  // The panel now shows the saved profile; any edit after this is unsaved.
+  state.designDirty = false;
+  // The profile this form shows; a save names it, so the engine refuses it if the profile has moved on.
+  state.panelDesignHash = state.designHash;
 }
 function readDesign() {
   const form = $('#design-panel');
@@ -276,16 +330,33 @@ function readDesign() {
     ...Object.fromEntries(['trimSize', 'bodyFont', 'fontSize', 'leading', 'headTitle'].map((name) => [name, designField(form, name).value.trim()])),
     margins: Object.fromEntries(['top', 'bottom', 'inner', 'outer'].map((side) => [side, designField(form, `margins.${side}`).value.trim()])),
     ...Object.fromEntries(['runningHeads', 'folios', 'rectoOpeners'].map((name) => [name, designField(form, name).checked])),
+    ...readOverride(),
   };
 }
 function toggleDesign(open = $('#design-panel').classList.contains('hidden')) {
   if (open) { fillDesign(); $('#design-state').textContent = ''; }
   $('#design-panel').classList.toggle('hidden', !open); $('#open-design').setAttribute('aria-expanded', String(open));
 }
+/**
+ * Reloads the publication profile after a decision or rollback changed it, so
+ * the Design panel, the status bar and the proof's currency show what is saved.
+ */
+async function refreshDesign() {
+  try {
+    const profile = await request('/api/project/design');
+    state.design = profile.design; state.designHash = profile.hash;
+    const open = !$('#design-panel').classList.contains('hidden');
+    // Unsaved edits in the open panel are never overwritten; the author is told the saved profile moved.
+    if (open && state.designDirty) $('#design-state').textContent = 'The saved profile changed while you were editing. Saving now is refused so it cannot undo that change; note your edits, then Close and reopen the panel.';
+    else if (open) fillDesign();
+    renderStatus(); renderLiveBuild();
+  } catch (error) { $('#design-state').textContent = `The profile could not be reloaded: ${error.message}`; }
+}
+
 async function saveDesign(event) {
   event.preventDefault();
   try {
-    const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify(readDesign()) });
+    const saved = await request('/api/project/design', { method: 'PUT', body: JSON.stringify({ ...readDesign(), baseHash: state.panelDesignHash }) });
     state.design = saved.design; state.designHash = saved.hash; fillDesign();
     $('#design-state').textContent = 'Saved.';
     renderStatus(); renderLiveBuild(); refreshPreflight();
@@ -295,7 +366,7 @@ async function saveDesign(event) {
 function renderLiveBuild() {
   const button = $('#send-live-build');
   if (!button) return;
-  const matchingHandoff = state.liveBuild?.targetScope?.id === state.scope?.id ? state.liveBuild : null;
+  const matchingHandoff = scopeFor(state.liveBuild?.targetScope?.id)?.id === state.scope?.id ? state.liveBuild : null;
   button.disabled = !proofIsCurrent();
   if (matchingHandoff?.status === 'queued-locally') {
     $('#live-build-state').textContent = `Staged locally at ${new Date(matchingHandoff.queuedAt).toLocaleTimeString()}; not sent to a remote build.`;
@@ -308,14 +379,37 @@ function renderLiveBuild() {
   }
 }
 
+/**
+ * The change contracts proposed in one conversation, by contract id. The
+ * thread uses them to show which accepted changes can still be rolled back.
+ * An engine without contract history yields an empty map: the thread still
+ * renders, without rollback controls.
+ *
+ * @param {string} scopeId
+ * @returns {Promise<Map<string, object>>}
+ */
+async function contractsFor(scopeId) {
+  try { return new Map((await request(`/api/project/contracts?scope=${encodeURIComponent(scopeId)}`)).map((entry) => [entry.id, entry])); }
+  catch { return new Map(); }
+}
+
+/**
+ * A comparable summary of which contracts have a recorded proof, and when.
+ *
+ * @param {Map<string, object>} contracts
+ * @returns {string}
+ */
+const proofsOf = (contracts) => JSON.stringify([...contracts.values()].map((entry) => [entry.id, entry.proof?.completedAt || null]));
+
 async function loadNode(id, scopeId = id) {
   if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return false;
   const scope = scopeFor(scopeId) || scopeFor(id);
-  const [node, turns, changeSet] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+  const [node, turns, changeSet, contracts] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
   const changedScope = state.scope?.id !== scope.id;
-  state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.sourceDirty = false;
+  state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
   if (changedScope) state.notice = '';
   renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
+  if (changedScope && !$('#design-panel').classList.contains('hidden')) fillOverride();
   return true;
 }
 
@@ -358,6 +452,7 @@ async function sendAnswer(promptId, values) {
   } finally {
     // Reload either way: a 409 means it was answered elsewhere, and the thread should show that.
     if (state.scope?.id === scope.id) [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
+    if (state.scope?.id === scope.id) state.contracts = await contractsFor(scope.id);
     state.thinking = false;
     if (state.scope?.id === scope.id) renderTurns({ follow: true });
   }
@@ -373,7 +468,7 @@ async function sendTurn(event) {
     const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
     if (result.availability !== 'available') refreshIgor();
     if (state.scope?.id !== scope.id) return;
-    [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]);
+    [state.turns, state.changeSet, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
   } catch (error) {
     if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1); state.notice = `Not sent: ${error.message}`;
   } finally {
@@ -386,7 +481,8 @@ async function sendTurn(event) {
 // the scope again so the change is visible on the page.
 async function decide(nodeId, decision) {
   const scope = state.scope; const changeSet = state.changeSet;
-  const touchesOpen = changeSet.changes.some((change) => change.status === 'pending' && change.nodeId === state.node.id && (!nodeId || nodeId === change.nodeId));
+  // Only a text change rewrites the open piece; a layout change leaves its source alone.
+  const touchesOpen = changeSet.changes.some((change) => change.kind !== 'set-layout' && change.status === 'pending' && change.nodeId === state.node.id && (!nodeId || nodeId === change.nodeId));
   if (decision === 'accept' && touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the accepted change. Continue?')) return;
   $('#turns').querySelectorAll('.changes button').forEach((button) => { button.disabled = true; });
   try {
@@ -395,13 +491,46 @@ async function decide(nodeId, decision) {
     // Reload the open page only when its own change was written; a stale one leaves the author's text alone.
     const openAccepted = touchesOpen && state.changeSet.changes.some((change) => change.nodeId === state.node.id && change.status === 'accepted');
     state.graph = await request('/api/project/graph');
+    if (state.changeSet.changes.some((change) => change.kind === 'set-layout' && change.status === 'accepted')) await refreshDesign();
     if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
-    state.turns = await request(`/api/scopes/${scope.id}/turns`); state.notice = '';
+    [state.turns, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]); state.notice = '';
     // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
     if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
     renderTurns();
     if (accepted) await build();
   } catch (error) { state.notice = error.message; renderTurns(); }
+}
+
+/**
+ * Rolls back a contract's accepted change through the engine, which refuses if
+ * what it changed has changed since. The workspace then reloads and typesets
+ * the scope again, so the proof on screen matches what was restored.
+ *
+ * @param {string} contractId
+ * @param {string | null} nodeId  The piece whose change is rolled back; `null` for a section's layout change.
+ * @param {{ layout?: boolean }} [options]  `layout` when the change was to the publication profile.
+ */
+async function revert(contractId, nodeId, { layout = false } = {}) {
+  // Rolling back a layout change restores the profile, not the open piece's text.
+  const scope = state.scope; const touchesOpen = !layout && state.node?.id === nodeId;
+  if (touchesOpen && state.sourceDirty && !confirm('Your unsaved edits to this page will be replaced by the restored text. Continue?')) return;
+  $('#turns').querySelectorAll('.decision-revert').forEach((button) => { button.disabled = true; });
+  try {
+    await request(`/api/contracts/${contractId}/revert`, { method: 'POST', body: JSON.stringify({ nodeId }) });
+    state.graph = await request('/api/project/graph');
+    if (layout) await refreshDesign();
+    // The author may open another conversation while any of these requests runs.
+    // Each result is applied only if its conversation is still the one on screen.
+    const stillOpen = () => state.scope?.id === scope.id;
+    if (!stillOpen()) { renderNodes(); return; }
+    const [node, turns, contracts] = await Promise.all([touchesOpen ? request(`/api/nodes/${nodeId}`) : null, request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]);
+    if (!stillOpen()) { renderNodes(); return; }
+    if (node) { state.node = node; state.sourceDirty = false; }
+    state.turns = turns; state.contracts = contracts; state.notice = '';
+    if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
+    renderTurns();
+    await build();
+  } catch (error) { if (state.scope?.id === scope.id) { state.notice = error.message; renderTurns(); } }
 }
 
 async function uploadAttachments(files) {
@@ -423,6 +552,11 @@ async function build({ wholeBook = false } = {}) {
     state.build = await request('/api/project/build', { method: 'POST', body: JSON.stringify({ scopeId: scope.id, mode: plan.mode }) });
     [state.pageMap, state.referenceMap] = await Promise.all([request('/api/project/page-map'), request('/api/project/reference-map')]);
     renderBuild(state.build); renderNodes(); renderNodePages(); renderLiveBuild(); refreshPreflight();
+    // A successful proof is recorded on the contracts it typeset; show that beside the accepted change.
+    // Re-render the thread only if a proof record changed, so a proof finishing does not
+    // discard an answer the author is typing, and never into a conversation opened meanwhile.
+    const shown = state.scope; const contracts = shown ? await contractsFor(shown.id) : null;
+    if (contracts && state.scope?.id === shown.id && proofsOf(contracts) !== proofsOf(state.contracts)) { state.contracts = contracts; renderTurns(); }
   } catch (error) {
     $('#build-state').textContent = error.message; $('#build-log').textContent = 'Showing the previous proof.';
   } finally {
@@ -460,10 +594,10 @@ async function bootstrap() {
   const initial = scopeFor('book');
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
   renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor();
-  $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign);
+  $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign); $('#design-panel').addEventListener('input', () => { state.designDirty = true; });
   $('#turn-form').addEventListener('submit', sendTurn);
-  const modelSettings = createModelSettings({ request, onSaved: refreshIgor });
-  $('#configure-models').addEventListener('click', () => { $('#settings-menu').open = false; modelSettings.open(); });
+  // Settings is a disclosure holding one link, to the shared Company screen
+  // (/igor/team?app=frige, served by Igor); a click anywhere else closes it.
   document.addEventListener('click', (event) => { if (!$('#settings-menu').contains(event.target)) $('#settings-menu').open = false; });
   // Enter sends; Shift+Enter starts a new line; the box grows with its text.
   $('#message').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendTurn(); } });

@@ -49,9 +49,27 @@ const masthead = `<header class="masthead">
   </a>
 </header>`;
 
+/**
+ * The shared agent-configuration screen ("The Company", Wave 4a). It is a
+ * utility destination, not a primary tab: it sits beside the approved tab list
+ * and never joins or reorders it. Igor's renderer serves the screen; Pantheon
+ * only links to it and composes the page (see directorPage).
+ * @type {Readonly<{ id: 'company', label: string, route: string, description: string }>}
+ */
+export const companyLink = Object.freeze({ id: 'company', label: 'Company', route: '/igor/team', description: 'agent configuration' });
+
+/**
+ * The global navigation bar: the primary tabs, then the labelled Company
+ * utility link, then the masthead motion toggle (hidden until motion.js needs it).
+ * At most one entry carries aria-current, so a page never claims two locations.
+ * @param {string} active A tab id, or `companyLink.id` on the Company screen.
+ * @returns {string} Trusted HTML; every value interpolated here is a constant.
+ */
 function navigation(active) {
   const items = tabs.map((tab) => `<li><a href="${tab.route}"${tab.id === active ? ' aria-current="page"' : ''}>${tab.label}</a></li>`).join('');
-  return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul><button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
+  // The hidden suffix gives screen readers the purpose; the accessible name still starts with the visible label.
+  const company = `<a class="utility-link" href="${companyLink.route}"${active === companyLink.id ? ' aria-current="page"' : ''}>${companyLink.label}<span class="stex-visually-hidden"> — ${companyLink.description}</span></a>`;
+  return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul>${company}<button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
 export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main', contentTag = 'main' }) {
@@ -95,9 +113,20 @@ export function publishingPage(fragment, workstation = false) {
   });
 }
 
-export function directorPage() {
-  return shell({ active: 'igor', title: 'Igor', instrumental: true, contentTag: 'div', contentClass: 'platform-workspace',
-    scripts: ['/igor-interface.js'], body: '<div id="root" data-stex-composed="true"><p class="page" role="status">Opening Igor…</p></div>',
+/**
+ * The composed Igor page. Pantheon renders only the shell and a loading status;
+ * igor-interface.js then loads Igor's own renderer over stex.igor.interface.v1,
+ * and that renderer chooses what to show from the URL (conversations, or the
+ * Company screen at /igor/team). If Igor is unavailable the status is replaced
+ * by an honest unavailable message; Pantheon never imitates either screen.
+ * @param {{ view?: 'conversations' | 'company' }} [options] Which shell location
+ *   to mark current: the Igor tab, or the Company utility link.
+ * @returns {string} The page HTML.
+ */
+export function directorPage({ view = 'conversations' } = {}) {
+  const company = view === 'company';
+  return shell({ active: company ? companyLink.id : 'igor', title: company ? 'Company' : 'Igor', instrumental: true, contentTag: 'div', contentClass: 'platform-workspace',
+    scripts: ['/igor-interface.js'], body: `<div id="root" data-stex-composed="true"><p class="page" role="status">${company ? 'Opening the company…' : 'Opening Igor…'}</p></div>`,
   });
 }
 
