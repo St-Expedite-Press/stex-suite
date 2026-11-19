@@ -20,6 +20,8 @@ apps/pantheon/.local-projects/
 services/knowledge/.local-data/
 apps/frige/books/*/.texgraph/
 apps/frige/books/*/.obsidian/
+# Untracked author files kept by the owner outside version control (D-015).
+apps/texgraph/
 apps/texgraph/.local-book/
 apps/lab/.local-projects/
 apps/texgraph/books/*/.texgraph/

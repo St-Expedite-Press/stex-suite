@@ -166,6 +166,35 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 - **Affects:** `stex-igor/services/inference` (the scope-turn adapter) and
   its tests.
 
+## D-015 — Owner defaults accepted, 2026-11-18
+
+- **Decided by:** owner, 2026-11-18 ("the rest of that sounds good, do it",
+  in answer to the summary of open decisions and their recommended defaults).
+- **Decisions:** keep D-004 and D-009; ignore the untracked author files
+  under `apps/texgraph/` (they stay on disk, untouched); merge suite PR 5
+  first, then publish `feat/frige-change-contracts` so CI runs it.
+- **Not covered:** renewing the hosted provider credential (only the owner
+  can), releasing the stex-igor branch (a push to its `main` deploys), and
+  paid provider calls.
+
+## D-016 — Grok model stack and a shared agent configuration
+
+- **Decided by:** owner, 2026-11-18 ("Build the model stack out of grok";
+  "you need to add a whole model selection apparatus and screen"; "Grok
+  defaults from now but there should be an elaborate agent config module
+  also where a user may change what models are used for each task from
+  openrouter availabilities"; "a global setting from the command center but
+  also a menu item in each app"; hosted on the VM as part of Pantheon).
+- **Decision:** every runtime model defaults to an xAI Grok model through
+  OpenRouter. A shared agent-configuration capability, owned by a service on
+  the hosted VM, lets the user choose the model for each task from
+  OpenRouter's live catalog. Pantheon's command center shows it as a global
+  setting, and each application opens it from its own menu, scoped to its
+  tasks. Claude models are never offered at runtime.
+- **Affects:** `stex-igor` (inference service, Igor application, Hermes
+  configuration), `protocol/`, Pantheon, Frige, Seaxneat and both
+  repositories' charters. Specified as program Wave 4a.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
