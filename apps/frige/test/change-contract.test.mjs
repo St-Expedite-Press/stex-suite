@@ -806,10 +806,14 @@ test('a failure to save the contract during acceptance never leaves `applying` o
   const { root, store, first, firstFile } = await syntheticBook(context);
   const contract = await propose(store, first, `${FIRST}\nProposed.\n`);
   // The contract file can be written but the scope's pointer cannot (a lock outlasting the retries).
-  const pointer = path.join(root, '.texgraph', 'proposals', `${first}.json`);
-  await chmod(pointer, 0o444);
+  // A read-only file blocks the atomic rename on Windows; on POSIX systems a rename
+  // ignores the file's own mode, so the proposals directory is made read-only too
+  // (this does not hold when the tests run as root, which bypasses both).
+  const proposals = path.join(root, '.texgraph', 'proposals');
+  const pointer = path.join(proposals, `${first}.json`);
+  await chmod(pointer, 0o444); await chmod(proposals, 0o555);
   try { await assert.rejects(() => store.decideChanges(first, contract.id, { decision: 'accept' })); }
-  finally { await chmod(pointer, 0o644); }
+  finally { await chmod(proposals, 0o755); await chmod(pointer, 0o644); }
   const stored = await store.contract(contract.id);
   assert.equal('applying' in stored, false, 'the record saved afterwards does not claim an acceptance in progress');
   assert.equal(stored.changes[0].status, 'pending'); assert.equal(await readFile(firstFile, 'utf8'), FIRST);
