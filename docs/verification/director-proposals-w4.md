@@ -6,13 +6,14 @@ as a change contract. Until this change only Frige's deterministic simulator
 proposed anything. Decision [D-017](../program/DECISIONS.md); specification in
 [the master plan](../program/MASTER-PLAN.md#wave-4-specification--proposals-from-a-real-director).
 
-**Status:** implemented and tested locally against a stub Hermes. Not
-pushed, merged or deployed. One owner-approved live turn (W4-c, 2026-11-20)
-showed Grok writing a correct proposal, but the turn exceeded the 30-second
-budget, so no contract was created live; see [the live turn](#live-turn-w4-c).
-The owner then raised a director turn's time budget to 120 seconds
-([D-018](../program/DECISIONS.md), stex-igor `79d7f04`); no live turn has run
-since.
+**Status:** released. stex-igor `main` was fast-forwarded to `bd8b3b0` and
+deployed on 2026-11-20 with the owner's authorization ([the release](#release-2026-11-20)).
+The first owner-approved live turn (W4-c) showed Grok writing a correct
+proposal but exceeded the 30-second budget; the owner raised the budget to
+120 seconds ([D-018](../program/DECISIONS.md)) and had abandoned turns stop
+([D-019](../program/DECISIONS.md)). The second live turn (W4-f), after the
+release, carried a director proposal into Frige as a change contract that the
+author accepted byte-exact; see [the second live turn](#second-live-turn-w4-f).
 
 | Item | Value |
 | --- | --- |
@@ -134,22 +135,59 @@ only synthetic text in production Hermes's session store.
   billed. Fixed by [D-019](../program/DECISIONS.md): turns now stream, and a
   closed stream makes Hermes stop the turn.
 
+## Release (2026-11-20)
+
+**Approval:** the owner authorized the merge, the release and one paid test
+turn ("merge, release, test", 2026-11-20).
+
+| Step | Result |
+| --- | --- |
+| Skill procedure (stex-igor PR 3) merged into the release branch | `bd8b3b0`; stex-igor `corepack pnpm test` passed (Igor 40, inference 62, Hermes 12, design system 8; none skipped); `typecheck:igor` clean; branch and PR CI green |
+| Pre-release check | The host's inference configuration sets no turn-time cap, so the new 120-second default applies |
+| Rollback readiness | The previous release (`d0598d8`) stays installed beside the new one; the Igor Hermes profile configuration was copied before the change |
+| Release | stex-igor `main` fast-forwarded `d0598d8` → `bd8b3b0`, so PRs 2 and 3 show as merged. The deploy workflow passed its tests, build, install and health check and verified the active release commit |
+| Operator steps | `deploy/hermes/apply-igor-profile.sh` from `bd8b3b0` (byte-identical to the commit, checked by hash) run as root, then Hermes restarted. Igor's default model is now `x-ai/grok-4.7`; compression `x-ai/grok-4.20`; titles `x-ai/grok-4.3`; vision, background review and delegation `x-ai/grok-4.7`; no fallback providers, no mixture-of-agents preset, CLI and API toolsets empty, terminal network off |
+| Health after release | All three services active; the inference service reports `remote`, `chat-completions` and `agentConfig: ok`; the Hermes gateway answers; Igor and the public address redirect to the sign-in page |
+
+## Second live turn (W4-f)
+
+**Path:** as for the first live turn, after the release: real Frige (suite
+`feat/director-proposals`) → the inference service at the released `bd8b3b0`
+(remote transport) → a recording proxy that streamed through at most one
+call → production Hermes → OpenRouter. Same synthetic poem and request. The
+gateway key was read into the test process's memory only.
+
+| Check | Result |
+| --- | --- |
+| Exactly one call reached the gateway, with `model` `x-ai/grok-4.7`, `provider` `openrouter` and the trusted instructions | Passed |
+| The turn streamed (D-019) | Passed: `stream: true` requested, `text/event-stream` answered, and the service read the stream to its finish chunk |
+| The reply was not cut short, within the 120-second budget | Passed: `finish_reason` `stop` after 29.2 s; 2,991 input and 1,580 output tokens |
+| Frige made a change contract that records the requested model | Passed: one change for the offered piece, `origin.model` `x-ai/grok-4.7`, transport `remote` |
+| Every unchanged line was copied exactly, in order | Passed: the original six lines byte for byte, plus one new closing line |
+| Nothing was written before acceptance; the accepted text was written byte-exact | Passed |
+
+14 of 14 checks passed. **Cost:** about $0.03 at OpenRouter's listed Grok
+4.7 prices, plus one title side call, now pinned to Grok 4.3. No retry was
+made. The turn left one session holding only synthetic text in production
+Hermes's session store.
+
 ## Limits
 
-- **One live turn only.** Grok followed the format and copied unchanged
-  lines exactly once, on a six-line poem. Reliability on long or
+- **Two live turns only.** Grok followed the format and copied unchanged
+  lines exactly twice, on the same six-line poem. Reliability on long or
   difficult pieces is unmeasured. Frige's visible diff and the author's
   acceptance remain the safeguard.
 - **The time budget is now 120 seconds** ([D-018](../program/DECISIONS.md)):
   the inference service's director turns ask for it, the service's default
-  cap admits it, and Frige's page turn waits 150 seconds. A second live turn
-  is needed to show a proposal reaching Frige live.
+  cap admits it, and Frige's page turn waits 150 seconds. The second live
+  turn finished in 29 seconds.
 - **Abandoned turns stop, within about ten seconds**
   ([D-019](../program/DECISIONS.md)). Remote turns stream; a timeout,
   cancellation or oversized answer closes the stream, and the pinned Hermes
   interrupts the agent at its next write (a keepalive at most ten seconds
-  later). Tokens produced before then are billed. Tested against a loopback
-  stand-in, not yet against the real Hermes.
+  later). Tokens produced before then are billed. A completed streaming turn
+  ran against the real Hermes (W4-f); an abandoned one has been tested only
+  against a loopback stand-in.
 - **Up to three paid turns can run at once,** one per product, where there
   was one in total (D-019).
 - **The output budget is unchanged:** 20,000 characters of

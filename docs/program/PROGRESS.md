@@ -7,11 +7,10 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 
 **Wave 4 — Igor integration for Frige.** Waves 2, 3 and the suite side of
 4a are merged to suite `main` (PR 6, `51577f1`, 2026-11-19). Wave 4b (director
-proposals) is implemented and reviewed on local branches
-(`feat/director-proposals` in both repositories). One approved live turn
-(W4-c, 2026-11-20) showed Grok writing a correct proposal, but the 30-second
-turn budget expired first. The stex-igor side of 3c, 4a and 4b is
-unreleased. Evidence:
+proposals) is implemented and reviewed. The stex-igor side of 3c, 4a and 4b,
+with D-018 and D-019, was released on 2026-11-20 (`bd8b3b0`), and a live turn
+after the release carried a director proposal into Frige (W4-f). The suite
+records are on PR 7. Evidence:
 [Wave 4b](../verification/director-proposals-w4.md),
 [Wave 4a](../verification/agent-config-w4a.md),
 [Wave 2](../verification/frige-change-contracts-w2.md),
@@ -49,7 +48,8 @@ unreleased. Evidence:
 | W4-b | Director proposals: trusted instructions, proposal reading, requested model recorded | 4 | Done; two review rounds, findings fixed; round-2 fixes verified by tests only | [Wave 4b report](../verification/director-proposals-w4.md) |
 | W4-d | Director turn time budget raised to 120 s ([D-018](DECISIONS.md)) | 4 | Done; tests pin both values | stex-igor `79d7f04`; [evidence](../verification/director-proposals-w4.md) |
 | W4-e | Abandoned turns stop (streaming), request-id replay, per-product turn limits ([D-019](DECISIONS.md)) | 4 | Done; one review round, findings fixed | stex-igor `9972d2a`; [evidence](../verification/director-proposals-w4.md) |
-| W4-c | A live director proposal against hosted Hermes | 4 | Partly done: one paid turn (about $0.02 of a $1 ceiling) through the production gateway. Grok followed the format and copied every unchanged line; the turn took 32 s, so the 30-second budget discarded it. The captured reply passes end to end by replay | [Live turn](../verification/director-proposals-w4.md#live-turn-w4-c) |
+| W4-f | Release stex-igor `bd8b3b0` (Waves 3c, 4a, 4b, D-018, D-019, the skill procedure), apply the Hermes profile, and a second live turn | 4 | Done: deployed and healthy; the live turn streamed in 29 s and its proposal was accepted byte-exact in Frige (14 of 14), about $0.03 | [Release](../verification/director-proposals-w4.md#release-2026-11-20), [live turn](../verification/director-proposals-w4.md#second-live-turn-w4-f) |
+| W4-c | A live director proposal against hosted Hermes | 4 | Done by W4-f. First attempt: one paid turn (about $0.02 of a $1 ceiling) through the production gateway. Grok followed the format and copied every unchanged line; the turn took 32 s, so the 30-second budget discarded it. The captured reply passes end to end by replay | [Live turn](../verification/director-proposals-w4.md#live-turn-w4-c) |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 

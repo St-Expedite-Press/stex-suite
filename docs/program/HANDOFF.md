@@ -17,30 +17,22 @@ Update this file whenever the state below changes.
   merged to `main` by PR 6 (`51577f1`, 2026-11-19, CI green). Wave 4b's
   records and D-017 to D-019 are on `feat/director-proposals`, pushed as
   PR 7 (CI green, 2026-11-20), awaiting the owner's review.
-- **stex-igor:** `main` is still `d0598d8`, the deployed release. The
-  release stack (Waves 3c, 4a, 4b, D-018, D-019) is pushed as
-  `feat/director-proposals`, draft PR 2, CI green. The skill procedure is
-  draft PR 3. Both are drafts because merging deploys.
-
-  The suite's submodule pointer stays at `d0598d8` until stex-igor `main`
-  moves. A merge or push to stex-igor `main` deploys and needs the owner's
-  release authorization.
-- **Until stex-igor is released:** the suite's Company links reach Igor's
-  conversation list instead of the Company screen. Hosted Igor still runs
-  `openai/gpt-4.1-mini`; the Grok stack applies after the release, once the
-  operator reruns `apply-igor-profile.sh` and restarts Hermes. The director
-  cannot propose Frige changes until then.
+- **stex-igor:** `main` is `bd8b3b0`, deployed on 2026-11-20 with the
+  owner's authorization: Waves 3c, 4a and 4b, D-018, D-019 and the
+  visual-production skill procedure (PRs 2 and 3, merged). The operator
+  steps ran: `apply-igor-profile.sh` and a Hermes restart, so hosted Igor
+  runs the Grok stack with every side model pinned. The suite's submodule
+  pointer pins `bd8b3b0`. A merge or push to stex-igor `main` deploys and
+  needs the owner's release authorization.
 - **Current work:** Wave 4b is complete
   ([evidence](../verification/director-proposals-w4.md)). The one approved
   live turn (2026-11-20) proved the format with Grok but ran 2 seconds past
   the 30-second turn budget. The owner then raised a director turn's budget
   to 120 seconds ([D-018](DECISIONS.md), stex-igor `79d7f04`), and turns
   now stream so an abandoned one stops, with one turn slot per product
-  ([D-019](DECISIONS.md), `9972d2a`). Next: a second paid turn, then bounded specialist investigation (needs a parked
-  profile activated).
-- **A visual-production skill procedure** (animating and scoring a still
-  artwork) found uncommitted in stex-igor was reviewed and committed on its
-  own local branch, `feat/skill-animate-still`, from `main`.
+  ([D-019](DECISIONS.md), `9972d2a`). After the release a second paid turn
+  carried a proposal into Frige, accepted byte-exact (W4-f). Next: bounded
+  specialist investigation (needs a parked profile activated).
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
   were kept outside the repository in the session scratchpad and may be gone.
