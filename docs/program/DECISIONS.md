@@ -215,6 +215,23 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   client's system envelope), and comments in Frige. Frige's behaviour is
   unchanged.
 
+## D-018 — A director turn's time budget is two minutes
+
+- **Decided by:** the owner, 2026-11-20 ("we can move the reasoning time
+  limit out"), after the one live turn (W4-c).
+- **Decision:** each Frige director turn asks for 120 seconds, and the
+  inference service's default cap on any turn rises from 60 to 120 seconds
+  (`STEX_HERMES_MAX_TIMEOUT_SECONDS`). Frige's page turn waits 150 seconds,
+  so the inference service's classified timeout arrives first. A turn that
+  names no budget still gets 30 seconds, and Igor's own chat turns keep 60.
+- **Why:** Grok 4.7 spent about 30 seconds reasoning over a six-line poem, so
+  the 30-second budget discarded a correct proposal that had already been
+  paid for.
+- **Affects:** `stex-igor/services/inference` (the TexGraph adapter, the
+  Hermes client's default cap, the server's setting) and Frige's page-turn
+  wait. No contract changes: `stex.hermes.turn.v1` already carries
+  `budget.timeoutMs`.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).

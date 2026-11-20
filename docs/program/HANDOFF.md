@@ -34,7 +34,8 @@ Update this file whenever the state below changes.
 - **Current work:** Wave 4b is complete
   ([evidence](../verification/director-proposals-w4.md)). The one approved
   live turn (2026-11-20) proved the format with Grok but ran 2 seconds past
-  the 30-second turn budget. Next: the owner's decision on that budget, a
+  the 30-second turn budget. The owner then raised a director turn's budget
+  to 120 seconds ([D-018](DECISIONS.md), stex-igor `79d7f04`). Next: a
   second paid turn, then bounded specialist investigation (needs a parked
   profile activated).
 - **A visual-production skill procedure** (animating and scoring a still
@@ -76,6 +77,6 @@ Windows Application Control on the owner's machine blocks their launchers in
 | --- | --- | --- |
 | Renew the hosted provider credential | Renew before the date in the private D1 report | Hosted Igor stops answering when it lapses |
 | Release the stex-igor branches (3c, 4a, 4b) | Release after reviewing the Company screen's wording; then rerun `apply-igor-profile.sh` on the VM and restart Hermes | A push to `main` deploys to production; until then the suite's Company links and director proposals do nothing live |
-| Scope turn time budget | Raise the scope turn to 120 s and the service cap to match; then approve one more paid turn | Grok 4.7 took 32 s on a six-line poem, so no live proposal reaches Frige at 30 s, and a timed-out turn is still billed |
+| A second live director turn | Approve one paid Frige turn on a synthetic book, about $0.02, now that the budget is 120 s | Shows a live proposal reaching Frige; the first turn ran out of time |
 | Output budget for long pieces | Keep 20,000 output characters until a long piece is needed | A piece over about 15,000 characters cannot be proposed today |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |

@@ -330,8 +330,9 @@ proposed anything. Decision [D-017](DECISIONS.md).
 - **Not in 4b:**
   - a live paid turn: the owner approves one, with a budget;
   - release of the stex-igor branch;
-  - widening the 30-second turn time or the 20,000-character output budget,
-    which limits a proposal to short pieces (see the evidence's limits);
+  - widening the 20,000-character output budget, which limits a proposal
+    to short pieces (see the evidence's limits). The turn time was widened
+    to 120 seconds after the live turn ([D-018](DECISIONS.md));
   - specialist investigation (specialists stay parked).
 
 ## Standards

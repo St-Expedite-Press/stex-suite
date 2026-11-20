@@ -10,6 +10,9 @@ proposed anything. Decision [D-017](../program/DECISIONS.md); specification in
 pushed, merged or deployed. One owner-approved live turn (W4-c, 2026-11-20)
 showed Grok writing a correct proposal, but the turn exceeded the 30-second
 budget, so no contract was created live; see [the live turn](#live-turn-w4-c).
+The owner then raised a director turn's time budget to 120 seconds
+([D-018](../program/DECISIONS.md), stex-igor `79d7f04`); no live turn has run
+since.
 
 | Item | Value |
 | --- | --- |
@@ -54,6 +57,7 @@ from any gateway reply.
 | End-to-end script (stub Hermes → inference, remote transport → Frige, synthetic book), before and after the fixes | 13 of 13 both times |
 | Suite `corepack pnpm test`, with the stex-igor checkout on `feat/director-proposals` | Passed: 298 Node tests, 0 failed, 0 skipped (Frige 131); mypy clean; 64 pytest |
 | `node --check` on the touched modules, `git diff --check` in both repositories | Clean |
+| Time budget raised to 120 seconds (D-018): stex-igor `79d7f04` and the suite's Frige page-turn wait | stex-igor `corepack pnpm test`: Igor 40, inference 54 (two new tests that pin the director budget and the default cap), Hermes 12, design system 8. Frige 131. The pins test now compares the refusal rule's two copies without line endings, which failed spuriously on a Windows checkout |
 
 The end-to-end script is a throwaway file outside the repositories, by the
 Frige charter's rule against committed throwaway scripts. Its checks are
@@ -134,15 +138,17 @@ only synthetic text in production Hermes's session store.
   lines exactly once, on a six-line poem. Reliability on long or
   difficult pieces is unmeasured. Frige's visible diff and the author's
   acceptance remain the safeguard.
-- **No live proposal reaches Frige under today's budget.** See the finding
-  above.
-- **Budgets are unchanged:** a 30-second turn and 20,000 characters of
+- **The time budget is now 120 seconds** ([D-018](../program/DECISIONS.md)):
+  the inference service's director turns ask for it, the service's default
+  cap admits it, and Frige's page turn waits 150 seconds. A second live turn
+  is needed to show a proposal reaching Frige live. A timed-out turn is
+  still billed.
+- **The output budget is unchanged:** 20,000 characters of
   output (counted as JSON). Each proposal carries the whole new text of a
   piece, so a piece longer than roughly 15,000 characters cannot be
   proposed in one reply. A reply cut short proposes nothing and says so. A
   reply over the output budget fails the turn with
-  `HERMES_OUTPUT_TOO_LARGE`, and a slow reply times out. Widening either
-  budget is the owner's decision. Frige itself allows 400 KB pieces and
+  `HERMES_OUTPUT_TOO_LARGE`. Widening it is the owner's decision. Frige itself allows 400 KB pieces and
   waits up to 300 seconds.
 - **The recorded model is the one requested.** If OpenRouter substituted
   another model, the contract would not show it, because Hermes's reply

@@ -244,8 +244,11 @@ export async function requestPageRevision({ book, page, approvedSourceExcerpts =
     return assistantResult('The inference gateway is not configured. Your message was saved, but no revision was proposed.', 'unconfigured');
   }
 
+  // Outlast the inference service's own budget for a director turn (120 s,
+  // `DIRECTOR_TURN_TIMEOUT_MS`), so a slow reasoning model fails there, with
+  // its classified reason, rather than here as a bare abort.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const timeout = setTimeout(() => controller.abort(), 150_000);
   try {
     const response = await fetch(new URL('/v1/texgraph/page-turn', endpoint), {
       method: 'POST',
