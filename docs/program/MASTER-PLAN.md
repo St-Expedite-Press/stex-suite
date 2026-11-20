@@ -288,6 +288,53 @@ application's menu.
   - writing personas into parked profiles' Hermes homes;
   - new profiles.
 
+## Wave 4 specification — proposals from a real director
+
+Goal: an editorial conversation in Frige can end in a real proposal from
+the director, through `stex.hermes.turn.v1`, which the author accepts or
+rejects as a change contract. Until now only Frige's deterministic simulator
+proposed anything. Decision [D-017](DECISIONS.md).
+
+### 4b — Director proposals (local)
+
+- **Trusted instructions.** The inference service's scope-turn adapter
+  sends instructions in the system envelope, before the untrusted context.
+  They give the proposal format, the rule that only offered pieces may
+  change, the rule that every unchanged line is copied exactly, and the
+  rule that a proposal is inert until the author accepts it. A request body
+  cannot supply or alter them.
+- **Reading the reply.** The adapter reads one `stex-proposal` block into
+  `changes` or `layout`, and removes it from the prose. It sets aside, with a
+  sentence in the reply:
+  - pieces the turn did not offer;
+  - empty or repeated changes;
+  - more than 40 changes;
+  - a layout change in a whole-book conversation;
+  - any setting that is not an override setting.
+
+  An unreadable block proposes nothing, and the reply says why. Frige
+  validates everything again, as for the simulator.
+  A reply cut short at its output limit proposes nothing, and neither does
+  a simulated reply.
+- **Usage records.** A remote reply's `meta.model` is the model the turn
+  requested, which is the task's configured model, and `meta.taskId` is
+  that task. Frige's contract `origin` and its turn record therefore name
+  the model asked to propose. A simulated reply keeps its simulated label.
+- **Acceptance:**
+  - stub-Hermes tests show a proposal becoming a contract with the model
+    recorded, and the accepted text written byte-exact;
+  - unoffered pieces and book-level layout changes are refused;
+  - unreadable replies are reported;
+  - generic Igor turns never carry the Frige instructions;
+  - existing suites pass.
+- **Not in 4b:**
+  - a live paid turn: the owner approves one, with a budget;
+  - release of the stex-igor branch;
+  - widening the 20,000-character output budget, which limits a proposal
+    to short pieces (see the evidence's limits). The turn time was widened
+    to 120 seconds after the live turn ([D-018](DECISIONS.md));
+  - specialist investigation (specialists stay parked).
+
 ## Standards
 
 All code is structured to each language's professional conventions and

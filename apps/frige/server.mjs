@@ -283,7 +283,7 @@ async function scopeTurn(store, scopeId, payload) {
         ? { outline: result.meta.forwardedContext.outline?.count ?? 0, outlineTruncated: result.meta.forwardedContext.outline?.truncated === true, settingsHash: result.meta.forwardedContext.documentSettings ? hierarchy.settings.designHash : null, contracts: result.meta.forwardedContext.approvedContracts ?? [], confirmed: true }
         : { outline: hierarchy.outline.entries.length, outlineTruncated: hierarchy.outline.truncated, settingsHash: hierarchy.settings.designHash, contracts: hierarchy.contracts.entries.map((entry) => entry.contractId), confirmed: false },
     };
-    // A reply proposes text changes, or (from the simulator, until the director can) one layout change.
+    // A reply (the director's or the simulator's) proposes text changes, or one layout change.
     const proposes = result.changes.length || result.layout;
     const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);

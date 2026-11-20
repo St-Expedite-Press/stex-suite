@@ -205,7 +205,10 @@ For an authorized provider-backed STEX integration activation, set only these ST
 `STEX_HERMES_TOOL_POLICY=conversational-only`. The inference service refuses
 remote turns until both explicit operator acknowledgements are present; they
 do not prove the required OS/container boundary. Set
-`STEX_HERMES_MAX_CONCURRENT_TURNS=1` unless an approved budget changes it.
+`STEX_HERMES_MAX_CONCURRENT_TURNS=1` (live turns per product) and leave
+`STEX_HERMES_MAX_TOTAL_TURNS` at its default of 3 (all products together)
+unless an approved budget changes them. Keep
+`STEX_HERMES_MAX_TIMEOUT_SECONDS` at 120 or more: Frige turns ask for 120.
 Start in order:
 
 ```powershell

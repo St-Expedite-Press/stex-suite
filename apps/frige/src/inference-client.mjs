@@ -121,7 +121,8 @@ function fakeScopeTurn(message, sources = []) {
  * Reads the optional `layout` field of a scope-turn reply: one proposed layout
  * change for the conversation's own section or piece. Only its shape is
  * checked here; the engine validates every value before it becomes a contract.
- * The STEX gateway does not produce this field yet (program Wave 4).
+ * The STEX gateway produces it from the director's proposal block in a
+ * section or piece conversation (program Wave 4, D-017).
  *
  * @param {unknown} value
  * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
@@ -243,8 +244,11 @@ export async function requestPageRevision({ book, page, approvedSourceExcerpts =
     return assistantResult('The inference gateway is not configured. Your message was saved, but no revision was proposed.', 'unconfigured');
   }
 
+  // Outlast the inference service's own budget for a director turn (120 s,
+  // `DIRECTOR_TURN_TIMEOUT_MS`), so a slow reasoning model fails there, with
+  // its classified reason, rather than here as a bare abort.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const timeout = setTimeout(() => controller.abort(), 150_000);
   try {
     const response = await fetch(new URL('/v1/texgraph/page-turn', endpoint), {
       method: 'POST',

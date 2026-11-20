@@ -8,13 +8,14 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
-| Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Local branch only; simulator and stub proposals; element scope in the browser; Chrome only |
+| Director proposals for Frige (program Wave 4b) | [Wave 4 evidence](director-proposals-w4.md) | Local branches; one live turn proved the format but exceeded the 30-second budget; output budget limits a proposal to short pieces |
+| Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Merged to suite `main`, not deployed; simulator and stub proposals; element scope in the browser; Chrome only |
 | The Company: agent configuration (program Wave 4a) | [Wave 4a evidence](agent-config-w4a.md) | Both repositories on local branches; fake and stub transports; no live Hermes, OpenRouter or VM |
-| Frige stable section identity (program Wave 3e) | [Wave 3e evidence](frige-section-identity-w3e.md) | Local branch only; synthetic books; no browser check specific to renames |
+| Frige stable section identity (program Wave 3e) | [Wave 3e evidence](frige-section-identity-w3e.md) | Merged to suite `main`, not deployed; synthetic books; no browser check specific to renames |
 | Frige hierarchical context (program Wave 3c) | [Wave 3c evidence](frige-hierarchical-context-w3c.md) | Both repositories on local branches; fake and stub transports only |
-| Frige all-or-nothing acceptance (program Wave 3d) | [Wave 3d evidence](frige-atomic-acceptance-w3d.md) | Local branch only; failures and stops simulated in tests |
-| Frige layout change contracts (program Wave 3b) | [Wave 3b evidence](frige-layout-contracts-w3b.md) | Local branch only; simulator and stub proposals; Chrome only |
-| Frige layout overrides (program Wave 3a) | [Wave 3a evidence](frige-layout-overrides-w3a.md) | Local branch only; author-set overrides only; Chrome only |
+| Frige all-or-nothing acceptance (program Wave 3d) | [Wave 3d evidence](frige-atomic-acceptance-w3d.md) | Merged to suite `main`, not deployed; failures and stops simulated in tests |
+| Frige layout change contracts (program Wave 3b) | [Wave 3b evidence](frige-layout-contracts-w3b.md) | Merged to suite `main`, not deployed; simulator and stub proposals; Chrome only |
+| Frige layout overrides (program Wave 3a) | [Wave 3a evidence](frige-layout-overrides-w3a.md) | Merged to suite `main`, not deployed; author-set overrides only; Chrome only |
 | Engineering program baseline | [2026-11-13 baseline](program-baseline-2026-11-13.md) | Read-only audit; no browser or live verification |
 | Platform release / instruction reconciliation | [Release audit and evidence](platform-release.md) | BLOCKED on permitted CI access; preparation verified, no main merge/deployment or post-merge acceptance claimed |
 | Pantheon consumes the platform API M2a | [M2a report](platform-m2a-pantheon-consumption.md) | Project pages only; browser fallback retained; Chrome only |

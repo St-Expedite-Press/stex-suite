@@ -5,9 +5,14 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 
 ## Current wave
 
-**Wave 3 — section and book intelligence.** Waves 2, 3a, 3b, 3c, 3d and 3e are
-implemented, reviewed and committed on local branches (`feat/frige-change-contracts`
-in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
+**Wave 4 — Igor integration for Frige.** Waves 2, 3 and the suite side of
+4a are merged to suite `main` (PR 6, `51577f1`, 2026-11-19). Wave 4b (director
+proposals) is implemented and reviewed. The stex-igor side of 3c, 4a and 4b,
+with D-018 and D-019, was released on 2026-11-20 (`bd8b3b0`), and a live turn
+after the release carried a director proposal into Frige (W4-f). The suite
+records are on PR 7. Evidence:
+[Wave 4b](../verification/director-proposals-w4.md),
+[Wave 4a](../verification/agent-config-w4a.md),
 [Wave 2](../verification/frige-change-contracts-w2.md),
 [Wave 3a](../verification/frige-layout-overrides-w3a.md),
 [Wave 3b](../verification/frige-layout-contracts-w3b.md),
@@ -39,6 +44,12 @@ in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
 | W4a-2 | Igor: "The Company" screen and relay routes | 4a | Done (same reviews) | [Wave 4a report](../verification/agent-config-w4a.md) |
 | W4a-3 | Suite entry points: Pantheon shell link, `/igor/team` route, Frige menu, Seaxneat control | 4a | Done (same reviews) | [Wave 4a report](../verification/agent-config-w4a.md) |
 | W4a-4 | Charter rules for agent configuration | 4a | Done in both root charters and the Igor, inference, Frige and Pantheon charters | `AGENTS.md` files |
+| W4-0 | Wave 4 specification and the proposal channel ([D-017](DECISIONS.md)) | 4 | Done; open to owner review | [Master plan](MASTER-PLAN.md#wave-4-specification--proposals-from-a-real-director) |
+| W4-b | Director proposals: trusted instructions, proposal reading, requested model recorded | 4 | Done; two review rounds, findings fixed; round-2 fixes verified by tests only | [Wave 4b report](../verification/director-proposals-w4.md) |
+| W4-d | Director turn time budget raised to 120 s ([D-018](DECISIONS.md)) | 4 | Done; tests pin both values | stex-igor `79d7f04`; [evidence](../verification/director-proposals-w4.md) |
+| W4-e | Abandoned turns stop (streaming), request-id replay, per-product turn limits ([D-019](DECISIONS.md)) | 4 | Done; one review round, findings fixed | stex-igor `9972d2a`; [evidence](../verification/director-proposals-w4.md) |
+| W4-f | Release stex-igor `bd8b3b0` (Waves 3c, 4a, 4b, D-018, D-019, the skill procedure), apply the Hermes profile, and a second live turn | 4 | Done: deployed and healthy; the live turn streamed in 29 s and its proposal was accepted byte-exact in Frige (14 of 14), about $0.03 | [Release](../verification/director-proposals-w4.md#release-2026-11-20), [live turn](../verification/director-proposals-w4.md#second-live-turn-w4-f) |
+| W4-c | A live director proposal against hosted Hermes | 4 | Done by W4-f. First attempt: one paid turn (about $0.02 of a $1 ceiling) through the production gateway. Grok followed the format and copied every unchanged line; the turn took 32 s, so the 30-second budget discarded it. The captured reply passes end to end by replay | [Live turn](../verification/director-proposals-w4.md#live-turn-w4-c) |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 
@@ -47,13 +58,14 @@ in the suite; `feat/frige-scope-context` in stex-igor for 3c). Evidence:
 | Item | Waiting on |
 | --- | --- |
 | Any change to `stex-igor` reaching `main` | Owner authorization for a named release |
-| Proposals from a real director (Wave 4) | A local `stex-igor` branch first; live verification needs authorization for paid calls |
-| Suite PR 5 merge | Owner |
-| Pushing `feat/frige-change-contracts` | Owner authorization |
+| A live proposal that reaches Frige | A second approved paid turn, now that a director turn has 120 seconds ([D-018](DECISIONS.md)) |
+| Wider output budget for long pieces | Owner decision (20,000 output characters today) |
 
 ## Next actions
 
-1. Owner: review the Wave 3 specification and the open decisions in the
-   [handoff](HANDOFF.md#decisions-waiting-on-the-owner).
-2. Owner: review the Company screen's wording, and decide whether to release the stex-igor branch.
-3. Wave 4: proposals from a real director (stex-igor adapter; live verification needs authorization for a paid call).
+1. Owner: review the Company screen's wording, and decide whether to release
+   the stex-igor branches (3c, 4a, 4b; a push to its `main` deploys).
+2. Owner: approve one more paid turn to see a live proposal reach Frige,
+   now that a director turn has 120 seconds (D-018).
+3. Then: bounded specialist investigation (Wave 4), which needs a parked
+   profile activated and is the owner's decision.

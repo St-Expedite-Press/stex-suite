@@ -195,6 +195,68 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   configuration), `protocol/`, Pantheon, Frige, Seaxneat and both
   repositories' charters. Specified as program Wave 4a.
 
+## D-017 — How the director proposes Frige changes
+
+- **Decided by:** principal agent, 2026-11-19, under the program directive
+  (Wave 4's local work proceeds before authorization). Open to owner review.
+- **Decision:** the director writes its proposal as one fenced
+  `stex-proposal` block of JSON at the end of an ordinary prose reply. The
+  inference service's scope-turn adapter tells the director the format in
+  trusted instructions and reads the block into the existing
+  `stex.texgraph.scope-turn.v3` reply fields `changes` and `layout`. No new
+  cross-application contract is added: Frige already validates those
+  fields.
+- **Why not structured output:** a JSON-schema `response_format` would
+  depend on Hermes passing it through and on each model supporting it.
+  The user may choose any catalog model for a task (D-016). A fenced block
+  works with any chat model. It is read with bounded rules, and a reply
+  without one is still a useful conversation.
+- **Affects:** `stex-igor/services/inference` (the adapter and the Hermes
+  client's system envelope), and comments in Frige. Frige's behaviour is
+  unchanged.
+
+## D-018 — A director turn's time budget is two minutes
+
+- **Decided by:** the owner, 2026-11-20 ("we can move the reasoning time
+  limit out"), after the one live turn (W4-c).
+- **Decision:** each Frige director turn asks for 120 seconds, and the
+  inference service's default cap on any turn rises from 60 to 120 seconds
+  (`STEX_HERMES_MAX_TIMEOUT_SECONDS`). Frige's page turn waits 150 seconds,
+  so the inference service's classified timeout arrives first. A turn that
+  names no budget still gets 30 seconds, and Igor's own chat turns keep 60.
+- **Why:** Grok 4.7 spent about 30 seconds reasoning over a six-line poem, so
+  the 30-second budget discarded a correct proposal that had already been
+  paid for.
+- **Affects:** `stex-igor/services/inference` (the TexGraph adapter, the
+  Hermes client's default cap, the server's setting) and Frige's page-turn
+  wait. No contract changes: `stex.hermes.turn.v1` already carries
+  `budget.timeoutMs`.
+
+## D-019 — Abandoned turns stop; live turns are limited per product
+
+- **Decided by:** the owner, 2026-11-20 ("fix these problems and push"),
+  on the two problems reported after D-018: a timed-out turn was still
+  billed, and a long Frige turn held the service's only turn slot.
+- **Decision:**
+  - remote Chat Completions turns stream from Hermes, so a timeout, a
+    cancellation or an oversized answer closes the stream and the pinned
+    Hermes interrupts the agent;
+  - the inference service keeps request-id idempotency itself, because
+    Hermes ignores `Idempotency-Key` on streaming requests;
+  - `STEX_HERMES_MAX_CONCURRENT_TURNS` now limits live turns per product
+    (1), and the new `STEX_HERMES_MAX_TOTAL_TURNS` limits them in total (3).
+    An existing setting of 1 therefore allows up to three paid turns at
+    once, one per product.
+- **Why:** a turn the service has given up on should not keep spending, and
+  a two-minute Frige turn should not refuse Igor's conversation.
+- **Limits:** Hermes notices a closed stream at its next write, within about
+  ten seconds; tokens produced before then are billed. Responses-mode turns
+  do not stream yet. The product name is chosen by the calling product
+  server, so only the total limit is a hard bound.
+- **Affects:** `stex-igor/services/inference` (`hermes-client.mjs`,
+  `server.mjs`), its README and env template; the suite's `.env.example` and
+  developer guide.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
