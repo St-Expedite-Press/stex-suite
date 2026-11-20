@@ -32,9 +32,14 @@ Update this file whenever the state below changes.
   operator reruns `apply-igor-profile.sh` and restarts Hermes. The director
   cannot propose Frige changes until then.
 - **Current work:** Wave 4b is complete
-  ([evidence](../verification/director-proposals-w4.md)). Next come a live
-  director proposal (owner approval of a paid call), then bounded
-  specialist investigation (needs a parked profile activated).
+  ([evidence](../verification/director-proposals-w4.md)). The one approved
+  live turn (2026-11-20) proved the format with Grok but ran 2 seconds past
+  the 30-second turn budget. Next: the owner's decision on that budget, a
+  second paid turn, then bounded specialist investigation (needs a parked
+  profile activated).
+- **A visual-production skill procedure** (animating and scoring a still
+  artwork) found uncommitted in stex-igor was reviewed and committed on its
+  own local branch, `feat/skill-animate-still`, from `main`.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
   were kept outside the repository in the session scratchpad and may be gone.
@@ -71,6 +76,6 @@ Windows Application Control on the owner's machine blocks their launchers in
 | --- | --- | --- |
 | Renew the hosted provider credential | Renew before the date in the private D1 report | Hosted Igor stops answering when it lapses |
 | Release the stex-igor branches (3c, 4a, 4b) | Release after reviewing the Company screen's wording; then rerun `apply-igor-profile.sh` on the VM and restart Hermes | A push to `main` deploys to production; until then the suite's Company links and director proposals do nothing live |
-| One live director proposal (W4-c) | Approve one paid Frige turn on a synthetic book, with a small budget, after the release | Only a live turn shows whether Grok follows the proposal format and copies unchanged lines exactly |
-| Turn budgets for long pieces | Keep 30 s and 20,000 output characters until the live turn shows whether they bind | A piece over about 15,000 characters cannot be proposed today |
+| Scope turn time budget | Raise the scope turn to 120 s and the service cap to match; then approve one more paid turn | Grok 4.7 took 32 s on a six-line poem, so no live proposal reaches Frige at 30 s, and a timed-out turn is still billed |
+| Output budget for long pieces | Keep 20,000 output characters until a long piece is needed | A piece over about 15,000 characters cannot be proposed today |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |

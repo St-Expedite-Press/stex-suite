@@ -8,8 +8,9 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 **Wave 4 — Igor integration for Frige.** Waves 2, 3 and the suite side of
 4a are merged to suite `main` (PR 6, `51577f1`, 2026-11-19). Wave 4b (director
 proposals) is implemented and reviewed on local branches
-(`feat/director-proposals` in both repositories); its live verification needs
-the owner's approval of a paid call. The stex-igor side of 3c, 4a and 4b is
+(`feat/director-proposals` in both repositories). One approved live turn
+(W4-c, 2026-11-20) showed Grok writing a correct proposal, but the 30-second
+turn budget expired first. The stex-igor side of 3c, 4a and 4b is
 unreleased. Evidence:
 [Wave 4b](../verification/director-proposals-w4.md),
 [Wave 4a](../verification/agent-config-w4a.md),
@@ -46,7 +47,7 @@ unreleased. Evidence:
 | W4a-4 | Charter rules for agent configuration | 4a | Done in both root charters and the Igor, inference, Frige and Pantheon charters | `AGENTS.md` files |
 | W4-0 | Wave 4 specification and the proposal channel ([D-017](DECISIONS.md)) | 4 | Done; open to owner review | [Master plan](MASTER-PLAN.md#wave-4-specification--proposals-from-a-real-director) |
 | W4-b | Director proposals: trusted instructions, proposal reading, requested model recorded | 4 | Done; two review rounds, findings fixed; round-2 fixes verified by tests only | [Wave 4b report](../verification/director-proposals-w4.md) |
-| W4-c | A live director proposal against hosted Hermes | 4 | Waiting on the owner: a paid call, its budget, and the stex-igor release | — |
+| W4-c | A live director proposal against hosted Hermes | 4 | Partly done: one paid turn (about $0.02 of a $1 ceiling) through the production gateway. Grok followed the format and copied every unchanged line; the turn took 32 s, so the 30-second budget discarded it. The captured reply passes end to end by replay | [Live turn](../verification/director-proposals-w4.md#live-turn-w4-c) |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 
@@ -55,14 +56,15 @@ unreleased. Evidence:
 | Item | Waiting on |
 | --- | --- |
 | Any change to `stex-igor` reaching `main` | Owner authorization for a named release |
-| A live director proposal (W4-c) | Owner approval of a paid call and budget, after the stex-igor release |
-| Wider turn budgets for long pieces | Owner decision (30 s and 20,000 output characters today) |
+| A live proposal that reaches Frige | Owner decision to raise the scope turn's 30-second budget (and the service's 60-second cap), then a second approved paid turn |
+| Wider output budget for long pieces | Owner decision (20,000 output characters today) |
 
 ## Next actions
 
 1. Owner: review the Company screen's wording, and decide whether to release
    the stex-igor branches (3c, 4a, 4b; a push to its `main` deploys).
-2. Owner: approve one live director proposal with a budget (W4-c), and decide
-   whether long pieces need wider turn budgets.
+2. Owner: decide the scope turn's time budget (Grok 4.7 took 32 s on a
+   six-line poem; 30 s today), then approve one more paid turn to see a live
+   proposal reach Frige.
 3. Then: bounded specialist investigation (Wave 4), which needs a parked
    profile activated and is the owner's decision.

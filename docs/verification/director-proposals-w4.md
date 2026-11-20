@@ -7,7 +7,9 @@ proposed anything. Decision [D-017](../program/DECISIONS.md); specification in
 [the master plan](../program/MASTER-PLAN.md#wave-4-specification--proposals-from-a-real-director).
 
 **Status:** implemented and tested locally against a stub Hermes. Not
-pushed, merged or deployed. No live provider or Hermes call was made.
+pushed, merged or deployed. One owner-approved live turn (W4-c, 2026-11-20)
+showed Grok writing a correct proposal, but the turn exceeded the 30-second
+budget, so no contract was created live; see [the live turn](#live-turn-w4-c).
 
 | Item | Value |
 | --- | --- |
@@ -86,12 +88,54 @@ review, verified by tests:
 | Low: a block whose closing fence never matches removes the prose after it (as before) | Accepted: the reply says the block was cut off |
 | Note: CRLF replies left a stray carriage return | Fixed |
 
+## Live turn (W4-c)
+
+**Approval:** the owner approved one paid turn with a $1 ceiling, run before
+the stex-igor release by tunnelling to the production Hermes gateway over the
+operator's SSH access. Nothing was deployed and nothing on the VM was
+changed. The gateway key was read into the test process's memory only.
+
+**Path:** real Frige → this branch's inference service (remote transport) →
+a recording proxy that forwarded at most one call → production Hermes
+(pinned `e76fbd80`) → OpenRouter. The book was the disposable synthetic
+fixture: one six-line poem with an indented line and an em dash. The author
+asked for one more closing line, keeping every existing line.
+
+| Check | Result |
+| --- | --- |
+| Exactly one call reached the gateway, with `model` `x-ai/grok-4.7`, `provider` `openrouter`, and the trusted instructions | Passed |
+| The deployed Hermes honoured the per-request model | Passed: its log shows the turn on `x-ai/grok-4.7` through OpenRouter, so per-request routing works on the deployed pin |
+| Grok followed the proposal format | Passed: one line of prose, then one `stex-proposal` block naming the offered piece |
+| Grok copied every unchanged line exactly | Passed: the proposed text is the original byte for byte, indentation and em dash included, plus one new line |
+| The reply was not cut short | Passed: `finish_reason` `stop`; one model call, 2,991 input and 1,770 output tokens (mostly reasoning); a 374-character reply |
+| The turn finished within the 30-second budget | **Failed:** the model call took 31.7 s and Hermes answered at 32.3 s. The inference service had already returned "Hermes did not answer before its budget expired"; Frige saved the message, changed nothing and created no contract |
+| Grok's exact reply becomes a contract that is accepted byte-exact | Passed by replay: the captured reply, served by a stub through the same inference service and Frige, made a contract recording `x-ai/grok-4.7`, wrote nothing before acceptance, and wrote the accepted text byte-exact (10 of 10). The synthetic fixture's node id is deterministic and matched the live one |
+
+**Cost:** about $0.02 at OpenRouter's listed Grok 4.7 prices: the main call,
+plus one small title-generation side call. That side call also ran on paid
+Grok, because production's side models are pinned only once the release's
+profile setup runs. No retry was made. The turn left one session holding
+only synthetic text in production Hermes's session store.
+
+**Findings:**
+
+- The 30-second turn budget is too short for Grok 4.7, even for a six-line
+  piece: its reasoning alone took about 30 seconds. The scope turn sets 30
+  seconds in `texgraph-adapter.mjs`, and the service caps every turn at 60
+  seconds unless configured otherwise. Raising either is the owner's
+  decision. Frige already waits up to 300 seconds.
+- A timed-out turn is still paid for. Hermes finished the model call after
+  the inference service had stopped waiting, so the answer was discarded but
+  billed.
+
 ## Limits
 
-- **Nothing ran against a real Hermes or a real model.** Whether Grok
-  follows the format reliably, and copies unchanged lines exactly, is
-  unproven until a live turn, which needs the owner's approval and a budget.
-  Frige's visible diff and the author's acceptance remain the safeguard.
+- **One live turn only.** Grok followed the format and copied unchanged
+  lines exactly once, on a six-line poem. Reliability on long or
+  difficult pieces is unmeasured. Frige's visible diff and the author's
+  acceptance remain the safeguard.
+- **No live proposal reaches Frige under today's budget.** See the finding
+  above.
 - **Budgets are unchanged:** a 30-second turn and 20,000 characters of
   output (counted as JSON). Each proposal carries the whole new text of a
   piece, so a piece longer than roughly 15,000 characters cannot be
