@@ -21,6 +21,7 @@ must keep compatible.
 | stex-suite | `feat/director-proposals` | `51577f1` (`main`) | Wave 4b records, protocol note and Frige comments | No | Owner review; suite pushes need authorization |
 | stex-igor | `feat/director-proposals` | `7da59e0` (on `feat/agent-config`) | Wave 4b director proposals: `7f03c7e`, `ca499bc`, `07a931f` | No | Owner authorization to push; a push to `main` deploys |
 | stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No | Owner authorization to push; a push to `main` deploys. The suite's committed pointer stays at `d0598d8` |
+| stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5`. Independent of the stacked branches; Hermes tests pass | No | Owner authorization to push; a push to `main` deploys |
 
 ## Compatibility requirements
 
