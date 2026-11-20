@@ -17,11 +17,11 @@ must keep compatible.
 | Repository | Branch | Base | Contents | Pushed | Merge needs |
 | --- | --- | --- | --- | --- | --- |
 | stex-suite | `feat/frige-change-contracts` | `d96340e` | Program records; Waves 2, 3a, 3b, 3c, 3d, 3e and the suite side of 4a; two baseline defect fixes | Yes | Merged to `main` by PR 6 as `51577f1`, 2026-11-19 (CI green) |
-| stex-igor | `feat/frige-scope-context` | `d0598d8` | Wave 3c adapter: `b79764f`, `a8880aa` | No | Owner authorization to push; a push to `main` deploys. The suite was tested with this branch in its working tree; its committed pointer stays at `d0598d8` |
-| stex-suite | `feat/director-proposals` | `51577f1` (`main`) | Wave 4b records, protocol note and Frige comments; Frige's page-turn wait (D-018); D-019 records, `.env.example` and developer guide | No | Owner review; suite pushes need authorization |
-| stex-igor | `feat/director-proposals` | `7da59e0` (on `feat/agent-config`) | Wave 4b director proposals: `7f03c7e`, `ca499bc`, `07a931f`; turn time budget (D-018): `79d7f04`; streaming turns and per-product limits (D-019): `9972d2a` | No | Owner authorization to push; a push to `main` deploys |
-| stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No | Owner authorization to push; a push to `main` deploys. The suite's committed pointer stays at `d0598d8` |
-| stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5`. Independent of the stacked branches; Hermes tests pass | No | Owner authorization to push; a push to `main` deploys |
+| stex-igor | `feat/frige-scope-context` | `d0598d8` | Wave 3c adapter: `b79764f`, `a8880aa` | No (contained in `feat/director-proposals`) | Released with PR 2 |
+| stex-suite | `feat/director-proposals` | `51577f1` (`main`) | Wave 4b records, protocol note and Frige comments; Frige's page-turn wait (D-018); D-019 records, `.env.example` and developer guide | Yes (2026-11-20) | PR 7, CI green; owner review to merge (merging deploys nothing) |
+| stex-igor | `feat/director-proposals` | `d0598d8` (`main`), carrying 3c and 4a | Waves 3c, 4a and 4b, D-018 (`79d7f04`), D-019 (`9972d2a`) and a CI test fix (`f57d610`) | Yes (2026-11-20) | Draft PR 2, CI green. Merging deploys: needs the owner's release authorization, then the operator steps in the PR |
+| stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No (contained in `feat/director-proposals`) | Released with PR 2 |
+| stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5` | Yes (2026-11-20) | Draft PR 3, CI green. Merging deploys: needs the owner's authorization |
 
 ## Compatibility requirements
 

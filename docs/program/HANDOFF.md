@@ -15,17 +15,16 @@ Update this file whenever the state below changes.
 
 - **Suite:** Waves 2, 3a–3e, the suite side of 4a and two baseline fixes are
   merged to `main` by PR 6 (`51577f1`, 2026-11-19, CI green). Wave 4b's
-  records, protocol note and Frige comments are on the local branch
-  `feat/director-proposals`, cut from `51577f1`.
-- **stex-igor:** `main` is still `d0598d8`, the deployed release. Three local
-  branches are stacked on it, none pushed:
-  - `feat/frige-scope-context`: Wave 3c ([D-014](DECISIONS.md));
-  - `feat/agent-config`: Wave 4a, the Company;
-  - `feat/director-proposals`: Wave 4b.
+  records and D-017 to D-019 are on `feat/director-proposals`, pushed as
+  PR 7 (CI green, 2026-11-20), awaiting the owner's review.
+- **stex-igor:** `main` is still `d0598d8`, the deployed release. The
+  release stack (Waves 3c, 4a, 4b, D-018, D-019) is pushed as
+  `feat/director-proposals`, draft PR 2, CI green. The skill procedure is
+  draft PR 3. Both are drafts because merging deploys.
 
-  The suite's submodule pointer stays at `d0598d8`. Never stage `stex-igor` in
-  a suite commit while these branches are unpushed. A push to stex-igor
-  `main` deploys, and pushing needs the owner's approval.
+  The suite's submodule pointer stays at `d0598d8` until stex-igor `main`
+  moves. A merge or push to stex-igor `main` deploys and needs the owner's
+  release authorization.
 - **Until stex-igor is released:** the suite's Company links reach Igor's
   conversation list instead of the Company screen. Hosted Igor still runs
   `openai/gpt-4.1-mini`; the Grok stack applies after the release, once the
