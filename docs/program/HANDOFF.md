@@ -35,8 +35,9 @@ Update this file whenever the state below changes.
   ([evidence](../verification/director-proposals-w4.md)). The one approved
   live turn (2026-11-20) proved the format with Grok but ran 2 seconds past
   the 30-second turn budget. The owner then raised a director turn's budget
-  to 120 seconds ([D-018](DECISIONS.md), stex-igor `79d7f04`). Next: a
-  second paid turn, then bounded specialist investigation (needs a parked
+  to 120 seconds ([D-018](DECISIONS.md), stex-igor `79d7f04`), and turns
+  now stream so an abandoned one stops, with one turn slot per product
+  ([D-019](DECISIONS.md), `9972d2a`). Next: a second paid turn, then bounded specialist investigation (needs a parked
   profile activated).
 - **A visual-production skill procedure** (animating and scoring a still
   artwork) found uncommitted in stex-igor was reviewed and committed on its

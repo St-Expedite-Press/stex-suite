@@ -232,6 +232,31 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   wait. No contract changes: `stex.hermes.turn.v1` already carries
   `budget.timeoutMs`.
 
+## D-019 — Abandoned turns stop; live turns are limited per product
+
+- **Decided by:** the owner, 2026-11-20 ("fix these problems and push"),
+  on the two problems reported after D-018: a timed-out turn was still
+  billed, and a long Frige turn held the service's only turn slot.
+- **Decision:**
+  - remote Chat Completions turns stream from Hermes, so a timeout, a
+    cancellation or an oversized answer closes the stream and the pinned
+    Hermes interrupts the agent;
+  - the inference service keeps request-id idempotency itself, because
+    Hermes ignores `Idempotency-Key` on streaming requests;
+  - `STEX_HERMES_MAX_CONCURRENT_TURNS` now limits live turns per product
+    (1), and the new `STEX_HERMES_MAX_TOTAL_TURNS` limits them in total (3).
+    An existing setting of 1 therefore allows up to three paid turns at
+    once, one per product.
+- **Why:** a turn the service has given up on should not keep spending, and
+  a two-minute Frige turn should not refuse Igor's conversation.
+- **Limits:** Hermes notices a closed stream at its next write, within about
+  ten seconds; tokens produced before then are billed. Responses-mode turns
+  do not stream yet. The product name is chosen by the calling product
+  server, so only the total limit is a hard bound.
+- **Affects:** `stex-igor/services/inference` (`hermes-client.mjs`,
+  `server.mjs`), its README and env template; the suite's `.env.example` and
+  developer guide.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).

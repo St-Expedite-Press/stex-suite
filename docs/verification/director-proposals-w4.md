@@ -58,6 +58,7 @@ from any gateway reply.
 | Suite `corepack pnpm test`, with the stex-igor checkout on `feat/director-proposals` | Passed: 298 Node tests, 0 failed, 0 skipped (Frige 131); mypy clean; 64 pytest |
 | `node --check` on the touched modules, `git diff --check` in both repositories | Clean |
 | Time budget raised to 120 seconds (D-018): stex-igor `79d7f04` and the suite's Frige page-turn wait | stex-igor `corepack pnpm test`: Igor 40, inference 54 (two new tests that pin the director budget and the default cap), Hermes 12, design system 8. Frige 131. The pins test now compares the refusal rule's two copies without line endings, which failed spuriously on a Windows checkout |
+| Streaming turns, request-id replay and per-product turn limits (D-019): stex-igor `9972d2a` | stex-igor `corepack pnpm test`: Igor 40, inference 62 (eight new tests against a loopback SSE server that observe the connection closing), Hermes 12, design system 8. One independent review round: two Medium findings (idempotency lost on streaming requests; wider concurrency under an unchanged setting) fixed or recorded as D-019; four Low findings fixed; three notes documented |
 
 The end-to-end script is a throwaway file outside the repositories, by the
 Frige charter's rule against committed throwaway scripts. Its checks are
@@ -130,7 +131,8 @@ only synthetic text in production Hermes's session store.
   decision. Frige already waits up to 300 seconds.
 - A timed-out turn is still paid for. Hermes finished the model call after
   the inference service had stopped waiting, so the answer was discarded but
-  billed.
+  billed. Fixed by [D-019](../program/DECISIONS.md): turns now stream, and a
+  closed stream makes Hermes stop the turn.
 
 ## Limits
 
@@ -141,8 +143,15 @@ only synthetic text in production Hermes's session store.
 - **The time budget is now 120 seconds** ([D-018](../program/DECISIONS.md)):
   the inference service's director turns ask for it, the service's default
   cap admits it, and Frige's page turn waits 150 seconds. A second live turn
-  is needed to show a proposal reaching Frige live. A timed-out turn is
-  still billed.
+  is needed to show a proposal reaching Frige live.
+- **Abandoned turns stop, within about ten seconds**
+  ([D-019](../program/DECISIONS.md)). Remote turns stream; a timeout,
+  cancellation or oversized answer closes the stream, and the pinned Hermes
+  interrupts the agent at its next write (a keepalive at most ten seconds
+  later). Tokens produced before then are billed. Tested against a loopback
+  stand-in, not yet against the real Hermes.
+- **Up to three paid turns can run at once,** one per product, where there
+  was one in total (D-019).
 - **The output budget is unchanged:** 20,000 characters of
   output (counted as JSON). Each proposal carries the whole new text of a
   piece, so a piece longer than roughly 15,000 characters cannot be
