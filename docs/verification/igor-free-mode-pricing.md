@@ -96,10 +96,17 @@ later free-mode turn, and so reach a free provider. Whether anything has been
 saved on the VM is unverified. This predates free mode; free mode only adds
 a destination for it.
 
-Recommended before release: disable memory and background review for the
-`igor` profile in `apply-igor-profile.sh`, with a pins test that fails if
-either is on. That changes production behaviour, so it is the owner's
-decision ([R-15](../program/RISKS.md)).
+**Decided (owner, 2026-11-21):** `apply-igor-profile.sh` turns off
+`memory.memory_enabled`, `memory.user_profile_enabled` and
+`auxiliary.background_review.enabled` for the `igor` profile (stex-igor
+`5db7e51`), and `test:hermes` fails if any is turned back on.
+
+- It takes effect only when the operator runs the script on the VM and
+  restarts `hermes-igor`; a release alone does not apply it.
+- Existing memory files are left in place, unread.
+- This also stops background review's paid calls.
+
+See [R-15](../program/RISKS.md).
 
 **After the fixes:**
 

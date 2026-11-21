@@ -375,9 +375,12 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 
   The Igor server relays them unchanged, and Pantheon and Frige do not read
   them.
-- **Affects:** stex-igor `services/inference` (catalog, store, turn routing)
-  and `apps/igor` (the Company screen), on branch `feat/free-mode`
-  (unreleased); `protocol/hermes`.
+- **Hermes memory** (also decided by the owner, 2026-11-21, after the
+  review found shared profile memory): the `igor` profile keeps no memory
+  and runs no background review (`apply-igor-profile.sh`, R-15).
+- **Affects:** stex-igor `services/inference` (catalog, store, turn routing),
+  `apps/igor` (the Company screen) and `deploy/hermes`, on branch
+  `feat/free-mode`; `protocol/hermes`.
 
 ## Open decisions for the owner
 
