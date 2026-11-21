@@ -257,6 +257,40 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   `server.mjs`), its README and env template; the suite's `.env.example` and
   developer guide.
 
+## D-020 — The Frige product wave, and anchored edits for long pieces
+
+- **Decided by:** principal agent, 2026-11-20, under the owner's Frige
+  Product Completion brief. Open to owner review.
+- **Numbering:** the brief's increments F5-A to F5-E form **Wave F (Frige
+  product completion)**. It is not renumbered into Waves 5–7: Wave 5 stays
+  backend modernization through the migration gate, Wave 6 the knowledge
+  slice and Wave 7 release readiness. Wave F depends on Waves 2–4 and blocks
+  none of them; its increments are recorded as F-A to F-E.
+- **Decision:** a director may propose a text change as anchored edits,
+  `edits: [{find, replace}]` in place of `source`. Frige resolves each edit
+  against the exact offered text: `find` must occur exactly once, spans may
+  not overlap or end inside a CRLF, and every edit must change something.
+  One unusable edit sets aside that piece's whole change. The resolved text
+  becomes an ordinary `replace-node-source` change.
+- **Why this shape:**
+  - The model never supplies offsets or line numbers, which go stale and
+    are miscounted. Text that occurs exactly once is the only anchor, and
+    the base hash still decides staleness at acceptance.
+  - No contract version changes. `stex.frige.change-contract.v1` records
+    are unchanged, so no persisted contract is reinterpreted, and
+    acceptance, all-or-nothing application, crash recovery and rollback
+    are reused unchanged. Scope turn v3 gains an optional reply field,
+    which older readers ignore.
+  - A whole-piece reply is converted to the file's line-ending convention.
+    Resolved edits are not, so a piece with mixed line endings keeps them
+    outside the spans.
+- **Not done:** the contract does not record that a change arrived as
+  edits. The diff shows the passages either way.
+- **Affects:** Frige (`change-contract.mjs` `applyEdits`, the store's
+  proposal path, the inference client and simulator), the workstation's diff
+  card, the stex-igor scope-turn adapter and its trusted instructions (local
+  branch `feat/anchored-edits`, unreleased), and `protocol/texgraph`.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).

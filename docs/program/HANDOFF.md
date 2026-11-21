@@ -33,6 +33,17 @@ Update this file whenever the state below changes.
   ([D-019](DECISIONS.md), `9972d2a`). After the release a second paid turn
   carried a proposal into Frige, accepted byte-exact (W4-f). Next: bounded
   specialist investigation (needs a parked profile activated).
+- **Wave F (2026-11-20):**
+  - The owner's Frige Product Completion brief is now Wave F
+    ([D-020](DECISIONS.md)).
+  - Its first increment is anchored edits for long pieces plus passage
+    review, on suite branch `feat/frige-f5-workstation` (from `06c5f13`).
+    The adapter is on stex-igor `feat/anchored-edits` (from `bd8b3b0`).
+    Both are local and unpushed.
+  - Tests, `verify:frige` and a stub end-to-end run pass
+    ([evidence](../verification/frige-wave-f-anchored-edits.md)).
+  - Independent review is still pending (see the decisions below).
+  - Next increments: F-B3 long-form context, then F-A1/A2/A4.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
   were kept outside the repository in the session scratchpad and may be gone.
@@ -70,5 +81,7 @@ Windows Application Control on the owner's machine blocks their launchers in
 | Renew the hosted provider credential | Renew before the date in the private D1 report | Hosted Igor stops answering when it lapses |
 | Release the stex-igor branches (3c, 4a, 4b) | Release after reviewing the Company screen's wording; then rerun `apply-igor-profile.sh` on the VM and restart Hermes | A push to `main` deploys to production; until then the suite's Company links and director proposals do nothing live |
 | A second live director turn | Approve one paid Frige turn on a synthetic book, about $0.02, now that the budget is 120 s | Shows a live proposal reaching Frige; the first turn ran out of time |
-| Output budget for long pieces | Keep 20,000 output characters until a long piece is needed | A piece over about 15,000 characters cannot be proposed today |
+| Output budget for long pieces | Keep 20,000 output characters: anchored edits (D-020) let a piece up to the 60,000-character offer budget be revised | Only a whole-piece rewrite of a long piece still needs a wider budget |
+| Independent review of Wave F's first increment | Choose the reviewer: a Claude review agent despite the brief's "avoid Claude" for subagents, a Codex reviewer, or the owner | The charter requires one before acceptance. The brief's model rule conflicts with the only reviewer agent available in the session that built it |
+| Release stex-igor `feat/anchored-edits` | Merge the suite branch first, then release; then approve one paid turn on a long synthetic piece | Older Frige ignores edits, so release order matters; whether Grok writes exact anchors is unverified (R-14) |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |

@@ -162,6 +162,10 @@ h1, h2, h3, p { margin-top: 0; }
 .diff-add { background: color-mix(in srgb, var(--stex-success) 16%, transparent); }
 .diff-del { background: color-mix(in srgb, var(--stex-error) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--stex-error) 70%, transparent); }
 .diff-skip { color: var(--stex-text-muted); }
+/* Where a changed passage sits in the piece, above its rows. */
+.diff-hunk { margin-top: var(--stex-space-1); color: var(--stex-text-secondary); font-weight: 600; }
+.diff-hunk:first-child { margin-top: 0; }
+.change-scope { margin: 0; color: var(--stex-text-muted); font: 400 12px/1.45 var(--stex-font-sans); }
 
 .composer { flex: none; }
 .composer-box { padding: var(--stex-space-2) 10px 6px; border: var(--stex-hairline) solid var(--stex-border-control); border-radius: var(--stex-radius-control); background: var(--stex-surface); }

@@ -24,6 +24,8 @@ const stub = http.createServer(async (request, response) => {
   const turn = JSON.parse(raw); const source = turn.scopeSources[0];
   response.writeHead(200, { 'content-type': 'application/json' });
   // A layout request gets the optional `layout` reply field, through the real gateway path.
+  // An edit request gets one anchored edit (F5-B) instead of the whole piece; Frige resolves it.
+  if (/^simulate edit:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated anchored edit for this synthetic fixture.', changes: [{ nodeId: source.nodeId, edits: [{ find: 'indented and Unicode — kept as written.', replace: 'indented and Unicode — revised, and still kept.' }], summary: 'Synthetic anchored edit' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
   if (/^simulate layout:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated layout proposal for this synthetic fixture.', changes: [], layout: { set: { fontSize: '14pt', leading: '17pt' }, summary: 'Synthetic layout' }, parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
   response.end(JSON.stringify({ commentary: 'Simulated editorial proposal for this synthetic fixture.', changes: [{ nodeId: source.nodeId, source: source.source + '\nA proposed synthetic line.\n', summary: 'Synthetic addition' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } }));
 });
@@ -105,6 +107,23 @@ try {
   await click('.changes .reject');
   await until(async () => (await api(historyUrl))[0]?.changes[0].status === 'rejected', 'rejection recorded on the contract');
   assert.equal(await readFile(poemPath, 'utf8'), beforeAccept); report.workflow.push('contract terms shown; rejection leaves the manuscript unchanged');
+  // Anchored edit (F5-B): the director quotes the text it replaces; Frige places it, the card heads the
+  // passage with its lines, acceptance writes only that span, and rollback restores the exact bytes.
+  await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled`), 'workspace idle after rejection');
+  await input('#message', 'Simulate edit: revise the indented line'); await click('#turn-form [type="submit"]');
+  await until(() => evaluate(`!!document.querySelector('.changes .diff-hunk')`), 'anchored edit shown as a headed passage');
+  const card = await evaluate(`({ hunks: [...document.querySelectorAll('.changes .diff-hunk')].map(node => node.textContent), scope: document.querySelector('.changes .change-scope')?.textContent || '', removed: [...document.querySelectorAll('.changes .diff-del')].map(node => node.textContent), added: [...document.querySelectorAll('.changes .diff-add')].map(node => node.textContent) })`);
+  assert.deepEqual(card, { hunks: ['Lines 2–6'], scope: '1 passage would change. Every other line of the piece stays exactly as it is.', removed: ['−   indented and Unicode — kept as written.'], added: ['+   indented and Unicode — revised, and still kept.'] });
+  assert.equal(await readFile(poemPath, 'utf8'), beforeAccept, 'the edit is inert until accepted');
+  await capture('anchored-edit-proposal.png', { reveal: '.changes .change-diff' });
+  await click('.changes .accept');
+  const edited = beforeAccept.replace('indented and Unicode — kept as written.', 'indented and Unicode — revised, and still kept.');
+  await until(async () => (await readFile(poemPath, 'utf8')) === edited, 'anchored edit accepted byte-exact');
+  await until(() => evaluate(`!!document.querySelector('.decision-revert:not([disabled])')`), 'roll back control for the anchored edit');
+  await click('.decision-revert');
+  await until(async () => (await readFile(poemPath, 'utf8')) === beforeAccept, 'anchored edit rolled back to the exact prior text');
+  await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after the anchored edit');
+  report.workflow.push('an anchored edit through the gateway reply is shown as its headed passage, accepted byte-exact and rolled back');
   await click('#open-design'); await input('[name="fontSize"]', '13pt'); await click('#design-panel [type="submit"]');
   await until(() => evaluate(`document.querySelector('#design-state').textContent === 'Saved.'`), 'profile save');
   const preflight = await api('/project/preflight?book=fixture-book'); assert.equal(preflight.checks.find((entry) => entry.id === 'freshness').status, 'warn');

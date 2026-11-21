@@ -354,10 +354,33 @@ test('reviews a proposed change as a line diff that collapses distant unchanged 
   const before = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'old line', 'f'].join('\n');
   const after = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'new line', 'f', 'added'].join('\n');
   assert.deepEqual(lineDiff(before, after), [
-    { type: 'skip', count: 4 }, { type: 'same', text: 'd' }, { type: 'same', text: 'e' },
-    { type: 'del', text: 'old line' }, { type: 'add', text: 'new line' }, { type: 'same', text: 'f' }, { type: 'add', text: 'added' },
+    { type: 'skip', count: 4 }, { type: 'same', text: 'd', left: 5, right: 5 }, { type: 'same', text: 'e', left: 6, right: 6 },
+    { type: 'del', text: 'old line', left: 7 }, { type: 'add', text: 'new line', right: 7 }, { type: 'same', text: 'f', left: 8, right: 8 }, { type: 'add', text: 'added', right: 9 },
   ]);
   assert.deepEqual(lineDiff('same', 'same'), [{ type: 'skip', count: 1 }]);
+});
+
+test('a localized edit to a long piece is reviewed as that passage, headed by its lines', async () => {
+  const { diffHunks, hunkLabel, lineDiff } = await import('../workspaces/frige/line-diff.js');
+  // 3,000 lines: beyond the size at which the whole piece used to be shown as removed and re-added.
+  const lines = Array.from({ length: 3000 }, (_, index) => `line ${index + 1}`);
+  const edited = lines.map((line, index) => (index === 1499 ? 'line 1500, revised' : line));
+  const rows = lineDiff(lines.join('\n'), edited.join('\n'));
+  assert.deepEqual(rows.filter((row) => row.type === 'del'), [{ type: 'del', text: 'line 1500', left: 1500 }]);
+  assert.deepEqual(rows.filter((row) => row.type === 'add'), [{ type: 'add', text: 'line 1500, revised', right: 1500 }]);
+  assert.deepEqual(rows.filter((row) => row.type === 'skip'), [{ type: 'skip', count: 1497 }, { type: 'skip', count: 1498 }]);
+  const hunks = diffHunks(rows);
+  assert.deepEqual(hunks.map((entry) => entry.type === 'hunk' ? entry.label : entry.count), [1497, 'Lines 1498–1502', 1498]);
+
+  // A changed region too large to compare line by line is still shown, as removed then added.
+  const left = Array.from({ length: 2100 }, (_, index) => `a${index}`); const right = Array.from({ length: 2100 }, (_, index) => `b${index}`);
+  const wholesale = lineDiff(left.join('\n'), right.join('\n'));
+  assert.equal(wholesale.filter((row) => row.type === 'del').length, 2100);
+  assert.equal(wholesale.filter((row) => row.type === 'add').length, 2100);
+
+  assert.equal(hunkLabel([{ type: 'same', text: 'x', left: 4, right: 4 }, { type: 'add', text: 'y', right: 5 }]), 'Line 4, becoming 4–5');
+  assert.equal(hunkLabel([{ type: 'add', text: 'y', right: 1 }]), 'New line 1');
+  assert.equal(hunkLabel([{ type: 'del', text: 'y', left: 2 }, { type: 'del', text: 'z', left: 3 }]), 'Lines 2–3, removed');
 });
 
 test('forwards only the read-only platform routes, without browser headers, and fails closed', async (context) => {

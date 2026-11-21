@@ -267,12 +267,27 @@ covers that piece too.
 A source save must carry the base hash of the text it replaces; one without is
 refused with `400 BASE_HASH_REQUIRED`.
 
+**Localized edits to long pieces.** A proposal need not repeat a whole piece.
+The director may send anchored edits: each quotes text that occurs exactly
+once in the piece as it was offered, and gives its replacement. Frige, not the
+model, places each edit, and keeps every other character of the piece,
+including its line endings, byte for byte. If any edit to a piece is missing
+from it, ambiguous, overlaps another or would split a line ending, the whole
+change to that piece is set aside and the reply says why. The result is an
+ordinary change contract, decided and rolled back like any other. This lets
+a piece far longer than the director's output budget be revised. The card
+heads each changed passage with its line numbers (for example
+`Lines 598–602`) and collapses everything unchanged.
+
 The deterministic simulator (`STEX_FRIGE_INFERENCE_MODE=fake`, the `dev:alpha`
-default) proposes nothing unless the message begins `Simulate change:`. It then
-proposes one labelled change that appends the rest of the message as a closing
-line to the first offered piece, never to the table of contents. This
-exercises the contract path without a provider. The inference service itself
-does not yet return changes from a real director.
+default) proposes nothing unless the message begins `Simulate change:` or
+`Simulate edit:`. `Simulate change: <line>` proposes one labelled change that
+appends the line as a closing stanza to the first offered piece, never to the
+table of contents. `Simulate edit: <exact text> => <replacement>` sends one
+anchored edit to that piece, quoted exactly as written, for Frige to place.
+These exercise the contract path without a provider. Through the inference
+service, the director's proposals arrive the same way (program Wave 4b and
+[D-020](../../docs/program/DECISIONS.md)).
 
 A section's or a piece's conversation can also propose a **layout change**:
 setting or clearing that section's or piece's own size and leading, recto

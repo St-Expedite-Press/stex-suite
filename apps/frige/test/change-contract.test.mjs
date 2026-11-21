@@ -14,7 +14,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { ProjectStore, sourceHash } from '../src/project-store-vault.mjs';
 import { buildBook } from '../src/book-assembler.mjs';
-import { CHANGE_CONTRACT, conflictsWith, isContractId, lineStats, proofFor } from '../src/change-contract.mjs';
+import { CHANGE_CONTRACT, MAX_EDITS_PER_CHANGE, applyEdits, conflictsWith, isContractId, lineStats, proofFor } from '../src/change-contract.mjs';
 import { designHash } from '../src/design-settings.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
@@ -1020,4 +1020,167 @@ test('a proof records the hash of the text it typeset, not the hash the graph he
   assert.match(assembled.document, /Saved during assembly/);
   assert.notEqual(assembled.sourceHashes[first], stale.hash);
   assert.equal(assembled.sourceHashes[first], sourceHash(`${FIRST}\nSaved during assembly.\n`));
+});
+
+// --- Anchored edits (Frige product wave F5-B) ---------------------------------
+//
+// A director proposes a localized change as edits that quote the exact text
+// they replace. Frige resolves them against the offered source; the contract
+// still records the whole prior and proposed text, so acceptance, staleness
+// and rollback are unchanged.
+
+test('anchored edits resolve to exactly one span each, and any unusable edit refuses the whole set', () => {
+  const base = 'alpha\nbeta\ngamma\ndelta\n';
+  // Out of order on input, applied in source order; an empty replacement deletes.
+  assert.deepEqual(applyEdits(base, [{ find: 'delta', replace: 'DELTA' }, { find: 'beta\n', replace: '' }]), { source: 'alpha\ngamma\nDELTA\n', spans: [{ start: 6, end: 11 }, { start: 17, end: 22 }] });
+  // Adjacent spans do not overlap.
+  assert.equal(applyEdits('ab', [{ find: 'a', replace: 'A' }, { find: 'b', replace: 'B' }]).source, 'AB');
+
+  const refused = (edits, pattern, text = base) => {
+    const result = applyEdits(text, edits);
+    assert.ok('reason' in result, `expected a refusal for ${JSON.stringify(edits)}`);
+    assert.match(result.reason, pattern);
+  };
+  refused(undefined, /missing/);
+  refused([], /missing/);
+  refused(Array.from({ length: MAX_EDITS_PER_CHANGE + 1 }, () => ({ find: 'alpha', replace: 'x' })), /at most 40/);
+  refused([{ find: 'alpha' }], /exact text to replace and its replacement/);
+  refused([{ find: 3, replace: 'x' }], /exact text to replace/);
+  refused(['alpha'], /exact text to replace/);
+  refused([{ find: '', replace: 'x' }], /does not say which text/);
+  refused([{ find: 'omega', replace: 'x' }], /not in the piece as it was offered/);
+  refused([{ find: 'a', replace: 'x' }], /occurs more than once/);
+  refused([{ find: 'aa', replace: 'x' }], /occurs more than once/, 'aaa');
+  refused([{ find: 'alpha', replace: 'alpha' }], /changes nothing/);
+  refused([{ find: 'beta\ngamma', replace: 'x' }, { find: 'gamma\ndelta', replace: 'y' }], /overlap/);
+  refused([{ find: 'alpha', replace: 'x' }, { find: 'pha\nbe', replace: 'y' }], /overlap/);
+  refused([{ find: 'alpha', replace: '\uD800' }], /not valid text/);
+  refused([{ find: 'alpha', replace: 'x'.repeat(20_001) }], /longer than 20000/);
+  // Edit 2 is the culprit, and the message names it.
+  refused([{ find: 'alpha', replace: 'x' }, { find: 'omega', replace: 'y' }], /^Edit 2:/);
+
+  // A director writes \n; a CRLF piece gets CRLF in both the anchor and the replacement.
+  const windows = 'one\r\ntwo\r\nthree\r\n';
+  assert.equal(applyEdits(windows, [{ find: 'one\ntwo', replace: 'one\nand two' }]).source, 'one\r\nand two\r\nthree\r\n');
+  // A span may not end between \r and \n. (A leading \n is converted to \r\n, so a span cannot begin there.)
+  refused([{ find: 'one\r', replace: 'ONE' }], /divide a line ending/, windows);
+  refused([{ find: 'two\r', replace: 'x' }], /divide a line ending/, 'one\ntwo\r\n');
+  assert.equal(applyEdits(windows, [{ find: '\ntwo', replace: '\nTWO' }]).source, 'one\r\nTWO\r\nthree\r\n');
+});
+
+/**
+ * A synthetic book with one long piece: a byte-order mark, indentation, em
+ * spaces, typographic quotes and a character outside the Basic Multilingual
+ * Plane on most lines, longer than a whole-piece reply's 20,000-character
+ * output budget but within the 60,000 characters a piece conversation offers.
+ *
+ * @param {import('node:test').TestContext} context
+ */
+async function longPieceBook(context) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'frige-anchored-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
+  await writeFile(path.join(root, 'manuscript', 'Programme.md'), '# Programme\n\n- [Long](01/Long.md)\n');
+  const lines = ['# Long'];
+  for (let index = 1; index <= 1200; index += 1) {
+    lines.push(index % 7 === 0 ? '' : `${index % 3 === 0 ? '    ' : ''}${index}. Ælfric’s “line” — 𝔉 ends here`);
+  }
+  const text = `﻿${lines.join('\n')}\n`;
+  const file = path.join(root, 'manuscript', '01', 'Long.md');
+  await writeFile(file, text);
+  const store = new ProjectStore(root);
+  const graph = await store.initialize();
+  return { store, file, text, node: graph.readingOrder[0] };
+}
+
+test('a localized edit to a long piece is proposed without the whole piece, and written and rolled back byte-exact', async (context) => {
+  const { store, file, text, node } = await longPieceBook(context);
+  assert.ok(text.length > 20_000 && text.length < 60_000, `fixture length ${text.length}`);
+  const original = await readFile(file);
+  const { sources, withheld } = await store.scopeContext(node);
+  assert.deepEqual(withheld, [], 'the long piece is offered whole');
+
+  const edits = [
+    { find: '600. Ælfric’s “line” — 𝔉 ends here', replace: '600. Ælfric’s revised “line” — 𝔉 ends here' },
+    { find: '    1194. Ælfric’s “line”', replace: '    1194. Ælfric’s “last line”' },
+  ];
+  const { changeSet, dropped } = await store.createChangeSet(node, { commentary: 'Two localized revisions.', changes: [{ nodeId: node, edits, summary: 'Revise two lines.' }] }, sources);
+  assert.deepEqual(dropped, []);
+  const [change] = changeSet.changes;
+  assert.equal(change.kind, 'replace-node-source');
+  assert.equal(change.before, sources[0].source, 'the contract records the exact prior text');
+  assert.deepEqual(change.lines, { before: 1201, after: 1201, added: 2, removed: 2 });
+  assert.deepEqual(await readFile(file), original, 'nothing is written before acceptance');
+
+  await store.decideChanges(node, changeSet.id, { decision: 'accept' });
+  const written = await readFile(file);
+  const expected = Buffer.from(text.replace(edits[0].find, edits[0].replace).replace(edits[1].find, edits[1].replace));
+  assert.deepEqual(written, expected);
+  // Every byte before the first span and after the last is the original's.
+  const firstSpan = original.indexOf(Buffer.from(edits[0].find));
+  const lastSpanEnd = original.indexOf(Buffer.from(edits[1].find)) + Buffer.byteLength(edits[1].find);
+  assert.deepEqual(written.subarray(0, firstSpan), original.subarray(0, firstSpan), 'the byte-order mark and every line before the first edit are untouched');
+  assert.deepEqual(written.subarray(written.length - (original.length - lastSpanEnd)), original.subarray(lastSpanEnd), 'every byte after the last edit is untouched');
+
+  await store.revertChanges(changeSet.id);
+  assert.deepEqual(await readFile(file), original, 'rollback restores the exact prior bytes');
+});
+
+test('an anchored edit that cannot be placed exactly proposes nothing and writes nothing', async (context) => {
+  const { store, first, firstFile } = await syntheticBook(context);
+  const { sources } = await store.scopeContext(first);
+  const attempt = (change) => store.createChangeSet(first, { commentary: 'r', changes: [{ nodeId: first, ...change }] }, sources);
+
+  for (const [change, pattern] of [
+    [{ edits: [{ find: 'Not in the piece', replace: 'x' }] }, /not in the piece as it was offered/],
+    [{ edits: [{ find: 'n', replace: 'N' }] }, /occurs more than once/],
+    [{ edits: [{ find: 'One line,', replace: 'x' }, { find: 'line,\n  one', replace: 'y' }] }, /overlap/],
+    [{ edits: 'One line, => x' }, /missing/],
+    [{ source: `${FIRST}\nWhole.\n`, edits: [{ find: 'One line,', replace: 'x' }] }, /either the whole new text or edits/],
+  ]) {
+    const { changeSet, dropped } = await attempt(change);
+    assert.equal(changeSet, null, JSON.stringify(change));
+    assert.equal(dropped.length, 1); assert.equal(dropped[0].nodeId, first); assert.match(dropped[0].reason, pattern);
+  }
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST);
+  assert.equal(await store.changeSet(first), null, 'no contract is current for the piece');
+  assert.deepEqual(await store.contracts(), []);
+});
+
+test('an anchored edit keeps a piece’s mixed line endings outside its span', async (context) => {
+  const { store, first, firstFile } = await syntheticBook(context);
+  const mixed = '# First\r\n\r\nOne line,\n  one indented — with Unicode.\r\nLast.\n';
+  const node = await store.node(first);
+  await store.updateNode(first, mixed, node.hash);
+  const { sources } = await store.scopeContext(first);
+  const { changeSet } = await store.createChangeSet(first, { changes: [{ nodeId: first, edits: [{ find: 'Last.', replace: 'Last of all.' }] }] }, sources);
+  await store.decideChanges(first, changeSet.id, { decision: 'accept' });
+  // A whole-piece reply would have been converted to CRLF throughout; anchored edits touch only their span.
+  assert.equal(await readFile(firstFile, 'utf8'), '# First\r\n\r\nOne line,\n  one indented — with Unicode.\r\nLast of all.\n');
+});
+
+test('an anchored edit is stale, and writes nothing, once the piece changes after the proposal', async (context) => {
+  const { store, first, firstFile } = await syntheticBook(context);
+  const { sources } = await store.scopeContext(first);
+  const { changeSet } = await store.createChangeSet(first, { changes: [{ nodeId: first, edits: [{ find: 'One line,', replace: 'A single line,' }] }] }, sources);
+  const byHand = `${FIRST}Added by hand.\n`;
+  await store.updateNode(first, byHand, sources[0].hash);
+  const decided = await store.decideChanges(first, changeSet.id, { decision: 'accept' });
+  assert.equal(decided.changes[0].status, 'stale');
+  assert.equal(await readFile(firstFile, 'utf8'), byHand, 'the author’s edit is not overwritten, even though the anchor text is still present');
+});
+
+test('anchored edits to several pieces form one contract that is accepted all-or-nothing', async (context) => {
+  const { store, first, second, section } = await twoPieceContract(context);
+  const { sources } = await store.scopeContext(section.id);
+  const { changeSet, dropped } = await store.createChangeSet(section.id, { changes: [
+    { nodeId: first, edits: [{ find: 'One line,', replace: 'One line, revised,' }] },
+    { nodeId: second, edits: [{ find: 'Two.', replace: 'Two, revised.' }] },
+    { nodeId: second, edits: [{ find: 'Two.', replace: 'Again.' }] },
+  ] }, sources);
+  assert.deepEqual(dropped.map((entry) => entry.reason), ['Only one change per node is kept.']);
+  assert.deepEqual(changeSet.changes.map((change) => change.nodeId), [first, second]);
+  await store.decideChanges(section.id, changeSet.id, { decision: 'accept' });
+  assert.equal((await store.node(first)).source, FIRST.replace('One line,', 'One line, revised,'));
+  assert.equal((await store.node(second)).source, SECOND.replace('Two.', 'Two, revised.'));
 });

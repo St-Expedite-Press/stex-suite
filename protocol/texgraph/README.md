@@ -37,6 +37,21 @@ a slim `graph`, approved excerpts, recent turns and the message.
 The director replies with `commentary`, optional `graphSuggestions`, and
 optional `changes: [{ nodeId, source, summary }]`, each a complete
 replacement of an offered node. The gateway rejects malformed changes.
+
+A change may instead carry **anchored edits** (added 2026-11-20, additive;
+[D-020](../../docs/program/DECISIONS.md)):
+`{ nodeId, edits: [{ find, replace }], summary }`, with `edits` in place of
+`source`, never both. Each `find` is text copied exactly from the offered
+node that occurs there exactly once; `replace` takes its place (empty
+deletes it). At most 40 edits per node, each `find` and `replace` at most
+20,000 UTF-16 units. The gateway checks only their shape and never clips
+them. Frige resolves the edits against the exact text it offered: a `find`
+that is missing, occurs more than once, overlaps another edit, or would end
+between the two characters of a CRLF refuses that node's whole change, with
+the reason shown in the reply. Offsets and line numbers are never accepted.
+The result is recorded as an ordinary whole-text change (below), so a reader
+of the change set or contract sees no difference. A reader that does not know
+`edits` ignores such a change and proposes nothing for that node.
 TexGraph keeps a change only if its node was offered in that turn, records
 the kept changes as one pending change set for the scope, and writes nothing
 until the author accepts. Acceptance writes through the node's base hash, so
