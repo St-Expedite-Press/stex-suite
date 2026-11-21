@@ -113,7 +113,7 @@ try {
   await input('#message', 'Simulate edit: revise the indented line'); await click('#turn-form [type="submit"]');
   await until(() => evaluate(`!!document.querySelector('.changes .diff-hunk')`), 'anchored edit shown as a headed passage');
   const card = await evaluate(`({ hunks: [...document.querySelectorAll('.changes .diff-hunk')].map(node => node.textContent), scope: document.querySelector('.changes .change-scope')?.textContent || '', removed: [...document.querySelectorAll('.changes .diff-del')].map(node => node.textContent), added: [...document.querySelectorAll('.changes .diff-add')].map(node => node.textContent) })`);
-  assert.deepEqual(card, { hunks: ['Lines 2–6'], scope: '1 passage would change. Every other line of the piece stays exactly as it is.', removed: ['−   indented and Unicode — kept as written.'], added: ['+   indented and Unicode — revised, and still kept.'] });
+  assert.deepEqual(card, { hunks: ['Lines 2–6'], scope: '1 passage would change; the text of every other line stays as it is.', removed: ['−   indented and Unicode — kept as written.'], added: ['+   indented and Unicode — revised, and still kept.'] });
   assert.equal(await readFile(poemPath, 'utf8'), beforeAccept, 'the edit is inert until accepted');
   await capture('anchored-edit-proposal.png', { reveal: '.changes .change-diff' });
   await click('.changes .accept');

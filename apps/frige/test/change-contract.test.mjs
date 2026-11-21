@@ -1066,6 +1066,24 @@ test('anchored edits resolve to exactly one span each, and any unusable edit ref
   refused([{ find: 'one\r', replace: 'ONE' }], /divide a line ending/, windows);
   refused([{ find: 'two\r', replace: 'x' }], /divide a line ending/, 'one\ntwo\r\n');
   assert.equal(applyEdits(windows, [{ find: '\ntwo', replace: '\nTWO' }]).source, 'one\r\nTWO\r\nthree\r\n');
+  // A carriage return that ends no line would, at a span's edge, form a CRLF that no diff shows (review finding 3).
+  refused([{ find: 'beta', replace: 'BETA\r' }], /carriage return that does not end a line/);
+  refused([{ find: 'two', replace: 'T\rWO' }], /carriage return that does not end a line/, windows);
+});
+
+test('a proposal that would leave a piece’s text as it is creates no contract and says so', async (context) => {
+  const { store, first, firstFile } = await syntheticBook(context);
+  const { sources } = await store.scopeContext(first);
+  // Two edits that cancel out, and a whole-piece reply that only re-ends its lines (review finding 4).
+  for (const change of [
+    { edits: [{ find: '# First\n', replace: '# Fir' }, { find: '\nOne line,', replace: 'st\n\nOne line,' }] },
+    { source: FIRST.replace(/\n/g, '\r\n') },
+  ]) {
+    const { changeSet, dropped } = await store.createChangeSet(first, { changes: [{ nodeId: first, ...change }] }, sources);
+    assert.equal(changeSet, null, JSON.stringify(change));
+    assert.deepEqual(dropped, [{ nodeId: first, reason: 'The proposed change would leave the piece’s text as it is.' }]);
+  }
+  assert.equal(await readFile(firstFile, 'utf8'), FIRST);
 });
 
 /**

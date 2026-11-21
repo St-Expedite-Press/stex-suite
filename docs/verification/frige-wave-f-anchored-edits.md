@@ -1,7 +1,7 @@
 # Frige Wave F, first increment: anchored edits and passage review
 
-**Date:** 2026-11-20. **Status:** implemented and tested locally; independent
-review not yet done (see below). **Plan:**
+**Date:** 2026-11-20. **Status:** implemented and tested; one independent
+review round, all findings fixed (see below). **Plan:**
 [Wave F](../program/MASTER-PLAN.md#wave-f-specification--first-increment-f-a-and-f-b-together),
 [D-020](../program/DECISIONS.md).
 
@@ -88,9 +88,10 @@ one-line edit was shown as the whole piece removed and re-added.
 | Command | Result |
 | --- | --- |
 | `corepack pnpm run test:frige` | 139 tests (8 new). One run passed all 139. In the other runs, all 138 other tests passed and the preflight test failed at the 30-second LuaLaTeX limit. It is pre-existing: see *Limits* |
-| `corepack pnpm run test:pantheon` | 20 passed (one new, one updated) |
+| `corepack pnpm run test:pantheon` | 20 passed (one new, one updated); after the review fixes, 22 |
 | `corepack pnpm run build:pantheon` | Built |
-| stex-igor `corepack pnpm test` | Igor 40, inference 64 (two new), Hermes 12, design system 8; none skipped |
+| stex-igor `corepack pnpm test` | Igor 40, inference 64 (two new), Hermes 12, design system 8; none skipped. After the review fixes, inference 65 |
+| `corepack pnpm run test:frige` after the review fixes | 140 passed, none skipped |
 | `corepack pnpm run verify:frige` | PASS: the full existing workflow plus the anchored-edit step; real LuaLaTeX proofs; five viewports |
 | End-to-end script: stub Hermes → stex-igor inference (`remote` transport, `feat/anchored-edits`) → Frige server, synthetic book | 8 of 8 |
 | `node --check` on touched modules; `git diff --check` in both repositories | Clean |
@@ -130,8 +131,38 @@ listed in the acceptance table.
 
 ## Independent review
 
-Not yet done. The owner's brief asks that development subagents avoid
-Claude, and the only reviewer agent available in this session is a Claude
-model. The charter requires an independent review for a change to
-behaviour and contracts, so this increment is not accepted until one runs.
-Options for the owner are in the handoff.
+**Round 1** (2026-11-20). A separate reviewer agent ran with the diffs and
+the claims, not the author's conclusions. It is a Claude model: the brief
+asked development subagents to avoid Claude, and the owner, shown that
+conflict, told the coordinator to proceed. It had reproduction scripts, ran
+20,000 random cases against the diff, and probed the store, the resolver
+and the adapter.
+
+No Critical or High findings. It could not break:
+
+- byte identity outside the spans;
+- the refusal rules;
+- the unchanged contract and acceptance path;
+- inert rendering of model text (`textContent`).
+
+Every finding was fixed, each with a test that fails without the fix:
+
+| # | Severity | Finding | Fix |
+| --- | --- | --- | --- |
+| 1 | Medium | The simulator's `Simulate edit:` pattern backtracked cubically. A 12,000-character message without `=>` ran over 120 s, freezing the Frige server (simulator mode only) | The message is split once, at its first `=>`; the test sends the longest allowed message and requires under 1 s |
+| 2 | Medium | Edits near both ends of a long piece were shown as one passage of every line between them, because the region exceeded the LCS limit | A region over the limit is split at lines that occur once on each side, and each gap is compared on its own. The test uses a 20,000-line piece, now two passages; a 400-case seeded property test checks that rows rebuild both texts with true line numbers |
+| 3 | Low | A replacement ending in `\r` joined the following `\n` into an invisible CRLF | A replacement may not hold a carriage return that ends no line |
+| 4 | Low | Edits that cancel out, or a reply that only re-ends lines, vanished with no reason | Both now carry a set-aside reason, which the thread shows |
+| 5 | Low | The card's "Every other line … stays exactly as it is" could be false at the byte level: a whole-piece reply re-ends a mixed-ending piece | The card now speaks of text. It says in words when an unchanged line's ending would change, checked line by line |
+| 6 | Low | An older Frige talking to the new gateway would silently lose edits-only proposals | Frige advertises `proposalForms: ["source", "edits"]`. The gateway teaches and forwards edits only to such a caller; others get the released instructions, compared byte for byte in a test, and stray edits are set aside with a notice. Release order no longer matters |
+
+Notes recorded without change:
+
+- In a piece that has any CRLF, a multi-line `find` written with `\n` cannot
+  match its LF-only lines. Such edits are refused, never misapplied (see
+  R-14).
+- `verify:frige` uses its own stub for the edit step. The real adapter is
+  covered by the stex-igor service test and the end-to-end script.
+
+The fixes were verified by tests and by rerunning `verify:frige` and the
+end-to-end script. They were not re-reviewed.

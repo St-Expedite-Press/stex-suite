@@ -271,13 +271,24 @@ refused with `400 BASE_HASH_REQUIRED`.
 The director may send anchored edits: each quotes text that occurs exactly
 once in the piece as it was offered, and gives its replacement. Frige, not the
 model, places each edit, and keeps every other character of the piece,
-including its line endings, byte for byte. If any edit to a piece is missing
-from it, ambiguous, overlaps another or would split a line ending, the whole
-change to that piece is set aside and the reply says why. The result is an
+including its line endings, byte for byte. In these cases the whole change
+to that piece is set aside and the reply says why:
+
+- an edit's text is missing from the piece, or ambiguous;
+- an edit overlaps another;
+- an edit would split a line ending, or write a carriage return that ends no
+  line;
+- the change would leave the text as it is.
+
+Frige tells the inference service that it accepts edits (`proposalForms`),
+so an older Frige is never sent them. The result is an
 ordinary change contract, decided and rolled back like any other. This lets
 a piece far longer than the director's output budget be revised. The card
 heads each changed passage with its line numbers (for example
-`Lines 598–602`) and collapses everything unchanged.
+`Lines 598–602`) and collapses everything unchanged; edits far apart in a
+long piece remain separate passages. A line diff cannot show line endings,
+so the card says in words when the line endings of an unchanged line would
+change.
 
 The deterministic simulator (`STEX_FRIGE_INFERENCE_MODE=fake`, the `dev:alpha`
 default) proposes nothing unless the message begins `Simulate change:` or

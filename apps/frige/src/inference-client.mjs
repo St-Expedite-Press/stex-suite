@@ -18,10 +18,31 @@ const SIMULATED_CHANGE = /^simulate change:\s*(\S[\s\S]*)$/i;
 const SIMULATED_LAYOUT = /^simulate layout:\s*(\S[\s\S]*)$/i;
 /**
  * `Simulate edit: <exact text> => <replacement>` asks the simulator for one
- * anchored edit (F5-B). The text is taken as written, so a test can quote a
- * phrase that occurs once, more than once, or not at all.
+ * anchored edit (F5-B), so a test can quote a phrase that occurs once, more
+ * than once, or not at all. The message is split once, at its first `=>`:
+ * no pattern backtracks over a long message.
  */
-const SIMULATED_EDIT = /^simulate edit:\s*([\s\S]+?)\s*=>\s?([\s\S]*)$/i;
+const SIMULATED_EDIT_PREFIX = /^simulate edit:/i;
+
+/**
+ * Reads a simulated edit request. The text before the first `=>` is the
+ * anchor, without the whitespace around it; the text after it is the
+ * replacement, without one separating space. Everything else is kept as
+ * written.
+ *
+ * @param {string} message  The whole trimmed message.
+ * @returns {{ find: string, replace: string } | null}  `null` without the prefix, an `=>` or an anchor.
+ */
+function simulatedEdit(message) {
+  const prefix = SIMULATED_EDIT_PREFIX.exec(message);
+  if (!prefix) return null;
+  const rest = message.slice(prefix[0].length);
+  const arrow = rest.indexOf('=>');
+  if (arrow === -1) return null;
+  const find = rest.slice(0, arrow).trim();
+  const replace = rest.slice(arrow + 2).replace(/^ /, '');
+  return find ? { find, replace } : null;
+}
 
 /**
  * Reads a simulated layout request. Forms, case-insensitive:
@@ -86,7 +107,7 @@ function fakeScopeTurn(message, sources = []) {
   // line cannot become a heading (and retitle the piece) or a quotation.
   const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
   const layoutRequest = SIMULATED_LAYOUT.exec(received)?.[1];
-  const editRequest = SIMULATED_EDIT.exec(received);
+  const editRequest = simulatedEdit(received);
   if (editRequest) {
     const target = sources.find((entry) => entry.kind !== 'programme');
     // Frige resolves the edit and decides whether it becomes a suggestion, so the simulator does not claim one.
@@ -95,7 +116,7 @@ function fakeScopeTurn(message, sources = []) {
       : 'Deterministic Igor simulator: this conversation offered no piece to edit, so no edit was simulated. Select a section or a piece and ask again.';
     return {
       commentary: text, availability: 'available', graphSuggestions: [],
-      changes: target ? [{ nodeId: target.nodeId, edits: [{ find: editRequest[1], replace: editRequest[2] }], summary: 'Simulated anchored edit (deterministic simulator, not a model).' }] : [],
+      changes: target ? [{ nodeId: target.nodeId, edits: [editRequest], summary: 'Simulated anchored edit (deterministic simulator, not a model).' }] : [],
       parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
     };
   }
@@ -202,6 +223,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
         ...(answer ? { answer } : {}),
+        // Additive v3 field (D-020): this Frige resolves anchored edits, so the gateway may teach and send them.
+        proposalForms: ['source', 'edits'],
       }),
     });
     if (!response.ok) {

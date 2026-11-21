@@ -1015,8 +1015,9 @@ export class ProjectStore {
       }
       // Checked after line endings are converted: that is the text an acceptance would write.
       if (source.length > MAX_SOURCE) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is longer than 400 KB.' }); continue; }
-      // A reply that differs only in line endings proposes nothing the author asked for.
-      if (sameTextIgnoringLineEndings(source, base.source)) continue;
+      // A reply that differs only in line endings proposes nothing the author asked for; say so,
+      // because the director's prose may announce a change that the thread then never shows.
+      if (sameTextIgnoringLineEndings(source, base.source)) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed change would leave the piece’s text as it is.' }); continue; }
       kept.push(buildChange(base, source, sourceHash(source), change.summary));
     }
     const scope = await this.scope(scopeId);

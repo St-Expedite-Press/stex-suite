@@ -386,7 +386,8 @@ const MAX_EDIT_TEXT = 20_000;
  *   (a director writes `\n`), so a CRLF piece keeps CRLF;
  * - `find` occurs exactly once in the piece (overlapping occurrences count),
  *   so an edit never lands on a line the director did not mean;
- * - a span never starts or ends between the two characters of a CRLF;
+ * - a span never starts or ends between the two characters of a CRLF, and a
+ *   replacement holds no carriage return that does not end a line;
  * - spans never overlap, and every edit changes something.
  *
  * Offsets are never accepted from the director, so a stale or miscounted
@@ -414,6 +415,9 @@ export function applyEdits(base, edits) {
     const find = convention(edit.find);
     const replace = convention(edit.replace);
     if (find === replace) return { reason: `${which} changes nothing.` };
+    // After conversion, a carriage return not followed by a line feed is foreign to the piece's
+    // convention. At a span's edge it would join the next line feed into a CRLF that no diff shows.
+    if (/\r(?!\n)/.test(replace)) return { reason: `${which} would write a carriage return that does not end a line.` };
     const start = base.indexOf(find);
     if (start === -1) return { reason: `${which}: the text it replaces is not in the piece as it was offered.` };
     // Searching from the next position also finds an occurrence that overlaps the first.

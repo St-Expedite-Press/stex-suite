@@ -283,7 +283,14 @@ the coordinating agent's defaults and stand until the owner says otherwise.
     which older readers ignore.
   - A whole-piece reply is converted to the file's line-ending convention.
     Resolved edits are not, so a piece with mixed line endings keeps them
-    outside the spans.
+    outside the spans. A replacement may not hold a carriage return that
+    ends no line.
+- **Compatibility:** Frige sends `proposalForms: ["source", "edits"]` with
+  each scope turn. The gateway teaches and forwards edits only to a caller
+  that sends it. An older Frige would drop an edits-only change without a
+  word, so it keeps the released whole-piece instructions unchanged, and any
+  edits its director writes are set aside with a notice. The two
+  repositories can therefore be released in either order.
 - **Not done:** the contract does not record that a change arrived as
   edits. The diff shows the passages either way.
 - **Affects:** Frige (`change-contract.mjs` `applyEdits`, the store's

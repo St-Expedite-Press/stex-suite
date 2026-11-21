@@ -73,6 +73,13 @@ test('the deterministic simulator passes one anchored edit, quoted exactly, to t
   assert.deepEqual((await turn('Simulate edit: A line. =>', [piece])).changes[0].edits, [{ find: 'A line.', replace: '' }], 'an empty replacement deletes');
   const contentsOnly = await turn('Simulate edit: A => B', [programme]);
   assert.equal(contentsOnly.changes.length, 0); assert.match(contentsOnly.commentary, /no edit was simulated/);
+  // The longest message a turn allows, with no arrow, is read at once and proposes nothing (review finding 1:
+  // a backtracking pattern took minutes here and froze the server).
+  const started = Date.now();
+  const unanchored = await turn(`Simulate edit: ${' '.repeat(11_970)}x`, [piece]);
+  assert.ok(Date.now() - started < 1_000, `took ${Date.now() - started} ms`);
+  assert.equal(unanchored.changes.length, 0);
+  assert.equal((await turn('Simulate edit:   => B', [piece])).changes.length, 0, 'an empty anchor is no edit');
 });
 
 test('a gateway change may carry anchored edits instead of the whole text, and only known fields are kept', async (context) => {
@@ -129,6 +136,7 @@ test('a scope turn sends the outline, settings and approved contracts as separat
   assert.equal(reply.availability, 'available');
   assert.deepEqual(reply.meta.forwardedContext, { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1'] }, 'the gateway report is read and shaped');
   assert.deepEqual([received.outline, received.documentSettings, received.approvedContracts], [hierarchy.outline, hierarchy.settings, hierarchy.contracts]);
+  assert.deepEqual(received.proposalForms, ['source', 'edits'], 'Frige tells the gateway it resolves anchored edits (D-020)');
   // A turn without that context sends none of the fields.
   await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Hello.' });
   assert.equal('outline' in received, false);

@@ -34,7 +34,7 @@ must keep compatible.
 | `stex.frige.change-contract.v1` | New. Record schema in `protocol/frige/change-contract.v1.schema.json`; stored records are validated against it in `test:frige` | `test:frige` |
 | `stex.texgraph.scope-turn.v3` | Frige reads an optional reply field `layout` and sends optional request fields `outline`, `documentSettings`, `approvedContracts` (additive; readers ignore unknown fields). The deployed gateway ignores the request fields and sends no `layout`; the local stex-igor branch forwards them and reports `meta.forwardedContext` | `test:frige`, `test:inference` |
 | `stex.hermes.turn.v1` | Unchanged in Wave 2 | `test:inference` |
-| Scope turn v3 `changes[].edits` (D-020) | Additive reply field. Frige before Wave F ignores a change without `source`, so released Frige proposes nothing for it rather than misreading it. Deployed Igor (`bd8b3b0`) never sends it. Release order: suite first, then stex-igor | `test:frige`, `test:inference`, end-to-end script |
+| Scope turn v3 `changes[].edits` and request `proposalForms` (D-020) | Additive fields. The gateway teaches and sends edits only to a Frige that sends `proposalForms` with `edits`. An older Frige gets the released whole-piece instructions unchanged, and stray edits are set aside with a notice. Either release order is safe | `test:frige`, `test:inference` (instructions compared with `bd8b3b0`'s), end-to-end script |
 | Design-system copies in stex-igor | Must match the suite sources | `test:stex-igor-sync` |
 | Submodule pointer | Unchanged in Wave 2; moved to the released `bd8b3b0` with Wave 4b | `git submodule status`, `test:stex-igor-sync` |
 

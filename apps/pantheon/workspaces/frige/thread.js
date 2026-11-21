@@ -2,7 +2,7 @@
 // choices and forms), the changes it suggests shown inside the reply that made them,
 // and the author's answers. Everything is built from text nodes, so nothing a model
 // writes is ever parsed as HTML.
-import { diffHunks, lineDiff } from './line-diff.js';
+import { collapse, diffHunks, diffRows, lineEndingsDiffer } from './line-diff.js';
 
 export const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
 const button = (className, text, onClick) => { const node = element('button', className, text); node.type = 'button'; node.addEventListener('click', onClick); return node; };
@@ -138,7 +138,8 @@ function changeCards(changeSet, onDecide) {
     if (layout) { card.append(summary, ...reason, layoutDiff(change), actions); return card; }
     // Each changed passage is headed by where it sits in the piece, so the author sees
     // exactly which lines an acceptance would write; everything collapsed is unchanged.
-    const hunks = diffHunks(lineDiff(change.before, change.source));
+    const rows = diffRows(change.before, change.source);
+    const hunks = diffHunks(collapse(rows));
     const passages = hunks.filter((entry) => entry.type === 'hunk').length;
     const diff = element('pre', 'change-diff');
     for (const entry of hunks) {
@@ -146,7 +147,8 @@ function changeCards(changeSet, onDecide) {
       diff.append(element('span', 'diff-hunk', entry.label));
       for (const row of entry.rows) diff.append(element('span', `diff-${row.type}`, `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
     }
-    const scope = element('p', 'change-scope', `${plural(passages, 'passage')} would change. Every other line of the piece stays exactly as it is.`);
+    // The diff compares text line by line, so it cannot show a change of line endings; say it in words.
+    const scope = element('p', 'change-scope', `${plural(passages, 'passage')} would change; the text of every other line stays as it is.${lineEndingsDiffer(change.before, change.source, rows) ?' The piece’s line endings would also change.' : ''}`);
     card.append(summary, ...reason, scope, diff, actions);
     return card;
   }));
