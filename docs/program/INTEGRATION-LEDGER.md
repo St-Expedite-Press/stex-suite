@@ -8,8 +8,8 @@ must keep compatible.
 
 | Repository | Revision | Role |
 | --- | --- | --- |
-| stex-suite | `51577f1` (`main`, after PR 6) | Current base; the program started from `d96340e` (PR 5 head) |
-| stex-igor | `bd8b3b0` (`main`, deployed 2026-11-20) | Submodule pin on `feat/director-proposals` (PR 7); `d0598d8` was the pin before |
+| stex-suite | `44cd3ac` (`main`, after PR 8) | Current base; the program started from `d96340e` (PR 5 head) |
+| stex-igor | `c5af494` (`main`, deployed 2026-11-21 as generation 14) | Submodule pin on suite `main` since PR 8; `bd8b3b0` was the pin before |
 | Hermes runtime | `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac` | Pinned upstream source; not modified |
 
 ## Branches
@@ -21,8 +21,8 @@ must keep compatible.
 | stex-suite | `feat/director-proposals` | `51577f1` (`main`) | Wave 4b records, protocol note and Frige comments; Frige's page-turn wait (D-018); D-019 records, `.env.example` and developer guide | Yes (2026-11-20) | PR 7; pins stex-igor `bd8b3b0`; merging deploys nothing |
 | stex-igor | `feat/director-proposals` | `d0598d8` (`main`), carrying 3c and 4a | Waves 3c, 4a and 4b, D-018 (`79d7f04`), D-019 (`9972d2a`) and a CI test fix (`f57d610`) | Yes (2026-11-20) | Released: PR 2 merged by fast-forward to `bd8b3b0` and deployed, 2026-11-20; operator steps done |
 | stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No (contained in `feat/director-proposals`) | Released in `bd8b3b0` |
-| stex-suite | `feat/frige-f5-workstation` | `06c5f13` (`origin/main`, after PR 7) | Wave F first increment: anchored edits, passage review, records | No | Owner review; pins stex-igor `bd8b3b0` (unchanged), so merging deploys nothing |
-| stex-igor | `feat/anchored-edits` | `bd8b3b0` (`main`) | Scope-turn adapter reads `edits`; trusted instructions prefer them | No | A push to `main` deploys: owner authorization for a named release |
+| stex-suite | `feat/frige-f5-workstation` | `06c5f13` (`origin/main`, after PR 7) | Wave F first increment: anchored edits, passage review, review fixes, records | Yes | Merged to `main` by PR 8 as `44cd3ac`, 2026-11-21 (CI green); pins stex-igor `c5af494` |
+| stex-igor | `feat/anchored-edits` | `bd8b3b0` (`main`) | Scope-turn adapter reads `edits`; teaches them only to a Frige that advertises `proposalForms` | Yes | Released: PR 4 fast-forwarded to `c5af494` with the owner's authorization, 2026-11-21; installed and health-checked, read-back step failed on SSH |
 | stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5` | Yes (2026-11-20) | Released: merged into the release branch and deployed in `bd8b3b0` (PR 3 merged) |
 
 ## Compatibility requirements

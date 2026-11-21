@@ -37,12 +37,12 @@ Update this file whenever the state below changes.
   - The owner's Frige Product Completion brief is now Wave F
     ([D-020](DECISIONS.md)).
   - Its first increment is anchored edits for long pieces plus passage
-    review, on suite branch `feat/frige-f5-workstation` (from `06c5f13`).
-    The adapter is on stex-igor `feat/anchored-edits` (from `bd8b3b0`).
-    Both are local and unpushed.
-  - Tests, `verify:frige` and a stub end-to-end run pass
-    ([evidence](../verification/frige-wave-f-anchored-edits.md)).
-  - Independent review is still pending (see the decisions below).
+    review. It is merged to suite `main` (PR 8, `44cd3ac`).
+  - The adapter is released: stex-igor `main` is `c5af494`, installed on
+    2026-11-21 as generation 14 and health-checked. The deploy workflow's
+    read-back step failed on SSH
+    ([evidence](../verification/frige-wave-f-anchored-edits.md#release-2026-11-21-utc)).
+  - One independent review round ran; every finding is fixed.
   - Next increments: F-B3 long-form context, then F-A1/A2/A4.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
@@ -82,6 +82,7 @@ Windows Application Control on the owner's machine blocks their launchers in
 | Release the stex-igor branches (3c, 4a, 4b) | Release after reviewing the Company screen's wording; then rerun `apply-igor-profile.sh` on the VM and restart Hermes | A push to `main` deploys to production; until then the suite's Company links and director proposals do nothing live |
 | A second live director turn | Approve one paid Frige turn on a synthetic book, about $0.02, now that the budget is 120 s | Shows a live proposal reaching Frige; the first turn ran out of time |
 | Output budget for long pieces | Keep 20,000 output characters: anchored edits (D-020) let a piece up to the 60,000-character offer budget be revised | Only a whole-piece rewrite of a long piece still needs a wider budget |
+| Confirm the active release on the VM | Read `/opt/stex/ACTIVE.json` (expect `c5af494`, generation 14), and check why the workflow's SSH read-back was refused | The install log shows the release installed and health-checked, but the workflow could not read it back |
 | A live turn with anchored edits | Approve one paid Frige turn on a long synthetic piece, about $0.03 | Whether Grok writes exact anchors is unverified (R-14) |
 | Reviewer model for development work | Record whether Claude review agents are acceptable, since the Wave F brief asked subagents to avoid Claude | Wave F's first review used one after the owner said to proceed |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |
