@@ -154,6 +154,15 @@ through.
 | `rollback` | `{strategy: "restore-before", requires: "current-hash-equals-after-hash"}` |
 | `proof` | `null`, or `{completedAt, scopeId, mode, paginationVerified, designHash, sourceHashes}` for the strongest successful build that typeset every accepted change at its accepted text. `sourceHashes` names exactly the pieces it covers |
 
+A director may propose a text change as anchored edits instead of the whole
+piece ([scope turn](../texgraph/README.md), [D-020](../../docs/program/DECISIONS.md)).
+Frige resolves them against the exact offered text before the contract is
+built, so the contract is unchanged: `before` and `source` are still the whole
+prior and proposed texts, every character outside the edited spans is copied
+from `before`, and acceptance, staleness, all-or-nothing application and
+rollback behave as for any text change. No field records that a change
+arrived as edits.
+
 Context categories are recorded separately and are never merged: a reference
 or a generated proposal does not become canonical source by being offered.
 A turn also offered context from the levels around its scope records it as

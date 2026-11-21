@@ -59,6 +59,55 @@ test('the deterministic simulator proposes one labelled change only when asked, 
   }
 });
 
+test('the deterministic simulator passes one anchored edit, quoted exactly, to the first offered piece', async (context) => {
+  const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
+  process.env.STEX_FRIGE_INFERENCE_MODE = 'fake';
+  context.after(() => { if (previous === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = previous; });
+  const turn = (message, sources) => requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-fixture', kind: 'node', title: 'Piece', nodeIds: [] }, sources, graph: {}, turns: [], message });
+  const programme = { nodeId: 'node-programme', title: 'Programme', kind: 'programme', relativePath: 'Programme.md', hash: 'h0', source: '# Programme\n' };
+  const piece = { nodeId: 'node-piece', title: 'Piece', kind: 'poem', relativePath: '01/Piece.md', hash: 'h1', source: '# Piece\n\nA line.' };
+  const edited = await turn('Simulate edit: A line. => A  revised line.', [programme, piece]);
+  // The simulator does not resolve the edit or claim a suggestion: Frige decides whether it can be placed.
+  assert.deepEqual(edited.changes.map(({ nodeId, edits }) => ({ nodeId, edits })), [{ nodeId: 'node-piece', edits: [{ find: 'A line.', replace: 'A  revised line.' }] }]);
+  assert.match(edited.changes[0].summary, /not a model/); assert.match(edited.commentary, /If Frige can place it exactly/);
+  assert.deepEqual((await turn('Simulate edit: A line. =>', [piece])).changes[0].edits, [{ find: 'A line.', replace: '' }], 'an empty replacement deletes');
+  const contentsOnly = await turn('Simulate edit: A => B', [programme]);
+  assert.equal(contentsOnly.changes.length, 0); assert.match(contentsOnly.commentary, /no edit was simulated/);
+  // The longest message a turn allows, with no arrow, is read at once and proposes nothing (review finding 1:
+  // a backtracking pattern took minutes here and froze the server).
+  const started = Date.now();
+  const unanchored = await turn(`Simulate edit: ${' '.repeat(11_970)}x`, [piece]);
+  assert.ok(Date.now() - started < 1_000, `took ${Date.now() - started} ms`);
+  assert.equal(unanchored.changes.length, 0);
+  assert.equal((await turn('Simulate edit:   => B', [piece])).changes.length, 0, 'an empty anchor is no edit');
+});
+
+test('a gateway change may carry anchored edits instead of the whole text, and only known fields are kept', async (context) => {
+  const { createServer } = await import('node:http');
+  const changes = [
+    { nodeId: 'node-a', edits: [{ find: 'x', replace: 'y' }], summary: 'Edit.', extra: 'dropped' },
+    { nodeId: 'node-b', source: 'Whole.' },
+    { nodeId: 'node-c' },
+    { nodeId: 'node-d', edits: 'not a list' },
+  ];
+  const gateway = createServer(async (request, response) => {
+    for await (const chunk of request) void chunk;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ commentary: 'ok', changes, parts: [], meta: { model: 'stub' } }));
+  });
+  await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+  const saved = { mode: process.env.STEX_FRIGE_INFERENCE_MODE, url: process.env.STEX_INFERENCE_URL };
+  delete process.env.STEX_FRIGE_INFERENCE_MODE; process.env.STEX_INFERENCE_URL = `http://127.0.0.1:${gateway.address().port}`;
+  context.after(() => {
+    gateway.close();
+    if (saved.mode === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = saved.mode;
+    if (saved.url === undefined) delete process.env.STEX_INFERENCE_URL; else process.env.STEX_INFERENCE_URL = saved.url;
+  });
+  const reply = await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-a', kind: 'node', title: 'A', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Hello.' });
+  // The engine resolves and validates the edits; the client only shapes the reply.
+  assert.deepEqual(reply.changes, [{ nodeId: 'node-a', edits: [{ find: 'x', replace: 'y' }], summary: 'Edit.' }, { nodeId: 'node-b', source: 'Whole.' }]);
+});
+
 test('a gateway layout field is shaped and bounded before the engine sees it', () => {
   assert.deepEqual(layoutFrom({ set: { fontSize: '12pt', leading: '14pt' }, summary: 'x'.repeat(900) }), { set: { fontSize: '12pt', leading: '14pt' }, summary: 'x'.repeat(500) });
   assert.deepEqual(layoutFrom({ clear: true }), { clear: true });
@@ -87,6 +136,7 @@ test('a scope turn sends the outline, settings and approved contracts as separat
   assert.equal(reply.availability, 'available');
   assert.deepEqual(reply.meta.forwardedContext, { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1'] }, 'the gateway report is read and shaped');
   assert.deepEqual([received.outline, received.documentSettings, received.approvedContracts], [hierarchy.outline, hierarchy.settings, hierarchy.contracts]);
+  assert.deepEqual(received.proposalForms, ['source', 'edits'], 'Frige tells the gateway it resolves anchored edits (D-020)');
   // A turn without that context sends none of the fields.
   await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Hello.' });
   assert.equal('outline' in received, false);

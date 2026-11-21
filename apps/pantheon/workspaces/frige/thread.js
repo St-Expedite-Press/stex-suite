@@ -2,7 +2,7 @@
 // choices and forms), the changes it suggests shown inside the reply that made them,
 // and the author's answers. Everything is built from text nodes, so nothing a model
 // writes is ever parsed as HTML.
-import { lineDiff } from './line-diff.js';
+import { collapse, diffHunks, diffRows, lineEndingsDiffer } from './line-diff.js';
 
 export const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
 const button = (className, text, onClick) => { const node = element('button', className, text); node.type = 'button'; node.addEventListener('click', onClick); return node; };
@@ -132,11 +132,24 @@ function changeCards(changeSet, onDecide) {
     const summary = element('summary');
     const layout = change.kind === 'set-layout';
     summary.append(element('strong', '', change.title), element('small', '', layout ? `${change.level === 'node' ? 'This piece' : 'This section'}’s own settings` : `manuscript/${change.relativePath}${change.lines ? ` · +${change.lines.added} −${change.lines.removed}` : ''}`));
-    const diff = layout ? layoutDiff(change) : element('pre', 'change-diff');
-    if (!layout) for (const row of lineDiff(change.before, change.source)) diff.append(element('span', `diff-${row.type}`, row.type === 'skip' ? `… ${row.count} unchanged line${row.count === 1 ? '' : 's'}` : `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
     const actions = element('div', 'change-actions');
     actions.append(button('accept', 'Accept', () => onDecide(change.nodeId, 'accept')), button('reject', 'Reject', () => onDecide(change.nodeId, 'reject')));
-    card.append(summary, ...(change.summary ? [element('p', 'change-summary', change.summary)] : []), diff, actions);
+    const reason = change.summary ? [element('p', 'change-summary', change.summary)] : [];
+    if (layout) { card.append(summary, ...reason, layoutDiff(change), actions); return card; }
+    // Each changed passage is headed by where it sits in the piece, so the author sees
+    // exactly which lines an acceptance would write; everything collapsed is unchanged.
+    const rows = diffRows(change.before, change.source);
+    const hunks = diffHunks(collapse(rows));
+    const passages = hunks.filter((entry) => entry.type === 'hunk').length;
+    const diff = element('pre', 'change-diff');
+    for (const entry of hunks) {
+      if (entry.type === 'skip') { diff.append(element('span', 'diff-skip', `… ${plural(entry.count, 'unchanged line')}`)); continue; }
+      diff.append(element('span', 'diff-hunk', entry.label));
+      for (const row of entry.rows) diff.append(element('span', `diff-${row.type}`, `${{ same: '  ', add: '+ ', del: '− ' }[row.type]}${row.text || (row.type === 'same' ? '' : '(blank line)')}`));
+    }
+    // The diff compares text line by line, so it cannot show a change of line endings; say it in words.
+    const scope = element('p', 'change-scope', `${plural(passages, 'passage')} would change; the text of every other line stays as it is.${lineEndingsDiffer(change.before, change.source, rows) ?' The piece’s line endings would also change.' : ''}`);
+    card.append(summary, ...reason, scope, diff, actions);
     return card;
   }));
   return box;

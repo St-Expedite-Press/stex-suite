@@ -21,6 +21,8 @@ must keep compatible.
 | stex-suite | `feat/director-proposals` | `51577f1` (`main`) | Wave 4b records, protocol note and Frige comments; Frige's page-turn wait (D-018); D-019 records, `.env.example` and developer guide | Yes (2026-11-20) | PR 7; pins stex-igor `bd8b3b0`; merging deploys nothing |
 | stex-igor | `feat/director-proposals` | `d0598d8` (`main`), carrying 3c and 4a | Waves 3c, 4a and 4b, D-018 (`79d7f04`), D-019 (`9972d2a`) and a CI test fix (`f57d610`) | Yes (2026-11-20) | Released: PR 2 merged by fast-forward to `bd8b3b0` and deployed, 2026-11-20; operator steps done |
 | stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No (contained in `feat/director-proposals`) | Released in `bd8b3b0` |
+| stex-suite | `feat/frige-f5-workstation` | `06c5f13` (`origin/main`, after PR 7) | Wave F first increment: anchored edits, passage review, records | No | Owner review; pins stex-igor `bd8b3b0` (unchanged), so merging deploys nothing |
+| stex-igor | `feat/anchored-edits` | `bd8b3b0` (`main`) | Scope-turn adapter reads `edits`; trusted instructions prefer them | No | A push to `main` deploys: owner authorization for a named release |
 | stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5` | Yes (2026-11-20) | Released: merged into the release branch and deployed in `bd8b3b0` (PR 3 merged) |
 
 ## Compatibility requirements
@@ -32,6 +34,7 @@ must keep compatible.
 | `stex.frige.change-contract.v1` | New. Record schema in `protocol/frige/change-contract.v1.schema.json`; stored records are validated against it in `test:frige` | `test:frige` |
 | `stex.texgraph.scope-turn.v3` | Frige reads an optional reply field `layout` and sends optional request fields `outline`, `documentSettings`, `approvedContracts` (additive; readers ignore unknown fields). The deployed gateway ignores the request fields and sends no `layout`; the local stex-igor branch forwards them and reports `meta.forwardedContext` | `test:frige`, `test:inference` |
 | `stex.hermes.turn.v1` | Unchanged in Wave 2 | `test:inference` |
+| Scope turn v3 `changes[].edits` and request `proposalForms` (D-020) | Additive fields. The gateway teaches and sends edits only to a Frige that sends `proposalForms` with `edits`. An older Frige gets the released whole-piece instructions unchanged, and stray edits are set aside with a notice. Either release order is safe | `test:frige`, `test:inference` (instructions compared with `bd8b3b0`'s), end-to-end script |
 | Design-system copies in stex-igor | Must match the suite sources | `test:stex-igor-sync` |
 | Submodule pointer | Unchanged in Wave 2; moved to the released `bd8b3b0` with Wave 4b | `git submodule status`, `test:stex-igor-sync` |
 

@@ -68,6 +68,19 @@ wave is accepted only with evidence under `docs/verification/`.
 | 6 | Knowledge slice (Frige project to selected Obsidian notes, read-only), remaining Pantheon and Seaxneat interface work | Obsidian gate hardening | P4, M6 |
 | 7 | Release readiness: full regression, browser acceptance, release and rollback plan | All accepted waves | M0 |
 
+**Wave F — Frige product completion** (owner brief, 2026-11-20;
+[D-020](DECISIONS.md)) runs beside Waves 5–7 and renumbers none of them. It
+turns the Wave 2–4 machinery into a workstation for sustained work on a real
+book, in dependency order:
+
+| Increment | Objective | State |
+| --- | --- | --- |
+| F-A | Editorial workstation: navigation, editing, proposal review, usability | First slice done: diff passages headed by line numbers, long pieces reviewed as their changed passages ([evidence](../verification/frige-wave-f-anchored-edits.md)) |
+| F-B | Long-form editing: anchored edits, multi-edit contracts, long-form context, a small vocabulary of editorial operations | Anchored edits done locally, stex-igor adapter on an unreleased branch; long-form context (B3) and operations (B4) not started |
+| F-C | Professional typography: profiles, inheritance, diagnostics, profile comparison | Not started |
+| F-D | Proofing and production: proof navigation, annotations, preflight, export | Not started |
+| F-E | Integration and reliability: Pantheon, Igor, data integrity, performance, independent review | Not started |
+
 Waves 5 and 6 do not block Waves 2–4. Wave 4's local work (fake transport,
 contract design) can proceed before authorization; its deployment cannot.
 
@@ -334,6 +347,41 @@ proposed anything. Decision [D-017](DECISIONS.md).
     to short pieces (see the evidence's limits). The turn time was widened
     to 120 seconds after the live turn ([D-018](DECISIONS.md));
   - specialist investigation (specialists stay parked).
+
+## Wave F specification — first increment (F-A and F-B together)
+
+The brief recommends the editorial workstation and long-form editing as the
+first coordinated release. This increment covers their core.
+
+- **Anchored edits (F-B1, F-B2).** As decided in [D-020](DECISIONS.md).
+  Several pieces' edits in one contract use the existing all-or-nothing
+  acceptance (Wave 3d).
+- **Inference compatibility (F-B5).** The stex-igor adapter reads `edits`
+  from the `stex-proposal` block, checks only their shape and never clips
+  them. Its trusted instructions prefer edits, keeping the whole-piece form
+  for short rewrites. This is a local branch: releasing it is a push to
+  stex-igor `main`, which needs the owner.
+- **Review (F-A3, part).** The proposal card heads each changed passage with
+  its lines (`Lines 598–602, becoming 598–603`) and says how many passages
+  would change. The diff matches unchanged lines at the start and end
+  first, so a one-line edit to a 3,000-line piece shows that line rather
+  than the whole piece removed and re-added.
+- **Acceptance:**
+  - a synthetic piece longer than the 20,000-character output budget is
+    revised by a reply that does not repeat it;
+  - text outside the edited spans is byte-identical, including a byte-order
+    mark, Unicode, indentation and mixed line endings;
+  - missing, ambiguous, overlapping and malformed edits create no contract,
+    write nothing and are explained;
+  - staleness and rollback behave as before;
+  - the workstation shows the headed passage, accepts it and rolls it back
+    (`verify:frige`);
+  - stub Hermes → inference → Frige passes end to end.
+- **Not in this increment:**
+  - long-form context selection (B3) and named editorial operations (B4);
+  - navigator, editor and keyboard work (A1, A2, A4);
+  - typography (F-C), proofing (F-D) and the integration wave (F-E);
+  - a live paid turn and the stex-igor release.
 
 ## Standards
 

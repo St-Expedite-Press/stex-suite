@@ -5,7 +5,7 @@ import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
-import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
+import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
 /** Most contracts a history listing returns; the journal itself is not truncated. */
@@ -973,13 +973,16 @@ export class ProjectStore {
   /**
    * Records the director's proposed replacements as one pending contract for
    * the scope. A change is kept only if it replaces a node whose exact text
-   * was offered this turn. An undecided earlier proposal for the same scope is
+   * was offered this turn. It gives either the piece's whole new text
+   * (`source`) or anchored `edits`, which Frige resolves against the offered
+   * text (see `applyEdits`); either way the contract records the full prior
+   * and proposed text. An undecided earlier proposal for the same scope is
    * marked superseded and kept.
    *
    * @param {string} scopeId
    * @param {{
    *   commentary?: string,
-   *   changes?: Array<{ nodeId: string, source: string, summary?: string }>,
+   *   changes?: Array<{ nodeId: string, source?: string, edits?: import('./change-contract.mjs').SourceEdit[], summary?: string }>,
    *   layout?: { clear?: boolean, set?: Record<string, unknown>, summary?: string } | null,
    * }} proposal  Untrusted reply content: text replacements, or one layout change for the scope's own section or piece.
    * @param {import('./change-contract.mjs').OfferedSource[]} offered  The sources this turn offered.
@@ -993,15 +996,28 @@ export class ProjectStore {
     for (const change of Array.isArray(changes) ? changes : []) {
       const base = offered.find((entry) => entry.nodeId === change?.nodeId);
       if (!base) { dropped.push({ nodeId: String(change?.nodeId || '').slice(0, 100), reason: 'This node was not offered in the conversation scope.' }); continue; }
+      const anchored = change.edits !== undefined;
+      if (anchored && change.source !== undefined) { dropped.push({ nodeId: base.nodeId, reason: 'A change gives either the whole new text or edits to it, not both.' }); continue; }
       // Text that is not well-formed Unicode (a lone surrogate) cannot be stored exactly as proposed.
-      if (typeof change.source !== 'string' || !change.source.isWellFormed()) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is invalid.' }); continue; }
+      if (!anchored && (typeof change.source !== 'string' || !change.source.isWellFormed())) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is invalid.' }); continue; }
       if (kept.some((entry) => entry.nodeId === base.nodeId)) { dropped.push({ nodeId: base.nodeId, reason: 'Only one change per node is kept.' }); continue; }
-      // Keep the file's own line endings; a reply in another convention would otherwise rewrite every line unseen.
-      const source = base.source.includes('\r\n') ? change.source.replace(/\r?\n/g, '\r\n') : change.source.replace(/\r\n/g, '\n');
+      let source;
+      if (anchored) {
+        // Frige resolves the edits against the offered text (F5-B); the result is already in
+        // the file's convention, and no byte outside the replaced spans is touched, so it is
+        // not converted again: a piece with mixed line endings keeps them outside the spans.
+        const resolved = applyEdits(base.source, change.edits);
+        if ('reason' in resolved) { dropped.push({ nodeId: base.nodeId, reason: resolved.reason }); continue; }
+        source = resolved.source;
+      } else {
+        // Keep the file's own line endings; a reply in another convention would otherwise rewrite every line unseen.
+        source = base.source.includes('\r\n') ? change.source.replace(/\r?\n/g, '\r\n') : change.source.replace(/\r\n/g, '\n');
+      }
       // Checked after line endings are converted: that is the text an acceptance would write.
       if (source.length > MAX_SOURCE) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed source is longer than 400 KB.' }); continue; }
-      // A reply that differs only in line endings proposes nothing the author asked for.
-      if (sameTextIgnoringLineEndings(source, base.source)) continue;
+      // A reply that differs only in line endings proposes nothing the author asked for; say so,
+      // because the director's prose may announce a change that the thread then never shows.
+      if (sameTextIgnoringLineEndings(source, base.source)) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed change would leave the piece’s text as it is.' }); continue; }
       kept.push(buildChange(base, source, sourceHash(source), change.summary));
     }
     const scope = await this.scope(scopeId);

@@ -346,6 +346,101 @@ export function buildChange(base, source, afterHash, summary) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Anchored edits (Frige product wave F5-B)
+//
+// A director may propose a localized change to a long piece without copying
+// the whole piece back: each edit names the exact text it replaces and the
+// text that takes its place. Frige, not the model, resolves every edit against
+// the source exactly as it was offered, and produces the full proposed text
+// that an ordinary `replace-node-source` change records. Text outside the
+// resolved spans is therefore byte-identical by construction, and acceptance,
+// staleness, all-or-nothing application and rollback work exactly as for a
+// whole-piece proposal. Resolution fails closed: one unusable edit refuses
+// the whole change to that piece, because applying part of an edit set could
+// leave text the director never proposed.
+// ---------------------------------------------------------------------------
+
+/** At most this many edits are resolved for one piece. */
+export const MAX_EDITS_PER_CHANGE = 40;
+
+/** Longest `find` or `replace` text in one edit, in UTF-16 code units. */
+const MAX_EDIT_TEXT = 20_000;
+
+/**
+ * One anchored edit as a director proposes it. Untrusted until resolved.
+ *
+ * @typedef {object} SourceEdit
+ * @property {string} find     Exact existing text; must occur exactly once in the offered source.
+ * @property {string} replace  The text that takes its place; empty deletes `find`.
+ */
+
+/**
+ * Resolves anchored edits against the exact text that was offered and returns
+ * the full proposed text, or the reason no proposal can be made.
+ *
+ * Rules, each failing the whole set:
+ * - one to {@link MAX_EDITS_PER_CHANGE} edits, each with a non-empty `find`
+ *   and a `replace`, both well-formed strings of bounded length;
+ * - `find` and `replace` are first put in the piece's line-ending convention
+ *   (a director writes `\n`), so a CRLF piece keeps CRLF;
+ * - `find` occurs exactly once in the piece (overlapping occurrences count),
+ *   so an edit never lands on a line the director did not mean;
+ * - a span never starts or ends between the two characters of a CRLF, and a
+ *   replacement holds no carriage return that does not end a line;
+ * - spans never overlap, and every edit changes something.
+ *
+ * Offsets are never accepted from the director, so a stale or miscounted
+ * position cannot move an edit: only text that is present exactly once can
+ * anchor one, and the base hash still decides staleness at acceptance.
+ *
+ * @param {string} base     The source exactly as offered this turn.
+ * @param {unknown} edits   Untrusted reply content.
+ * @returns {{ source: string, spans: Array<{ start: number, end: number }> } | { reason: string }}
+ *   `spans` are the replaced ranges of `base`, in order, as UTF-16 offsets.
+ */
+export function applyEdits(base, edits) {
+  if (!Array.isArray(edits) || edits.length === 0) return { reason: 'The proposed edits are missing.' };
+  if (edits.length > MAX_EDITS_PER_CHANGE) return { reason: `A change may hold at most ${MAX_EDITS_PER_CHANGE} edits to one piece.` };
+  const crlf = base.includes('\r\n');
+  const convention = (text) => (crlf ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
+  /** @type {Array<{ start: number, end: number, replace: string }>} */
+  const resolved = [];
+  for (const [index, edit] of edits.entries()) {
+    const which = `Edit ${index + 1}`;
+    if (!edit || typeof edit !== 'object' || typeof edit.find !== 'string' || typeof edit.replace !== 'string') return { reason: `${which} must give the exact text to replace and its replacement.` };
+    if (!edit.find) return { reason: `${which} does not say which text it replaces.` };
+    if (edit.find.length > MAX_EDIT_TEXT || edit.replace.length > MAX_EDIT_TEXT) return { reason: `${which} is longer than ${MAX_EDIT_TEXT} characters.` };
+    if (!edit.find.isWellFormed() || !edit.replace.isWellFormed()) return { reason: `${which} is not valid text.` };
+    const find = convention(edit.find);
+    const replace = convention(edit.replace);
+    if (find === replace) return { reason: `${which} changes nothing.` };
+    // After conversion, a carriage return not followed by a line feed is foreign to the piece's
+    // convention. At a span's edge it would join the next line feed into a CRLF that no diff shows.
+    if (/\r(?!\n)/.test(replace)) return { reason: `${which} would write a carriage return that does not end a line.` };
+    const start = base.indexOf(find);
+    if (start === -1) return { reason: `${which}: the text it replaces is not in the piece as it was offered.` };
+    // Searching from the next position also finds an occurrence that overlaps the first.
+    if (base.indexOf(find, start + 1) !== -1) return { reason: `${which}: the text it replaces occurs more than once; it must quote enough to be unique.` };
+    const end = start + find.length;
+    const splitsLineEnd = (at) => at > 0 && at < base.length && base[at - 1] === '\r' && base[at] === '\n';
+    if (splitsLineEnd(start) || splitsLineEnd(end)) return { reason: `${which} would divide a line ending.` };
+    resolved.push({ start, end, replace });
+  }
+  resolved.sort((left, right) => left.start - right.start);
+  for (let index = 1; index < resolved.length; index += 1) {
+    if (resolved[index].start < resolved[index - 1].end) return { reason: 'Two edits overlap; each edit must replace separate text.' };
+  }
+  // Splice in order: every character outside a span is copied from `base` unchanged.
+  let source = ''; let cursor = 0;
+  for (const { start, end, replace } of resolved) {
+    source += base.slice(cursor, start) + replace;
+    cursor = end;
+  }
+  source += base.slice(cursor);
+  return { source, spans: resolved.map(({ start, end }) => ({ start, end })) };
+}
+
 /**
  * Assembles a new pending contract.
  *

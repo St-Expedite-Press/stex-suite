@@ -16,6 +16,33 @@ const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.en
 const SIMULATED_CHANGE = /^simulate change:\s*(\S[\s\S]*)$/i;
 /** A message in this form asks the simulator for one labelled layout change (see `simulatedLayout`). */
 const SIMULATED_LAYOUT = /^simulate layout:\s*(\S[\s\S]*)$/i;
+/**
+ * `Simulate edit: <exact text> => <replacement>` asks the simulator for one
+ * anchored edit (F5-B), so a test can quote a phrase that occurs once, more
+ * than once, or not at all. The message is split once, at its first `=>`:
+ * no pattern backtracks over a long message.
+ */
+const SIMULATED_EDIT_PREFIX = /^simulate edit:/i;
+
+/**
+ * Reads a simulated edit request. The text before the first `=>` is the
+ * anchor, without the whitespace around it; the text after it is the
+ * replacement, without one separating space. Everything else is kept as
+ * written.
+ *
+ * @param {string} message  The whole trimmed message.
+ * @returns {{ find: string, replace: string } | null}  `null` without the prefix, an `=>` or an anchor.
+ */
+function simulatedEdit(message) {
+  const prefix = SIMULATED_EDIT_PREFIX.exec(message);
+  if (!prefix) return null;
+  const rest = message.slice(prefix[0].length);
+  const arrow = rest.indexOf('=>');
+  if (arrow === -1) return null;
+  const find = rest.slice(0, arrow).trim();
+  const replace = rest.slice(arrow + 2).replace(/^ /, '');
+  return find ? { find, replace } : null;
+}
 
 /**
  * Reads a simulated layout request. Forms, case-insensitive:
@@ -80,6 +107,19 @@ function fakeScopeTurn(message, sources = []) {
   // line cannot become a heading (and retitle the piece) or a quotation.
   const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
   const layoutRequest = SIMULATED_LAYOUT.exec(received)?.[1];
+  const editRequest = simulatedEdit(received);
+  if (editRequest) {
+    const target = sources.find((entry) => entry.kind !== 'programme');
+    // Frige resolves the edit and decides whether it becomes a suggestion, so the simulator does not claim one.
+    const text = target
+      ? `Deterministic Igor simulator passed one anchored edit to “${target.title}” to Frige. If Frige can place it exactly, it appears below as a suggestion; nothing changes until you accept it.`
+      : 'Deterministic Igor simulator: this conversation offered no piece to edit, so no edit was simulated. Select a section or a piece and ask again.';
+    return {
+      commentary: text, availability: 'available', graphSuggestions: [],
+      changes: target ? [{ nodeId: target.nodeId, edits: [editRequest], summary: 'Simulated anchored edit (deterministic simulator, not a model).' }] : [],
+      parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+    };
+  }
   if (layoutRequest) {
     const layout = simulatedLayout(clip(layoutRequest.replace(/\s+/g, ' ')));
     const text = layout
@@ -118,16 +158,6 @@ function fakeScopeTurn(message, sources = []) {
 }
 
 /**
- * Reads the optional `layout` field of a scope-turn reply: one proposed layout
- * change for the conversation's own section or piece. Only its shape is
- * checked here; the engine validates every value before it becomes a contract.
- * The STEX gateway produces it from the director's proposal block in a
- * section or piece conversation (program Wave 4, D-017).
- *
- * @param {unknown} value
- * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
- */
-/**
  * Reads the gateway's report of the context it forwarded to the director after
  * trimming (`meta.forwardedContext`), so the contract can record what the
  * director was given. Only the expected shape is kept.
@@ -143,6 +173,16 @@ function forwardedFrom(value) {
   return { outline, documentSettings: value.documentSettings === true, approvedContracts };
 }
 
+/**
+ * Reads the optional `layout` field of a scope-turn reply: one proposed layout
+ * change for the conversation's own section or piece. Only its shape is
+ * checked here; the engine validates every value before it becomes a contract.
+ * The STEX gateway produces it from the director's proposal block in a
+ * section or piece conversation (program Wave 4, D-017).
+ *
+ * @param {unknown} value
+ * @returns {{ clear?: true, set?: Record<string, unknown>, summary?: string } | null}
+ */
 export function layoutFrom(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const summary = typeof value.summary === 'string' ? { summary: value.summary.slice(0, 500) } : {};
@@ -183,6 +223,8 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
         ...(answer ? { answer } : {}),
+        // Additive v3 field (D-020): this Frige resolves anchored edits, so the gateway may teach and send them.
+        proposalForms: ['source', 'edits'],
       }),
     });
     if (!response.ok) {
@@ -193,7 +235,11 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
     const payload = await response.json();
     const commentary = typeof payload.commentary === 'string' ? payload.commentary : '';
     const graphSuggestions = Array.isArray(payload.graphSuggestions) ? payload.graphSuggestions.filter((entry) => entry && typeof entry.message === 'string').slice(0, 12) : [];
-    const changes = Array.isArray(payload.changes) ? payload.changes.filter((entry) => entry && typeof entry.nodeId === 'string' && typeof entry.source === 'string').slice(0, 40) : [];
+    // A change carries the piece's whole new text or anchored edits to it (F5-B); the engine resolves and validates both.
+    const changes = Array.isArray(payload.changes)
+      ? payload.changes.filter((entry) => entry && typeof entry.nodeId === 'string' && (typeof entry.source === 'string' || Array.isArray(entry.edits))).slice(0, 40)
+        .map(({ nodeId, source, edits, summary }) => ({ nodeId, ...(typeof source === 'string' ? { source } : {}), ...(Array.isArray(edits) ? { edits } : {}), ...(typeof summary === 'string' ? { summary } : {}) }))
+      : [];
     const parts = Array.isArray(payload.parts) ? payload.parts.slice(0, 12) : [];
     const droppedParts = Array.isArray(payload.droppedParts) ? payload.droppedParts.slice(0, 20) : [];
     // Models passed over in the director's stack are kept so the reply can say so.

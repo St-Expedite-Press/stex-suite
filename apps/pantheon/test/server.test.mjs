@@ -354,10 +354,71 @@ test('reviews a proposed change as a line diff that collapses distant unchanged 
   const before = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'old line', 'f'].join('\n');
   const after = ['# Poem', 'a', 'b', 'c', 'd', 'e', 'new line', 'f', 'added'].join('\n');
   assert.deepEqual(lineDiff(before, after), [
-    { type: 'skip', count: 4 }, { type: 'same', text: 'd' }, { type: 'same', text: 'e' },
-    { type: 'del', text: 'old line' }, { type: 'add', text: 'new line' }, { type: 'same', text: 'f' }, { type: 'add', text: 'added' },
+    { type: 'skip', count: 4 }, { type: 'same', text: 'd', left: 5, right: 5 }, { type: 'same', text: 'e', left: 6, right: 6 },
+    { type: 'del', text: 'old line', left: 7 }, { type: 'add', text: 'new line', right: 7 }, { type: 'same', text: 'f', left: 8, right: 8 }, { type: 'add', text: 'added', right: 9 },
   ]);
   assert.deepEqual(lineDiff('same', 'same'), [{ type: 'skip', count: 1 }]);
+});
+
+test('a localized edit to a long piece is reviewed as that passage, headed by its lines', async () => {
+  const { diffHunks, hunkLabel, lineDiff } = await import('../workspaces/frige/line-diff.js');
+  // 3,000 lines: beyond the size at which the whole piece used to be shown as removed and re-added.
+  const lines = Array.from({ length: 3000 }, (_, index) => `line ${index + 1}`);
+  const edited = lines.map((line, index) => (index === 1499 ? 'line 1500, revised' : line));
+  const rows = lineDiff(lines.join('\n'), edited.join('\n'));
+  assert.deepEqual(rows.filter((row) => row.type === 'del'), [{ type: 'del', text: 'line 1500', left: 1500 }]);
+  assert.deepEqual(rows.filter((row) => row.type === 'add'), [{ type: 'add', text: 'line 1500, revised', right: 1500 }]);
+  assert.deepEqual(rows.filter((row) => row.type === 'skip'), [{ type: 'skip', count: 1497 }, { type: 'skip', count: 1498 }]);
+  const hunks = diffHunks(rows);
+  assert.deepEqual(hunks.map((entry) => entry.type === 'hunk' ? entry.label : entry.count), [1497, 'Lines 1498–1502', 1498]);
+
+  // A changed region too large to compare line by line is still shown, as removed then added.
+  const left = Array.from({ length: 2100 }, (_, index) => `a${index}`); const right = Array.from({ length: 2100 }, (_, index) => `b${index}`);
+  const wholesale = lineDiff(left.join('\n'), right.join('\n'));
+  assert.equal(wholesale.filter((row) => row.type === 'del').length, 2100);
+  assert.equal(wholesale.filter((row) => row.type === 'add').length, 2100);
+
+  // Edits near both ends of a 20,000-line piece stay two passages (review finding 2), not 39,962 rows under one heading.
+  const long = Array.from({ length: 20_000 }, (_, index) => `verse ${index + 1}`);
+  const ends = long.map((line, index) => (index === 10 || index === 19_990 ? `${line}, revised` : line));
+  const distant = diffHunks(lineDiff(long.join('\n'), ends.join('\n'))).filter((entry) => entry.type === 'hunk');
+  assert.deepEqual(distant.map((entry) => entry.label), ['Lines 9–13', 'Lines 19989–19993']);
+  assert.equal(distant.flatMap((entry) => entry.rows).filter((row) => row.type !== 'same').length, 4);
+
+  assert.equal(hunkLabel([{ type: 'same', text: 'x', left: 4, right: 4 }, { type: 'add', text: 'y', right: 5 }]), 'Line 4, becoming 4–5');
+  assert.equal(hunkLabel([{ type: 'add', text: 'y', right: 1 }]), 'New line 1');
+  assert.equal(hunkLabel([{ type: 'del', text: 'y', left: 2 }, { type: 'del', text: 'z', left: 3 }]), 'Lines 2–3, removed');
+});
+
+test('diff rows always rebuild both texts with true line numbers, and every change survives collapsing', async () => {
+  const { collapse, diffRows } = await import('../workspaces/frige/line-diff.js');
+  // A seeded generator, so a failure names a reproducible case.
+  let seed = 20261120;
+  const random = (limit) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % limit; };
+  const vocabulary = ['a', 'b', 'c', '', '  d', 'e — é', '𝔉'];
+  const text = (length) => Array.from({ length }, () => vocabulary[random(vocabulary.length)]).join('\n');
+  for (let index = 0; index < 400; index += 1) {
+    const before = text(random(30)); const after = random(4) === 0 ? text(random(30)) : before.split('\n').map((line) => (random(6) === 0 ? vocabulary[random(vocabulary.length)] : line)).join('\n');
+    const rows = diffRows(before, after);
+    const label = `case ${index}: ${JSON.stringify([before, after])}`;
+    assert.equal(rows.filter((row) => row.type !== 'add').map((row) => row.text).join('\n'), before, label);
+    assert.equal(rows.filter((row) => row.type !== 'del').map((row) => row.text).join('\n'), after, label);
+    assert.deepEqual(rows.filter((row) => row.type !== 'add').map((row) => row.left), before.split('\n').map((_, k) => k + 1), label);
+    assert.deepEqual(rows.filter((row) => row.type !== 'del').map((row) => row.right), after.split('\n').map((_, k) => k + 1), label);
+    const shown = collapse(rows);
+    assert.equal(shown.filter((row) => row.type === 'add' || row.type === 'del').length, rows.filter((row) => row.type !== 'same').length, label);
+    assert.equal(shown.reduce((sum, row) => sum + (row.type === 'skip' ? row.count : 1), 0), rows.length, label);
+  }
+});
+
+test('a proposal card says when line endings change, which a line diff cannot show', async () => {
+  const { diffRows, lineEndingsDiffer } = await import('../workspaces/frige/line-diff.js');
+  const differ = (before, after) => lineEndingsDiffer(before, after, diffRows(before, after));
+  const mixed = 'one\r\ntwo\nthree\r\n';
+  assert.equal(differ(mixed, 'one\r\nTWO\nthree\r\n'), false, 'an edit that keeps a mixed piece’s endings is not flagged');
+  assert.equal(differ(mixed, 'one\r\ntwo\r\nthree\r\n\r\nadded\r\n'), true, 'converting a lone LF to CRLF is flagged');
+  assert.equal(differ('a\nb\n', 'a\nb\nc\n'), false, 'an added line in the piece’s own convention is not flagged');
+  assert.equal(differ('a\nb\n', 'a\nb'), true, 'removing the final newline is flagged');
 });
 
 test('forwards only the read-only platform routes, without browser headers, and fails closed', async (context) => {
