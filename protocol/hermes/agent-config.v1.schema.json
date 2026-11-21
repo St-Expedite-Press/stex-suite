@@ -97,6 +97,16 @@
         "team": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "$ref": "#/$defs/member" } },
         "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
         "boundaries": { "description": "Read-only: the fixed STEX boundaries appended after every persona. Shown to the user, never editable.", "type": "string" },
+        "freeMode": {
+          "description": "Added 2026-11-21 (suite D-022). Igor's free mode: a free model for Igor's own conversation sandbox only. `task` and `scope` are fixed facts; Frige, Hermes and Igor turns about a project always keep their paid models. The model is kept when the mode is turned off. Absent from a service without free mode.",
+          "type": "object", "additionalProperties": false, "required": ["task", "scope", "enabled", "model"],
+          "properties": {
+            "task": { "const": "igor.conversation" },
+            "scope": { "const": "igor-sandbox" },
+            "enabled": { "type": "boolean" },
+            "model": { "anyOf": [{ "$ref": "#/$defs/modelId" }, { "type": "null" }] }
+          }
+        },
         "temperaments": {
           "type": "array",
           "items": {
@@ -129,6 +139,11 @@
         "tasks": {
           "type": "array", "maxItems": 64,
           "items": { "type": "object", "additionalProperties": false, "required": ["id", "model"], "properties": { "id": { "type": "string" }, "model": { "$ref": "#/$defs/modelId" } } }
+        },
+        "freeMode": {
+          "description": "Added 2026-11-21 (suite D-022). Fields left out keep their saved values. Turning the mode on needs a model, saved or named here, that the catalog marks `free`; a free model is refused for every other choice.",
+          "type": "object", "additionalProperties": false,
+          "properties": { "enabled": { "type": "boolean" }, "model": { "anyOf": [{ "$ref": "#/$defs/modelId" }, { "type": "null" }] } }
         }
       }
     },
@@ -157,7 +172,9 @@
                 "properties": { "promptPerMillion": { "type": ["number", "null"] }, "completionPerMillion": { "type": ["number", "null"] } }
               },
               "capabilities": { "type": "array", "items": { "enum": ["tools", "structured_outputs", "reasoning", "vision"] } },
-              "recommended": { "description": "True for the default Grok stack.", "type": "boolean" }
+              "recommended": { "description": "True for the default Grok stack.", "type": "boolean" },
+              "description": { "description": "Added 2026-11-21. OpenRouter's description reduced to at most 280 characters of plain text, for display only; may be empty.", "type": "string", "maxLength": 281 },
+              "free": { "description": "Added 2026-11-21 (suite D-022). A free endpoint: a `:free` variant, or priced at zero for prompt and completion. Offered only for Igor's free mode.", "type": "boolean" }
             }
           }
         }

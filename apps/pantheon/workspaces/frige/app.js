@@ -6,13 +6,15 @@ const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/igor/new?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Discuss with Igor'; document.querySelector('.publishing-toolbar').append(link); }
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/graph/?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Project knowledge'; document.querySelector('.publishing-toolbar').append(link); }
-const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null };
+// `pending` counts undecided proposals per piece across the book (from the engine's contract history);
+// `passage` is the selected passage attached to the next message; `filter` narrows the book tree.
+const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null, pending: new Map(), passage: null, filter: '', pendingScope: null };
 const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
   const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(payload.error || 'Request failed.'), { status: response.status, errors: Array.isArray(payload.errors) ? payload.errors : [] });
+  if (!response.ok) throw Object.assign(new Error(payload.error || 'Request failed.'), { status: response.status, code: payload.code || null, errors: Array.isArray(payload.errors) ? payload.errors : [] });
   return payload;
 }
 
@@ -41,20 +43,45 @@ const nodePages = (id) => compiledMap()?.nodes.find((entry) => entry.nodeId === 
 const expanded = new Set();
 const sectionOf = (nodeId) => state.graph.book?.sections?.find((section) => section.nodeIds.includes(nodeId)) || null;
 
-function treeButton(className, title, pages, onClick, { active = false, detail = '', flagged = '' } = {}) {
+const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+/**
+ * One selectable row of the book tree. Its accessible name states what the
+ * marks only show: pending proposals, unsaved edits and review flags.
+ *
+ * @param {string} className
+ * @param {string} title
+ * @param {string} pages  Verified page range, or empty.
+ * @param {() => void} onClick
+ * @param {{ active?: boolean, detail?: string, flagged?: string, treeId: string, pending?: number, unsaved?: boolean }} options
+ * @returns {HTMLButtonElement}
+ */
+function treeButton(className, title, pages, onClick, { active = false, detail = '', flagged = '', treeId, pending = 0, unsaved = false }) {
   const button = element('button', `${className}${active ? ' active' : ''}`); button.type = 'button';
+  button.dataset.treeId = treeId;
+  if (active) button.setAttribute('aria-current', 'true');
   button.append(element('span', 'tree-title', title));
-  if (flagged) { const flag = element('span', 'tree-flag', '!'); flag.title = flagged; button.append(flag); }
+  if (unsaved) button.append(element('span', 'tree-mark tree-unsaved', '●'));
+  if (pending) button.append(element('span', 'tree-mark tree-pending', String(pending)));
+  if (flagged) button.append(element('span', 'tree-flag', '!'));
   button.append(element('span', 'tree-pages', pages));
-  button.title = detail || title;
+  const states = [unsaved && 'unsaved edits', pending && `${plural(pending, 'proposal')} awaiting your decision`, flagged && 'review flag', pages && `pages ${pages}`].filter(Boolean);
+  button.setAttribute('aria-label', states.length ? `${title}, ${states.join(', ')}` : title);
+  button.title = [detail || title, flagged].filter(Boolean).join('\n');
   button.addEventListener('click', onClick);
   return button;
 }
 
+/** Whether a piece matches the navigator's filter, by title or by its file below `manuscript/`. */
+const matchesFilter = (node, query) => !query || node.title.toLowerCase().includes(query) || node.relativePath.toLowerCase().includes(query);
+
 // One tree for the book: the whole book, its sections in table-of-contents order, and their pieces.
 // Page numbers come from the latest verified book-order proof, or else from the proof on screen.
+// The tree is rebuilt from the engine's graph each time, so it never holds a hierarchy of its own;
+// focus is restored to the row that had it, so keyboard navigation survives a rebuild.
 function renderNodes() {
   const graph = state.graph; const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const focused = document.activeElement?.closest?.('#book-tree [data-tree-id]')?.dataset.treeId || null;
   const source = state.referenceMap || compiledMap();
   const pages = new Map((source?.nodes || []).filter((entry) => entry.firstPage).map((entry) => [entry.nodeId, entry]));
   const flags = new Map(); for (const entry of graph.diagnostics) flags.set(entry.nodePath, [...(flags.get(entry.nodePath) || []), entry.message]);
@@ -63,31 +90,96 @@ function renderNodes() {
     const first = Math.min(...entries.map(bookFirst)); const last = Math.max(...entries.map(bookLast));
     return first === last ? `${first}` : `${first}–${last}`;
   };
+  const query = state.filter.trim().toLowerCase();
+  const pendingIn = (ids) => ids.reduce((sum, id) => sum + (state.pending.get(id) || 0), 0);
+  const unsavedHere = (id) => state.sourceDirty && state.node?.id === id;
   const open = state.scope?.kind === 'node' ? sectionOf(state.scope.id) : state.scope?.kind === 'book' ? null : state.scope;
   if (open) expanded.add(open.id);
   const piece = (node) => treeButton('tree-piece', node.title, range([node.id]), async () => { if (await loadNode(node.id, node.id) && nodePages(node.id)) showPdfPage(nodePages(node.id).firstPage); }, {
-    active: state.scope?.id === node.id, detail: `manuscript/${node.relativePath}${node.changedOnDisk ? ' · changed on disk' : ''}`, flagged: (flags.get(node.relativePath) || []).join('\n'),
+    treeId: node.id, active: state.scope?.id === node.id, detail: `manuscript/${node.relativePath}${node.changedOnDisk ? ' · changed on disk' : ''}`, flagged: (flags.get(node.relativePath) || []).join('\n'),
+    pending: state.pending.get(node.id) || 0, unsaved: unsavedHere(node.id),
   });
+  let shown = 0;
   const group = (id, title, nodeIds, selectable) => {
-    const isOpen = expanded.has(id); const wrap = element('div', `tree-section${isOpen ? ' open' : ''}`); const row = element('div', 'tree-row');
-    const toggle = element('button', 'tree-toggle', isOpen ? '▾' : '▸'); toggle.type = 'button';
+    // While filtering, a section shows the pieces that match, or all of them when its own title matches.
+    const titleMatches = Boolean(query) && title.toLowerCase().includes(query);
+    const visible = nodeIds.map((nodeId) => byId.get(nodeId)).filter(Boolean).filter((node) => titleMatches || matchesFilter(node, query));
+    if (query && !visible.length && !titleMatches) return null;
+    shown += visible.length;
+    const isOpen = query ? true : expanded.has(id); const wrap = element('div', `tree-section${isOpen ? ' open' : ''}`); const row = element('div', 'tree-row');
+    // A selectable section opens and closes from its title row with the arrow keys, so its toggle is
+    // left out of the Tab order; a static group has no such row and keeps its toggle reachable.
+    const toggle = element('button', 'tree-toggle', isOpen ? '▾' : '▸'); toggle.type = 'button'; if (selectable) toggle.tabIndex = -1;
     toggle.setAttribute('aria-expanded', String(isOpen)); toggle.setAttribute('aria-label', `${isOpen ? 'Collapse' : 'Expand'} ${title}`);
+    toggle.disabled = Boolean(query);
     toggle.addEventListener('click', () => { if (isOpen) expanded.delete(id); else expanded.add(id); renderNodes(); });
-    row.append(toggle, selectable ? treeButton('tree-section-title', title, range(nodeIds), () => selectScope(id), { active: state.scope?.id === id }) : element('span', 'tree-section-title tree-static', title));
+    const heading = selectable
+      ? treeButton('tree-section-title', title, range(nodeIds), () => selectScope(id), { treeId: id, active: state.scope?.id === id, pending: pendingIn(nodeIds), unsaved: nodeIds.some(unsavedHere) })
+      : element('span', 'tree-section-title tree-static', title);
+    heading.dataset.section = id;
+    row.append(toggle, heading);
     wrap.append(row);
-    if (isOpen) { const children = element('div', 'tree-children'); children.append(...nodeIds.map((nodeId) => byId.get(nodeId)).filter(Boolean).map(piece)); wrap.append(children); }
+    if (isOpen) { const children = element('div', 'tree-children'); children.append(...visible.map(piece)); wrap.append(children); }
     return wrap;
   };
   const unlisted = graph.nodes.filter((node) => !graph.readingOrder.includes(node.id) && node.kind !== 'programme').map((node) => node.id);
   const bookPages = source?.targetScope?.id === 'book' ? `${source.pagination.physicalPageCount} pp.` : '';
-  $('#book-tree').replaceChildren(
-    treeButton('tree-book', 'Whole book', bookPages, () => selectScope('book'), { active: state.scope?.kind === 'book', detail: 'The whole book, in table-of-contents order' }),
+  const groups = [
     ...(graph.book?.sections || []).map((section) => group(section.id, section.title, section.nodeIds, true)),
     ...(unlisted.length ? [group('unlisted', 'Not in the table of contents', unlisted, false)] : []),
+  ].filter(Boolean);
+  $('#book-tree').replaceChildren(
+    treeButton('tree-book', 'Whole book', bookPages, () => selectScope('book'), { treeId: 'book', active: state.scope?.kind === 'book', detail: 'The whole book, in table-of-contents order', pending: pendingIn(graph.readingOrder) }),
+    ...groups,
+    ...(query && !shown ? [element('p', 'tree-empty', `No piece matches “${state.filter.trim()}”.`)] : []),
   );
+  const pieces = graph.readingOrder.length; const sections = graph.book?.sections?.length || 0;
+  $('#book-summary').textContent = `${plural(pieces, 'piece')} · ${plural(sections, 'section')}`;
+  $('#tree-count').textContent = query ? `${shown} of ${plural(pieces + unlisted.length, 'piece')}` : '';
   const count = graph.diagnostics.length;
   $('#diagnostics').textContent = count ? `${count} review flag${count === 1 ? '' : 's'}` : 'No review flags';
   $('#diagnostics').title = graph.diagnostics.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n');
+  if (focused) $(`#book-tree [data-tree-id="${CSS.escape(focused)}"]`)?.focus();
+}
+
+/**
+ * Arrow-key movement through the book tree's rows (Up, Down, Home, End);
+ * Right opens a section and Left closes it, or moves from a piece to its
+ * section. Enter and Space keep their native button behaviour. Rows are
+ * ordinary buttons, so Tab still reaches the tree in page order.
+ *
+ * @param {KeyboardEvent} event
+ */
+function treeKeys(event) {
+  const row = event.target.closest?.('[data-tree-id]'); if (!row) return;
+  const rows = [...$('#book-tree').querySelectorAll('[data-tree-id]')];
+  const index = rows.indexOf(row);
+  const go = (target) => { if (target) { event.preventDefault(); target.focus(); } };
+  if (event.key === 'ArrowDown') go(rows[index + 1]);
+  else if (event.key === 'ArrowUp') go(rows[index - 1]);
+  else if (event.key === 'Home') go(rows[0]);
+  else if (event.key === 'End') go(rows.at(-1));
+  else if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && row.dataset.section) {
+    const open = expanded.has(row.dataset.section); const wantOpen = event.key === 'ArrowRight';
+    if (open !== wantOpen && !state.filter.trim()) { event.preventDefault(); if (wantOpen) expanded.add(row.dataset.section); else expanded.delete(row.dataset.section); renderNodes(); }
+    else if (wantOpen && open) go(rows[index + 1]);
+  } else if (event.key === 'ArrowLeft' && row.classList.contains('tree-piece')) {
+    go(row.closest('.tree-section')?.querySelector('[data-section][data-tree-id]'));
+  }
+}
+
+/**
+ * Counts undecided proposals per piece across the book from the engine's
+ * contract history, for the tree's marks. A failure leaves the last counts.
+ */
+async function refreshPending() {
+  try {
+    const pending = new Map();
+    for (const contract of await request('/api/project/contracts')) {
+      for (const change of contract.changes) if (change.status === 'pending' && change.nodeId) pending.set(change.nodeId, (pending.get(change.nodeId) || 0) + 1);
+    }
+    state.pending = pending; renderNodes();
+  } catch { /* the marks keep their last counts */ }
 }
 
 // What a conversation with each kind of scope is about, in the author's terms.
@@ -116,6 +208,24 @@ function setView(view) {
   state.view = view;
   $('#show-thread').setAttribute('aria-selected', String(view === 'thread')); $('#show-source').setAttribute('aria-selected', String(view === 'source'));
   $('#source-panel').classList.toggle('hidden', view !== 'source'); $('#turns').classList.toggle('hidden', view !== 'thread');
+  // Returning to the source shows the attached passage selected again, while it still describes this text.
+  const passage = state.passage;
+  if (view === 'source' && passage && passage.nodeId === state.node?.id && passage.baseHash === state.node.hash && !state.sourceDirty) $('#source').setSelectionRange(passage.start, passage.end);
+  renderEditorState();
+}
+
+/**
+ * The address of a scope: the book stays in `book`, the open book, section or
+ * piece in `scope` (absent for the whole book), so a reload or a shared link
+ * opens the same place.
+ *
+ * @param {string} scopeId
+ * @returns {string}
+ */
+function scopeUrl(scopeId) {
+  const params = new URLSearchParams(location.search);
+  if (scopeId && scopeId !== 'book') params.set('scope', scopeId); else params.delete('scope');
+  return `${location.pathname}?${params}${location.hash}`;
 }
 
 function renderAttachments() {
@@ -148,7 +258,9 @@ function renderNode() {
   const plan = buildPlan(scope);
   if (!$('#build').disabled) $('#build').textContent = plan.label;
   $('#build-book').classList.toggle('hidden', scope.kind === 'book');
-  renderNodes(); renderLiveBuild(); renderNodePages(); renderStatus();
+  // A passage attached for this piece no longer describes it once its text has changed.
+  if (state.passage?.nodeId === state.node.id && state.passage.baseHash !== state.node.hash) { state.passage = null; renderPassageChip(); }
+  renderNodes(); renderLiveBuild(); renderNodePages(); renderStatus(); renderEditorState();
 }
 
 function showPdfPage(page) {
@@ -401,27 +513,167 @@ async function contractsFor(scopeId) {
  */
 const proofsOf = (contracts) => JSON.stringify([...contracts.values()].map((entry) => [entry.id, entry.proof?.completedAt || null]));
 
-async function loadNode(id, scopeId = id) {
-  if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return false;
+/**
+ * Opens a piece in the editor and a scope's conversation. Opening another
+ * scope records it in the address (`history: 'push'` by default, `'replace'`
+ * to correct the address, `'none'` when the browser's own history moved),
+ * opens a piece on its source and a book or section on its conversation, and
+ * lets go of a passage selected elsewhere.
+ *
+ * @param {string} id  The piece the editor shows.
+ * @param {string} [scopeId]  The conversation's scope; the piece itself by default.
+ * @param {{ history?: 'push' | 'replace' | 'none' }} [options]
+ * @returns {Promise<boolean>}  `false` when the author kept unsaved edits instead.
+ */
+async function loadNode(id, scopeId = id, { history: record = 'push' } = {}) {
+  // Every load replaces the editor's text with the saved text, so unsaved edits are guarded on every
+  // path, including a section and its first piece, which share the editor's piece.
+  if (state.sourceDirty && !confirm('Discard unsaved Markdown changes?')) return false;
   const scope = scopeFor(scopeId) || scopeFor(id);
-  const [node, turns, changeSet, contracts] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
+  // The last navigation wins: a load overtaken by a later one is dropped when it arrives.
+  const ticket = ++loadTicket; state.pendingScope = scope.id;
+  let loaded;
+  try { loaded = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]); }
+  finally { if (ticket === loadTicket) state.pendingScope = null; }
+  if (ticket !== loadTicket) return null;
+  const [node, turns, changeSet, contracts] = loaded;
   const changedScope = state.scope?.id !== scope.id;
   state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
-  if (changedScope) state.notice = '';
+  if (changedScope) {
+    state.notice = '';
+    // A passage belongs to the conversation it was selected for.
+    if (state.passage) { state.passage = null; renderPassageChip(); }
+    // Each entry records its position, so a refused Back or Forward can return without adding one.
+    const address = scopeUrl(scope.id);
+    if (record === 'push' && address !== `${location.pathname}${location.search}${location.hash}`) { shownIndex += 1; history.pushState({ scope: scope.id, index: shownIndex }, '', address); }
+    else if (record === 'replace') history.replaceState({ scope: scope.id, index: shownIndex }, '', address);
+  }
   renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
+  if (changedScope) setView(scope.kind === 'node' ? 'source' : 'thread');
   if (changedScope && !$('#design-panel').classList.contains('hidden')) fillOverride();
   return true;
 }
 
-async function selectScope(scopeId) {
+async function selectScope(scopeId, options = {}) {
   const scope = scopeFor(scopeId);
-  if (!scope?.anchorNodeId) return;
-  await loadNode(scope.anchorNodeId, scope.id);
+  if (!scope?.anchorNodeId) return false;
+  return loadNode(scope.anchorNodeId, scope.id, options);
+}
+
+/** Position of the history entry on screen, the last load started, and a popstate this page caused itself. */
+let shownIndex = 0; let loadTicket = 0; let ignoreNextPop = false;
+
+/**
+ * Follows the browser's Back and Forward through scopes. Unsaved edits are
+ * guarded as for a click. If the author keeps them, the browser is stepped
+ * back to the entry still on screen (`history.go`), so no entry is added and
+ * no forward history is lost. A Back or Forward made while another scope is
+ * still loading is compared with that scope, so the last one wins.
+ *
+ * @param {PopStateEvent} event
+ */
+async function followHistory(event) {
+  if (ignoreNextPop) { ignoreNextPop = false; return; }
+  const arrived = Number.isInteger(event.state?.index) ? event.state.index : null;
+  const wanted = scopeFor(new URLSearchParams(location.search).get('scope') || 'book') || scopeFor('book');
+  if (!wanted) return;
+  if (wanted.id === (state.pendingScope ?? state.scope?.id)) { if (arrived !== null) shownIndex = arrived; return; }
+  const opened = await selectScope(wanted.id, { history: 'none' });
+  if (opened === false) {
+    // Back is one step, Forward minus one; an entry without a position is treated as one step Back.
+    ignoreNextPop = true; history.go(arrived === null || arrived === shownIndex ? 1 : shownIndex - arrived);
+  } else if (opened && arrived !== null) shownIndex = arrived;
+}
+
+// --- Selected passages -------------------------------------------------------
+// The editor's text uses one `\n` per line ending (a browser text field reports
+// its value that way); the engine maps a selection in these coordinates to the
+// canonical bytes and refuses it if the piece changed or the text differs.
+
+/** What each passage action is called, and the message it starts with; the author can change the message. */
+const PASSAGE_ACTIONS = {
+  ask: { label: 'Ask Igor', prompt: '' },
+  revise: { label: 'Revise', prompt: 'Revise the selected passage.' },
+  explain: { label: 'Explain', prompt: 'Explain how the selected passage works.' },
+  alternatives: { label: 'Alternatives', prompt: 'Suggest alternative readings of the selected passage.' },
+  compare: { label: 'Compare', prompt: 'Compare readings of the selected passage.' },
+};
+/** The engine's limit on a passage, in editor characters. */
+const MAX_PASSAGE = 12_000;
+
+const linesLabel = ({ startLine, endLine }) => (startLine === endLine ? `line ${startLine}` : `lines ${startLine}–${endLine}`);
+
+/**
+ * The editor's selection in editor coordinates, with the lines it covers.
+ *
+ * @returns {{ start: number, end: number, text: string, startLine: number, endLine: number, line: number, column: number }}
+ */
+function editorSelection() {
+  const area = $('#source'); const { selectionStart: start, selectionEnd: end, value } = area;
+  const lineAt = (offset) => value.slice(0, offset).split('\n').length;
+  return { start, end, text: value.slice(start, end), startLine: lineAt(start), endLine: lineAt(Math.max(start, end - 1)), line: lineAt(end), column: end - value.lastIndexOf('\n', end - 1) };
+}
+
+/** Whether the editor shows a piece this conversation offers to Igor, so a passage of it can be sent. */
+const passageEligible = () => Boolean(state.scope && state.scope.kind !== 'book' && state.node && state.node.kind !== 'programme' && (state.scope.nodeIds || []).includes(state.node.id));
+
+/** The cursor position and, for a selection, the passage bar and its actions. */
+function renderEditorState() {
+  if (!state.node) return;
+  const selection = editorSelection(); const selected = selection.end > selection.start;
+  $('#source-position').textContent = selected ? `${linesLabel(selection)} selected · ${plural(selection.text.length, 'character')}` : `Ln ${selection.line}, Col ${selection.column}`;
+  const bar = $('#passage-bar'); bar.hidden = !(selected && passageEligible());
+  if (bar.hidden) return;
+  const reason = state.sourceDirty ? 'Save your edits to act on a passage.' : selection.text.length > MAX_PASSAGE ? `A passage can be at most ${MAX_PASSAGE.toLocaleString()} characters.` : state.thinking ? 'Igor is answering.' : '';
+  $('#passage-label').textContent = reason || `${linesLabel(selection)} of “${state.node.title}”`;
+  bar.querySelectorAll('button').forEach((button) => { button.disabled = Boolean(reason); });
+}
+
+/**
+ * Attaches the editor's selection to the next message with an action, and
+ * moves to the composer with that action's message. Nothing is sent yet: the
+ * author can read the exact passage in the chip, change the message, and send.
+ *
+ * @param {keyof typeof PASSAGE_ACTIONS} action
+ */
+function choosePassageAction(action) {
+  const selection = editorSelection();
+  if (selection.end <= selection.start || state.sourceDirty || !passageEligible()) return;
+  state.passage = { nodeId: state.node.id, title: state.node.title, baseHash: state.node.hash, start: selection.start, end: selection.end, text: selection.text, startLine: selection.startLine, endLine: selection.endLine, action };
+  const input = $('#message'); const current = input.value.trim();
+  // A message the author wrote is kept; one an earlier action filled in is replaced.
+  if (!current || Object.values(PASSAGE_ACTIONS).some((entry) => entry.prompt === current)) input.value = PASSAGE_ACTIONS[action].prompt;
+  renderPassageChip(); sizeComposer();
+  input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+}
+
+/** The passage attached to the next message: what will be sent, and a way to remove it. */
+function renderPassageChip() {
+  const chip = $('#passage-chip'); const passage = state.passage;
+  chip.hidden = !passage;
+  if (!passage) { chip.replaceChildren(); return; }
+  const preview = element('details', 'passage-preview');
+  preview.append(
+    element('summary', '', `${PASSAGE_ACTIONS[passage.action].label} · ${linesLabel(passage)} of “${passage.title}”`),
+    element('pre', 'passage-text', passage.text),
+    element('p', 'passage-note', passage.action === 'ask'
+      ? 'Sent to Igor as context for your question, exactly as shown.'
+      : 'Sent to Igor exactly as shown. Igor may propose changes to this passage only, and nothing changes until you accept.'),
+  );
+  const remove = element('button', 'quiet-button passage-remove', 'Remove'); remove.type = 'button';
+  remove.setAttribute('aria-label', 'Remove the selected passage from this message');
+  remove.addEventListener('click', () => { state.passage = null; renderPassageChip(); $('#message').focus(); });
+  chip.replaceChildren(preview, remove);
 }
 
 async function saveSource() {
   const button = $('#save-source'); button.disabled = true;
-  try { state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; state.build = null; renderNode(); renderBuild(null); }
+  try {
+    state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; state.build = null;
+    // A passage selected before the save no longer describes the saved text.
+    if (state.passage?.nodeId === state.node.id) { state.passage = null; renderPassageChip(); }
+    renderNode(); renderBuild(null);
+  }
   catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
 }
 
@@ -455,6 +707,7 @@ async function sendAnswer(promptId, values) {
     if (state.scope?.id === scope.id) state.contracts = await contractsFor(scope.id);
     state.thinking = false;
     if (state.scope?.id === scope.id) renderTurns({ follow: true });
+    refreshPending();
   }
 }
 
@@ -462,18 +715,28 @@ async function sendTurn(event) {
   event?.preventDefault();
   const input = $('#message'); const button = $('#turn-form [type="submit"]'); const message = input.value.trim();
   if (!message || !state.scope || state.thinking) return;
+  // The engine checks the passage against the piece as it is now; the browser's copy is only a request.
+  const passage = state.passage;
+  const selection = passage ? { nodeId: passage.nodeId, baseHash: passage.baseHash, start: passage.start, end: passage.end, text: passage.text, action: passage.action } : undefined;
   const scope = state.scope; button.disabled = true; input.value = ''; sizeComposer(); setView('thread');
-  state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString() }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
+  state.passage = null; renderPassageChip();
+  state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString(), ...(passage ? { passage } : {}) }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
-    const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message }) });
+    const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message, ...(selection ? { selection } : {}) }) });
     if (result.availability !== 'available') refreshIgor();
     if (state.scope?.id !== scope.id) return;
     [state.turns, state.changeSet, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
+    refreshPending();
   } catch (error) {
-    if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1); state.notice = `Not sent: ${error.message}`;
+    if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1);
+    // A passage the engine refused is not offered again: the author selects it afresh.
+    const refusedPassage = error.code === 'PASSAGE_STALE' || error.code === 'INVALID_PASSAGE';
+    if (passage && !refusedPassage && state.scope?.id === scope.id) { state.passage = passage; renderPassageChip(); }
+    state.notice = `Not sent: ${error.message}`;
   } finally {
     state.thinking = false; button.disabled = false;
     if (state.scope?.id === scope.id) renderTurns({ follow: true });
+    renderEditorState();
   }
 }
 
@@ -494,6 +757,7 @@ async function decide(nodeId, decision) {
     if (state.changeSet.changes.some((change) => change.kind === 'set-layout' && change.status === 'accepted')) await refreshDesign();
     if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
     [state.turns, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]); state.notice = '';
+    refreshPending();
     // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
     if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
     renderTurns();
@@ -528,7 +792,7 @@ async function revert(contractId, nodeId, { layout = false } = {}) {
     if (node) { state.node = node; state.sourceDirty = false; }
     state.turns = turns; state.contracts = contracts; state.notice = '';
     if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
-    renderTurns();
+    renderTurns(); refreshPending();
     await build();
   } catch (error) { if (state.scope?.id === scope.id) { state.notice = error.message; renderTurns(); } }
 }
@@ -591,9 +855,28 @@ async function bootstrap() {
   $('#book-title').textContent = state.graph.book?.title || book.replaceAll('-', ' ');
   renderNodes(); renderAttachments();
   state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
-  const initial = scopeFor('book');
-  if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id);
-  renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor();
+  // The address names the open scope; an unknown or retired one opens the whole book, and the address is corrected.
+  const initial = scopeFor(new URLSearchParams(location.search).get('scope') || 'book') || scopeFor('book');
+  // A reload keeps the entry's position, so Back and Forward still line up with it.
+  shownIndex = Number.isInteger(history.state?.index) ? history.state.index : 0;
+  if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id, { history: 'replace' });
+  renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor(); refreshPending();
+  addEventListener('popstate', (event) => { followHistory(event).catch((error) => { state.notice = error.message; renderTurns(); }); });
+  // Touch selection handles fire no key or mouse events; the document's selection change covers them.
+  document.addEventListener('selectionchange', () => { if (document.activeElement === $('#source')) renderEditorState(); });
+  // Navigator: filter by title or file; Enter opens the first match; Escape clears.
+  $('#tree-filter').addEventListener('input', () => { state.filter = $('#tree-filter').value; renderNodes(); });
+  $('#tree-filter').addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.filter) { event.preventDefault(); $('#tree-filter').value = ''; state.filter = ''; renderNodes(); }
+    if (event.key === 'Enter') { event.preventDefault(); $('#book-tree .tree-piece')?.click(); }
+  });
+  $('#book-tree').addEventListener('keydown', treeKeys);
+  // Editor: the position and the passage bar follow the selection; Ctrl or Cmd + S saves. No other key is taken from text editing.
+  for (const type of ['select', 'keyup', 'mouseup', 'focus']) $('#source').addEventListener(type, renderEditorState);
+  $('#source').addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (state.sourceDirty) saveSource(); }
+  });
+  $('#passage-bar').addEventListener('click', (event) => { const action = event.target.closest('button[data-action]')?.dataset.action; if (action) choosePassageAction(action); });
   $('#open-design').addEventListener('click', () => toggleDesign()); $('#design-cancel').addEventListener('click', () => toggleDesign(false)); $('#design-panel').addEventListener('submit', saveDesign); $('#design-panel').addEventListener('input', () => { state.designDirty = true; });
   $('#turn-form').addEventListener('submit', sendTurn);
   // Settings is a disclosure holding one link, to the shared Company screen
@@ -606,7 +889,12 @@ async function bootstrap() {
   $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', () => build()); $('#build-book').addEventListener('click', () => build({ wholeBook: true }));
   $('#send-live-build').addEventListener('click', sendLiveBuild); $('#refresh').addEventListener('click', refresh);
   $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files]));
-  $('#source').addEventListener('input', () => { state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes'; renderLiveBuild(); renderStatus(); });
+  $('#source').addEventListener('input', () => {
+    const first = !state.sourceDirty; state.sourceDirty = true; $('#save-state').textContent = 'Unsaved Markdown changes';
+    renderLiveBuild(); renderStatus(); renderEditorState();
+    // The tree marks the piece with unsaved edits; it is rebuilt only when that first becomes true.
+    if (first) renderNodes();
+  });
   $('#node-pages').addEventListener('click', () => { const mapped = nodePages(state.node.id); if (mapped) showPdfPage(mapped.firstPage); });
 }
 

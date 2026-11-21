@@ -43,7 +43,23 @@ Update this file whenever the state below changes.
     read-back step failed on SSH
     ([evidence](../verification/frige-wave-f-anchored-edits.md#release-2026-11-21-utc)).
   - One independent review round ran; every finding is fixed.
-  - Next increments: F-B3 long-form context, then F-A1/A2/A4.
+  - Interface increment 1, the owner's interface directive (2026-11-21), is
+    on suite `feat/frige-ui-passages` and stex-igor `feat/frige-passages`.
+    Both are local and unpushed.
+    - It adds the navigator's search, marks, keys and deep links, a piece
+      opening on its source, and exact passage selection with Ask, Revise,
+      Explain, Alternatives and Compare.
+    - The engine checks a passage against the current source and bounds the
+      proposal to it ([D-021](DECISIONS.md),
+      [evidence](../verification/frige-ui-1-navigation-passages.md)).
+    - Full suite, `verify:frige`, `verify:home` and a 12-of-12 end-to-end
+      run pass.
+    - One independent review round ran. Its High finding (Back and Forward
+      discarding unsaved edits) and the other findings are fixed, and
+      `verify:frige` covers them.
+  - Next: interface increment 2 (inline proposal markers, navigation
+    between changed passages, decision workflow), then F-B3 long-form
+    context.
 - **If a review is interrupted** (usage limits have stopped agents twice),
   rerun it from a self-contained brief. The round-1 reproduction scripts
   were kept outside the repository in the session scratchpad and may be gone.
@@ -83,6 +99,7 @@ Windows Application Control on the owner's machine blocks their launchers in
 | A second live director turn | Approve one paid Frige turn on a synthetic book, about $0.02, now that the budget is 120 s | Shows a live proposal reaching Frige; the first turn ran out of time |
 | Output budget for long pieces | Keep 20,000 output characters: anchored edits (D-020) let a piece up to the 60,000-character offer budget be revised | Only a whole-piece rewrite of a long piece still needs a wider budget |
 | Confirm the active release on the VM | Read `/opt/stex/ACTIVE.json` (expect `c5af494`, generation 14), and check why the workflow's SSH read-back was refused | The install log shows the release installed and health-checked, but the workflow could not read it back |
+| Apply the Igor profile on the VM (R-15) | Run `deploy/hermes/apply-igor-profile.sh` as root on the VM, then restart `hermes-igor`, then inspect (do not delete) any existing `MEMORY.md` and `USER.md` under the profile | Decided and in the release: memory and background review off. It only takes effect after this operator step; until then free-mode turns can still carry saved memory |
+| Release stex-igor `feat/free-mode` (it contains `feat/frige-passages`) | Merge the suite branch, then release, then try one passage turn and one free Igor turn live | Until then hosted Igor drops passages (proposals stay bounded) and has no free mode or prices in the Company screen |
 | A live turn with anchored edits | Approve one paid Frige turn on a long synthetic piece, about $0.03 | Whether Grok writes exact anchors is unverified (R-14) |
-| Reviewer model for development work | Record whether Claude review agents are acceptable, since the Wave F brief asked subagents to avoid Claude | Wave F's first review used one after the owner said to proceed |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |

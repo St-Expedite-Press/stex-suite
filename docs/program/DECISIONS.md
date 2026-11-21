@@ -298,6 +298,90 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   card, the stex-igor scope-turn adapter and its trusted instructions (local
   branch `feat/anchored-edits`, unreleased), and `protocol/texgraph`.
 
+## D-021 — Selected passages are checked by the engine and bound the proposal
+
+- **Decided by:** principal agent, 2026-11-21, under the owner's Frige
+  interface directive (increment 1: navigation and exact passage
+  selection). Open to owner review.
+- **Decision:**
+  - **Coordinates.** A passage is sent in the editor's coordinates, one
+    `\n` per line ending, with the piece's hash and the exact selected text.
+    The engine refuses a stale hash or a mismatched text before recording
+    anything, maps the range to canonical bytes, and records the resolved
+    passage on the author's turn.
+  - **Bounds.** For every action except `ask`, any proposal from that turn
+    may change only the passage. Edit anchors are searched within it, so a
+    phrase repeated elsewhere in the piece still anchors an edit to the
+    passage.
+  - **Gateway.** The passage reaches the gateway as its own labelled
+    request field, and the gateway reports whether it forwarded it.
+- **Why:**
+  - The browser's selection is not authority. Offsets in the editor's
+    coordinates are what a text field reports, so CRLF pieces need no
+    browser-side mapping.
+  - Recording the passage on the user turn, which the contract already
+    names, avoids a change to `stex.frige.change-contract.v1`.
+  - Bounding by the passage makes "revise this" unable to reach other text,
+    whatever the model writes.
+- **Not done:**
+  - passages from pieces a section conversation withholds as too long;
+  - inline markers for proposals in the editor (interface increment 2).
+- **Affects:** Frige (`resolvePassage`, `changedOnlyWithin`, `applyEdits`
+  `within`, the turn route, the inference client and simulator), the
+  workstation, `protocol/frige` and `protocol/texgraph`, and the stex-igor
+  adapter on branch `feat/frige-passages`, which is unreleased.
+
+## D-022 — Free mode for Igor's sandbox; prices and descriptions in the Company screen
+
+- **Decided by:** the owner, 2026-11-21:
+  - "I want a 'free model' mode";
+  - asked how far it should reach: "Only the igor conversational sandbox has
+    free mode";
+  - asked which conversations may use free models: "Igor conversations only";
+  - "we also need to see model pricing and hovering over the name of a model
+    should produce a short description of it".
+
+  The owner also clarified that the "no Claude" rule governs Hermes's runtime
+  models, not development reviewers.
+- **Decision:**
+  - The catalog keeps free endpoints (`:free` variants, or zero prompt and
+    completion prices), marked `free`. Claude's free variants and
+    `openrouter/free` stay refused.
+  - The agent configuration gains `freeMode: {enabled, model}`, which applies
+    only to a generic turn from the Igor product that carries no project
+    sources.
+  - Every other turn keeps its paid task model: Frige's scope turns, the
+    legacy page and interview turns that fall back to Igor's conversation
+    task, an Igor turn about a project, and other products.
+  - A free model is refused for every paid task and default model.
+  - Hermes's side-call pins are unchanged.
+  - Each catalog model carries OpenRouter's description, reduced to plain
+    text.
+  - The Company screen shows prices beside every model choice and a model
+    card under each quest. A model's name shows its description on hover or
+    keyboard focus.
+- **Why this shape:**
+  - The obvious implementation, switching `igor.conversation`'s model, would
+    have sent Frige manuscripts to free endpoints. Frige's legacy page and
+    interview turns, and the fallback for unknown tasks, all use that task.
+    Routing therefore depends on where the turn comes from, which the
+    inference service knows, not only on the task.
+  - Free providers may log or train on prompts, so the owner chose to keep
+    manuscripts off them. Refusing free models for paid choices enforces
+    that in configuration as well as in routing.
+- **Contract:** additive fields in `stex.hermes.agent-config.v1`:
+  - `freeMode` on the document and the update;
+  - `free` and `description` on catalog models.
+
+  The Igor server relays them unchanged, and Pantheon and Frige do not read
+  them.
+- **Hermes memory** (also decided by the owner, 2026-11-21, after the
+  review found shared profile memory): the `igor` profile keeps no memory
+  and runs no background review (`apply-igor-profile.sh`, R-15).
+- **Affects:** stex-igor `services/inference` (catalog, store, turn routing),
+  `apps/igor` (the Company screen) and `deploy/hermes`, on branch
+  `feat/free-mode`; `protocol/hermes`.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).

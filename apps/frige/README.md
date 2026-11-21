@@ -296,6 +296,8 @@ default) proposes nothing unless the message begins `Simulate change:` or
 appends the line as a closing stanza to the first offered piece, never to the
 table of contents. `Simulate edit: <exact text> => <replacement>` sends one
 anchored edit to that piece, quoted exactly as written, for Frige to place.
+With a selected passage, **Revise** proposes one labelled edit inside it, and
+the other actions answer without proposing.
 These exercise the contract path without a provider. Through the inference
 service, the director's proposals arrive the same way (program Wave 4b and
 [D-020](../../docs/program/DECISIONS.md)).
@@ -331,6 +333,40 @@ compatibility. The platform consumes
 - The project library uses the common motion policy; the instrumental
   workstation omits artwork. Global navigation and Book projects remain
   available. Unsaved Markdown triggers the native leave-page protection.
+- **Navigation.**
+  - The book tree is rebuilt from Frige's graph each time, so it holds no
+    hierarchy of its own.
+  - It shows the whole book, its sections and their pieces, with verified
+    page numbers, how many proposals await a decision (counted from the
+    contract history), and a mark on the piece with unsaved edits.
+    Each row's accessible name states the same.
+  - **Find a piece** filters by title or file; Enter opens the first match
+    and Escape clears.
+  - Up and Down, Home and End move between rows; Right and Left open and
+    close a section, and Left moves from a piece to its section.
+  - The open book, section or piece is in the address (`&scope=`), so
+    reload, a shared link, and Back and Forward reopen it. Back and Forward
+    keep the unsaved-edit guard.
+- **Editing.**
+  - A piece opens on its source; the book and sections open on their
+    conversation.
+  - The editor shows the line and column, or the lines and characters
+    selected.
+  - Ctrl or Cmd + S saves. No other key is taken from text editing.
+- **Passages.**
+  - Selecting text in a piece shows its actions: **Ask Igor**, **Revise**,
+    **Explain**, **Alternatives** and **Compare**.
+  - An action attaches the passage to the next message and fills in a
+    message the author can change. Nothing is sent until **Send**; the
+    attached passage shows exactly the text that will be sent.
+  - Frige checks the passage against the piece as it is now:
+    - a passage selected before the piece changed is refused, with the
+      reason, and nothing is recorded;
+    - a passage selected over unsaved edits is not offered.
+  - Except for Ask, Igor's proposal may change only the passage
+    ([selected passages](../../protocol/frige/README.md#selected-passages)).
+  - The thread shows each message's passage. If a real gateway did not
+    confirm passing the passage on, the reply says so.
 - The workstation keeps three columns at 1024 px and wider. From 640 to
   1023 px the contents tree becomes a drawer (Tab stays inside, Escape closes
   it and restores focus); below 640 px

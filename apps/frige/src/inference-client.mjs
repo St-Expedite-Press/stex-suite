@@ -96,13 +96,33 @@ const simulatorReceipt = (message) => `Deterministic Igor simulator received: ${
  * the author accepts it. The table of contents is never the target: appending
  * prose to it would not be a meaningful editorial change.
  *
+ * With a selected passage (D-021) and no `Simulate` command, a `revise`
+ * proposes one labelled anchored edit inside the passage, and any other action
+ * answers in prose and proposes nothing.
+ *
  * @param {string} message
  * @param {Array<{ nodeId: string, title: string, kind?: string, source: string }>} [sources]  Sources offered this turn.
+ * @param {{ nodeId: string, title: string, action: string, startLine: number, endLine: number, text: string } | null} [passage]  The selected passage, as the engine resolved it.
  * @returns {object}  A reply in the shape `requestScopeTurn` returns.
  */
-function fakeScopeTurn(message, sources = []) {
+function fakeScopeTurn(message, sources = [], passage = null) {
   const received = String(message || '').trim();
   const meta = (output) => ({ model: 'stex/hermes-fake', usage: { inputChars: received.length, outputChars: output.length, transport: 'fake' } });
+  if (passage && !/^simulate (edit|change|layout):/i.test(received)) {
+    const lines = passage.startLine === passage.endLine ? `line ${passage.startLine}` : `lines ${passage.startLine}–${passage.endLine}`;
+    if (passage.action === 'revise') {
+      // The marker goes before any line breaks that end the passage, so the passage's lines keep their breaks.
+      const replace = passage.text.replace(/(\s*)$/, ' — simulated revision$1');
+      const text = `Deterministic Igor simulator prepared one labelled edit inside the selected passage (${lines} of “${passage.title}”). Nothing changes until you accept it.`;
+      return {
+        commentary: text, availability: 'available', graphSuggestions: [],
+        changes: [{ nodeId: passage.nodeId, edits: [{ find: passage.text, replace }], summary: 'Simulated revision of the selected passage (deterministic simulator, not a model).' }],
+        parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text),
+      };
+    }
+    const text = `Deterministic Igor simulator received the selected passage (${lines} of “${passage.title}”) with the action “${passage.action}”. A model would answer here; the simulator proposes nothing.`;
+    return { commentary: text, availability: 'available', changes: [], graphSuggestions: [], parts: [{ type: 'text', text }], droppedParts: [], meta: meta(text) };
+  }
   // One line of verse: whitespace folded, leading Markdown markers dropped so the
   // line cannot become a heading (and retitle the piece) or a quotation.
   const requested = clip((SIMULATED_CHANGE.exec(received)?.[1] || '').replace(/\s+/g, ' ').replace(/^[#>\s]+/, '').trim());
@@ -163,14 +183,15 @@ function fakeScopeTurn(message, sources = []) {
  * director was given. Only the expected shape is kept.
  *
  * @param {unknown} value
- * @returns {{ outline: { count: number, truncated: boolean } | null, documentSettings: boolean, approvedContracts: string[] | null } | null}
+ * @returns {{ outline: { count: number, truncated: boolean } | null, documentSettings: boolean, approvedContracts: string[] | null, selection: boolean } | null}
  */
 function forwardedFrom(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const outline = value.outline && typeof value.outline === 'object' && Number.isInteger(value.outline.count) && value.outline.count >= 0
     ? { count: value.outline.count, truncated: value.outline.truncated === true } : null;
   const approvedContracts = Array.isArray(value.approvedContracts) ? value.approvedContracts.filter((id) => typeof id === 'string').slice(0, 20) : null;
-  return { outline, documentSettings: value.documentSettings === true, approvedContracts };
+  // `selection`: the gateway forwarded the selected passage (D-021). Absent means not confirmed.
+  return { outline, documentSettings: value.documentSettings === true, approvedContracts, selection: value.selection === true };
 }
 
 /**
@@ -193,6 +214,17 @@ export function layoutFrom(value) {
 }
 
 /**
+ * What the gateway is sent about a selected passage (D-021): where it is,
+ * which revision it was selected in, the action asked for, and its exact text.
+ *
+ * @param {{ nodeId: string, relativePath: string, baseHash: string, action: string, startLine: number, endLine: number, text: string }} passage  As the engine resolved it.
+ * @returns {object}
+ */
+function passageForGateway({ nodeId, relativePath, baseHash, action, startLine, endLine, text }) {
+  return { category: 'selected-passage', nodeId, relativePath, sourceHash: baseHash, action, startLine, endLine, text };
+}
+
+/**
  * One editorial turn with the director for a book, a section or a piece
  * (`stex.texgraph.scope-turn.v3`). `hierarchy`, when given, adds the scope's
  * outline, settings in force and approved contracts as three separately
@@ -201,8 +233,8 @@ export function layoutFrom(value) {
  * @param {object} input
  * @returns {Promise<object>}  The labelled reply; never throws for an unavailable gateway.
  */
-export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null }) {
-  if (deterministic()) return fakeScopeTurn(message, sources);
+export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null, passage = null }) {
+  if (deterministic()) return fakeScopeTurn(message, sources, passage);
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
   const controller = new AbortController();
@@ -225,6 +257,9 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         ...(answer ? { answer } : {}),
         // Additive v3 field (D-020): this Frige resolves anchored edits, so the gateway may teach and send them.
         proposalForms: ['source', 'edits'],
+        // Additive v3 field (D-021): the passage the author selected, checked by the engine against the
+        // current source, labelled as its own category. Never merged into the message or the sources.
+        ...(passage ? { selection: passageForGateway(passage) } : {}),
       }),
     });
     if (!response.ok) {

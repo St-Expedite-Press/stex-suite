@@ -24,6 +24,8 @@ const stub = http.createServer(async (request, response) => {
   const turn = JSON.parse(raw); const source = turn.scopeSources[0];
   response.writeHead(200, { 'content-type': 'application/json' });
   // A layout request gets the optional `layout` reply field, through the real gateway path.
+  // A selected passage to revise gets one anchored edit inside it, and the gateway confirms forwarding it (D-021).
+  if (turn.selection?.action === 'revise') { response.end(JSON.stringify({ commentary: 'Simulated revision of the selected passage.', changes: [{ nodeId: turn.selection.nodeId, edits: [{ find: turn.selection.text, replace: `${turn.selection.text} (revised in its passage)` }], summary: 'Synthetic passage revision' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'stub' }, forwardedContext: { selection: true } } })); return; }
   // An edit request gets one anchored edit (F5-B) instead of the whole piece; Frige resolves it.
   if (/^simulate edit:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated anchored edit for this synthetic fixture.', changes: [{ nodeId: source.nodeId, edits: [{ find: 'indented and Unicode — kept as written.', replace: 'indented and Unicode — revised, and still kept.' }], summary: 'Synthetic anchored edit' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
   if (/^simulate layout:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated layout proposal for this synthetic fixture.', changes: [], layout: { set: { fontSize: '14pt', leading: '17pt' }, summary: 'Synthetic layout' }, parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
@@ -37,6 +39,8 @@ const children = [
 ];
 const report = { workflow: [], viewports: [], limits: ['Chrome only; synthetic fixtures and local inference stub; no provider or production operations'] };
 let browser;
+/** The page's evaluate, kept so a failure can record what the page showed. */
+let pageEvaluate = null;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(check, label, timeout = 45000) { const start = Date.now(); while (Date.now() - start < timeout) { if (await check()) return; await delay(100); } throw new Error('Timed out: ' + label); }
 async function api(route, payload, method) {
@@ -46,7 +50,15 @@ async function api(route, payload, method) {
 try {
   await Promise.all(children.map((child) => started(child, /ready/, 'Publishing stack')));
   browser = await launchBrowser(); const tab = await page(browser.devtools);
-  const evaluate = tab.evaluate;
+  const evaluate = tab.evaluate; pageEvaluate = evaluate;
+  // Dialogs the workflow expects are answered in the page (window.confirm is replaced first). A native
+  // dialog would block the page and every later check, so one is dismissed, recorded, and fails the run.
+  const unexpectedDialogs = [];
+  browser.devtools.listeners.add((message) => {
+    if (message.method !== 'Page.javascriptDialogOpening') return;
+    unexpectedDialogs.push(`${message.params.type}: ${message.params.message}`);
+    tab.send('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
+  });
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
@@ -75,6 +87,8 @@ try {
   await input('#source', changed + '\nStale browser edit.\n'); await click('#save-source');
   await until(() => evaluate(`/changed|stale|reload/i.test(document.querySelector('#save-state').textContent)`), 'visible stale save refusal');
   assert.doesNotMatch(await readFile(poemPath, 'utf8'), /Stale browser/); report.workflow.push('stale save refuses to overwrite concurrent source');
+  // The refused edit is still unsaved, so Refresh asks before discarding it; the author chooses to discard.
+  await evaluate('window.confirm = () => true');
   await click('#refresh'); await until(() => evaluate(`!document.querySelector('#save-state').textContent.includes('Unsaved')`), 'refresh');
   await click('#show-thread'); await input('#message', 'Prepare a synthetic proposal'); await click('#turn-form [type="submit"]');
   await until(() => evaluate(`!!document.querySelector('.changes .accept')`), 'visible proposal diff');
@@ -124,6 +138,105 @@ try {
   await until(async () => (await readFile(poemPath, 'utf8')) === beforeAccept, 'anchored edit rolled back to the exact prior text');
   await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after the anchored edit');
   report.workflow.push('an anchored edit through the gateway reply is shown as its headed passage, accepted byte-exact and rolled back');
+
+  // Interface increment 1: the open scope is in the address, survives a reload, and follows Back and Forward.
+  const scopeParam = () => evaluate(`new URLSearchParams(location.search).get('scope')`);
+  assert.equal(await scopeParam(), selected.id, 'opening a piece records it in the address');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  assert.match(await evaluate(`document.querySelector('#conversation-title').textContent`), /Morning/, 'a deep link opens its piece');
+  assert.equal(await evaluate(`document.querySelector('#source-panel').classList.contains('hidden')`), false, 'a piece opens on its source');
+  await click('.tree-book'); await until(async () => (await scopeParam()) === null, 'whole book in the address');
+  await evaluate('history.back()'); await until(() => evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`), 'Back returns to the piece');
+  await evaluate('history.forward()'); await until(() => evaluate(`document.querySelector('.tree-book').getAttribute('aria-current') === 'true'`), 'Forward returns to the whole book');
+  await evaluate('history.back()'); await until(async () => (await scopeParam()) === selected.id, 'back on the piece');
+  await until(() => evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`), 'piece reopened');
+  report.workflow.push('the open scope is in the address: a deep link survives reload, and Back and Forward move between scopes');
+  // Review finding H1: Back with unsaved edits asks first; refusing keeps the edit, the scope and the
+  // address, and steps back without adding a history entry (N3).
+  await click('#show-source');
+  await evaluate(`(() => { const area = document.querySelector('#source'); area.value += '\\nAn unsaved line.'; area.dispatchEvent(new Event('input', { bubbles: true })); window.__asked = 0; window.confirm = () => { window.__asked += 1; return false; }; })()`);
+  const entries = await evaluate('history.length');
+  await evaluate('history.back()');
+  await until(() => evaluate('window.__asked === 1'), 'Back asks before discarding unsaved edits');
+  await until(async () => (await scopeParam()) === selected.id, 'the address returns to the piece');
+  assert.equal(await evaluate(`document.querySelector('#source').value.endsWith('An unsaved line.')`), true, 'the unsaved edit survives');
+  assert.match(await evaluate(`document.querySelector('#conversation-title').textContent`), /Morning/);
+  assert.equal(await evaluate('history.length'), entries, 'no history entry is added');
+  await evaluate('window.confirm = () => true'); await click('#refresh');
+  await until(() => evaluate(`!document.querySelector('#source').value.endsWith('An unsaved line.')`), 'edit discarded on an accepted refresh');
+  report.workflow.push('Back with unsaved edits asks first; refusing keeps the edit, scope and address and adds no entry');
+  // Review finding M1: Back then Forward during a slow load ends where the address says.
+  await click('.tree-book'); await until(async () => (await scopeParam()) === null, 'whole book open');
+  await evaluate(`(() => { const original = window.fetch; window.__restoreFetch = () => { window.fetch = original; }; window.fetch = (url, options) => (String(url).includes('/api/nodes/${selected.id}') ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => original(url, options)) : original(url, options)); })()`);
+  await evaluate('history.back()'); await delay(200); await evaluate('history.forward()');
+  await delay(2500);
+  assert.equal(await scopeParam(), null, 'the address ends on the whole book');
+  assert.equal(await evaluate(`document.querySelector('.tree-book').getAttribute('aria-current')`), 'true', 'the screen ends on the whole book too');
+  await evaluate('window.__restoreFetch()');
+  await evaluate(`document.querySelector('.tree-piece').click()`);
+  await until(async () => (await scopeParam()) === selected.id && (await evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`)), 'piece reopened after the race');
+  report.workflow.push('Back then Forward during a slow load: the last navigation wins, and the address and screen agree');
+  // The navigator filters by title or file and moves by arrow keys.
+  await input('#tree-filter', 'morn');
+  assert.deepEqual(await evaluate(`({ pieces: [...document.querySelectorAll('#book-tree .tree-piece')].map(node => node.querySelector('.tree-title').textContent), count: document.querySelector('#tree-count').textContent })`), { pieces: ['Morning'], count: '1 of 1 piece' });
+  await input('#tree-filter', 'nothing-like-this');
+  assert.match(await evaluate(`document.querySelector('.tree-empty')?.textContent || ''`), /No piece matches/);
+  await evaluate(`document.querySelector('#tree-filter').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  assert.equal(await evaluate(`document.querySelector('#tree-filter').value`), '');
+  // At desktop width the tree is always shown; below 1024 px it is a closed drawer, whose rows cannot take focus.
+  await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await evaluate(`document.querySelector('.tree-book').focus()`);
+  const treeRows = await evaluate(`[...document.querySelectorAll('#book-tree [data-tree-id]')].map(node => node.dataset.treeId)`);
+  const focusedRow = () => evaluate(`document.activeElement.dataset.treeId || document.activeElement.id || document.activeElement.tagName`);
+  await tab.key('ArrowDown', 'ArrowDown', 40);
+  assert.equal(await focusedRow(), treeRows[1], 'ArrowDown moves to the next row');
+  await tab.key('End', 'End', 35); assert.equal(await focusedRow(), treeRows.at(-1), 'End moves to the last row');
+  await tab.key('Home', 'Home', 36); assert.equal(await focusedRow(), 'book', 'Home moves to the first row');
+  await tab.send('Emulation.clearDeviceMetricsOverride');
+  report.workflow.push('navigator filter by title, empty state and Escape; arrow-key movement between rows');
+
+  // A real selection in the editor, revised through the passage bar: the chip shows exactly what is sent,
+  // the proposal stays inside the passage, acceptance is byte-exact, and rollback restores the bytes.
+  const phrase = 'indented and Unicode — kept as written.';
+  const selectPhrase = () => evaluate(`(() => { const area = document.querySelector('#source'); const at = area.value.indexOf(${JSON.stringify(phrase)}); area.focus(); area.setSelectionRange(at, at + ${phrase.length}); area.dispatchEvent(new Event('select')); })()`);
+  await click('#show-source'); await selectPhrase();
+  await until(() => evaluate(`!document.querySelector('#passage-bar').hidden`), 'passage bar for the selection');
+  assert.equal(await evaluate(`document.querySelector('#passage-label').textContent`), 'line 4 of “Morning”');
+  assert.equal(await evaluate(`document.querySelector('#source-position').textContent`), `line 4 selected · ${phrase.length} characters`);
+  await capture('passage-selected.png', { reveal: '#passage-bar' });
+  await click('#passage-bar [data-action="revise"]');
+  const chip = await evaluate(`({ shown: !document.querySelector('#passage-chip').hidden, summary: document.querySelector('#passage-chip summary').textContent, text: document.querySelector('#passage-chip .passage-text').textContent, message: document.querySelector('#message').value, focused: document.activeElement.id })`);
+  assert.deepEqual(chip, { shown: true, summary: 'Revise · line 4 of “Morning”', text: phrase, message: 'Revise the selected passage.', focused: 'message' });
+  await evaluate(`document.querySelector('#passage-chip details').open = true`); await capture('passage-attached.png', { reveal: '#passage-chip' });
+  await click('#turn-form [type="submit"]');
+  await until(() => evaluate(`!!document.querySelector('.changes .accept') && !!document.querySelector('.passage-quote')`), 'passage proposal and the quoted passage in the thread');
+  assert.equal(await evaluate(`document.querySelector('.passage-quote figcaption').textContent`), 'Revise · line 4 of “Morning”');
+  assert.equal(await evaluate(`document.querySelectorAll('#passage-chip:not([hidden])').length`), 0, 'the chip is spent once sent');
+  assert.equal(await readFile(poemPath, 'utf8'), beforeAccept, 'the passage proposal is inert');
+  await capture('passage-proposal.png', { reveal: '.changes' });
+  await click('.changes .accept');
+  const passageEdited = beforeAccept.replace(phrase, `${phrase} (revised in its passage)`);
+  await until(async () => (await readFile(poemPath, 'utf8')) === passageEdited, 'passage revision accepted byte-exact');
+  await until(() => evaluate(`!!document.querySelector('.decision-revert:not([disabled])')`), 'roll back control for the passage revision');
+  await click('.decision-revert');
+  await until(async () => (await readFile(poemPath, 'utf8')) === beforeAccept, 'passage revision rolled back');
+  await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled && !document.querySelector('#build').disabled`), 'workspace idle after the passage rollback');
+  report.workflow.push('select a passage, Revise from the passage bar, inspect the attached text, receive a proposal inside it, accept byte-exact, roll back');
+
+  // A selection made before someone else saved the piece is refused, visibly, and nothing is recorded.
+  await click('#show-source'); await selectPhrase(); await until(() => evaluate(`!document.querySelector('#passage-bar').hidden`), 'passage bar again');
+  await click('#passage-bar [data-action="explain"]');
+  const turnsBefore = (await api(`/scopes/${selected.id}/turns?book=fixture-book`)).length;
+  const concurrent = `${beforeAccept}\nA line saved elsewhere.\n`;
+  await api(`/nodes/${selected.id}?book=fixture-book`, { source: concurrent, baseHash: (await api(`/nodes/${selected.id}?book=fixture-book`)).hash }, 'PUT');
+  await click('#turn-form [type="submit"]');
+  await until(() => evaluate(`/changed after the passage was selected/.test(document.querySelector('#turns').textContent)`), 'stale passage refused visibly');
+  assert.equal((await api(`/scopes/${selected.id}/turns?book=fixture-book`)).length, turnsBefore, 'a refused passage records no turn');
+  assert.equal(await readFile(poemPath, 'utf8'), concurrent);
+  assert.equal(await evaluate(`document.querySelector('#passage-chip').hidden`), true, 'the refused passage is not offered again');
+  await api(`/nodes/${selected.id}?book=fixture-book`, { source: beforeAccept, baseHash: (await api(`/nodes/${selected.id}?book=fixture-book`)).hash }, 'PUT');
+  await click('#refresh'); await until(() => evaluate(`!document.querySelector('#turn-form [type="submit"]').disabled`), 'refreshed after the stale passage');
+  report.workflow.push('a passage selected before a concurrent save is refused with a visible reason and records nothing');
   await click('#open-design'); await input('[name="fontSize"]', '13pt'); await click('#design-panel [type="submit"]');
   await until(() => evaluate(`document.querySelector('#design-state').textContent === 'Saved.'`), 'profile save');
   const preflight = await api('/project/preflight?book=fixture-book'); assert.equal(preflight.checks.find((entry) => entry.id === 'freshness').status, 'warn');
@@ -187,8 +300,13 @@ try {
   assert.equal(report.keyboard.outline, 'solid'); assert.equal(report.keyboard.width, '2px');
   report.workflow.push('platform keyboard focus and tablet drawer Escape/inert behavior');
   assert.equal((await fetch('http://127.0.0.1:4437/frige/?book=fixture-book', { redirect: 'manual' })).headers.get('location'), base + '/frige/?book=fixture-book');
+  assert.deepEqual(unexpectedDialogs, [], 'no native dialog opened that the workflow did not expect');
   report.result = 'PASS'; report.browser = browser.browserPath; console.log('PASS: platform publishing workflow, real proof, five viewports');
-} catch (error) { report.result = 'FAIL'; report.error = error.stack; console.error(error); process.exitCode = 1; }
+} catch (error) {
+  report.result = 'FAIL'; report.error = error.stack; console.error(error); process.exitCode = 1;
+  // What the page showed when the check failed: the workstation writes a startup failure into the page.
+  try { report.pageText = await pageEvaluate?.(`(document.querySelector('main') || document.body).innerText.slice(0, 800)`); console.error(`Page: ${report.pageText}`); } catch { /* the page may be gone */ }
+}
 finally {
   await writeFile(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
   if (browser) await browser.close();

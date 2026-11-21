@@ -8,8 +8,11 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 **Wave F — Frige product completion** (from 2026-11-20). Its first
 increment adds anchored edits for long pieces and passage review. It is
 merged (suite PR 8) and released (stex-igor `c5af494`)
-([evidence](../verification/frige-wave-f-anchored-edits.md)). Next: F-B3
-long-form context.
+([evidence](../verification/frige-wave-f-anchored-edits.md)). Interface
+increment 1 (navigation and exact passage selection) is on
+`feat/frige-ui-passages`
+([evidence](../verification/frige-ui-1-navigation-passages.md)). Next:
+interface increment 2 (editorial review), then F-B3 long-form context.
 
 **Wave 4 — Igor integration for Frige** (complete). Waves 2, 3 and the suite side of
 4a are merged to suite `main` (PR 6, `51577f1`, 2026-11-19). Wave 4b (director
@@ -58,6 +61,8 @@ records are on PR 7. Evidence:
 | W4-c | A live director proposal against hosted Hermes | 4 | Done by W4-f. First attempt: one paid turn (about $0.02 of a $1 ceiling) through the production gateway. Grok followed the format and copied every unchanged line; the turn took 32 s, so the 30-second budget discarded it. The captured reply passes end to end by replay | [Live turn](../verification/director-proposals-w4.md#live-turn-w4-c) |
 | WF-0 | Wave F (Frige product completion) defined; numbering reconciled with Waves 5–7 ([D-020](DECISIONS.md)) | F | Done; open to owner review | [Master plan](MASTER-PLAN.md#waves) |
 | WF-1 | Anchored edits for long pieces (F-B1, F-B2), stex-igor adapter (F-B5), passage review in the workstation (F-A3, part) | F | Done: merged (suite PR 8, `44cd3ac`) and released (stex-igor `c5af494`, 2026-11-21); one independent review round, all findings fixed (verified by tests, not re-reviewed) | [Wave F report](../verification/frige-wave-f-anchored-edits.md) |
+| WF-UI1 | Interface increment 1: navigator search, marks, keys and deep links; a piece opens on its source; exact passage selection with contextual actions, checked and bounded by the engine ([D-021](DECISIONS.md)); stex-igor adapter on `feat/frige-passages` | F | Implemented and tested locally; one independent review round, findings fixed (High: Back and Forward losing unsaved edits); not merged or released | [UI-1 report](../verification/frige-ui-1-navigation-passages.md) |
+| IG-FREE | Igor free mode (sandbox only), model prices and hover descriptions in the Company screen ([D-022](DECISIONS.md)) | — | Implemented and tested locally on stex-igor `feat/free-mode`; one independent review round, findings fixed; Hermes memory (R-15) must be settled before release; not released | [Free mode report](../verification/igor-free-mode-pricing.md) |
 | D-13 | Baseline debt 13: `corepack pnpm test` blocked locally by Application Control | — | Done: mypy and pytest run as Python modules; the full suite now passes as one command | `corepack pnpm test` exit 0 |
 | D-09 | Baseline debt 9: Seaxneat simulator input handling | — | Done: replacement patterns literal, braces stripped; regression test; `verify:platform` PASS | `test:seaxneat` (24) |
 
