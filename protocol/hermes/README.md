@@ -82,6 +82,47 @@ Rules:
   If no copy exists, only the default stack is offered (`source: defaults`).
   A chosen model must be in the catalog and must report the task's
   `requires` capabilities (`MODEL_UNAVAILABLE`).
+  - Each catalog model carries `description`: OpenRouter's description,
+    reduced to at most 280 characters of plain text, shown when its name is
+    hovered or focused.
+  - Each also carries `free`: a `:free` variant, or zero prompt and
+    completion prices. Unknown prices are not free.
+  - Claude's free variants, and OpenRouter's own `openrouter/free` router,
+    are refused like any other Claude model or router.
+- **Free mode** (added 2026-11-21, [D-022](../../docs/program/DECISIONS.md)).
+  The owner may run **Igor's own conversation sandbox** on a free model.
+  - Document: `freeMode: {task: "igor.conversation", scope: "igor-sandbox",
+    enabled, model}`.
+  - Update: `freeMode: {enabled?, model?}`. Fields left out keep their saved
+    values, the model is kept when the mode is turned off, and a reset clears
+    both.
+  - It applies only to a generic turn (`/v1/hermes/turn`) that has all of
+    these:
+    - `product` `igor`;
+    - an operation of exactly `{kind: "conversation"}`;
+    - no context at all.
+
+    Every other turn keeps its paid task model:
+    - Frige's scope turns;
+    - the legacy page and interview turns that use Igor's conversation task;
+    - an Igor turn about a project;
+    - a turn carrying any context or payload;
+    - another product.
+  - Turning the mode on needs a model the catalog marks `free`. A free model
+    is refused (`MODEL_UNAVAILABLE`) for every task and default model.
+  - The same rule is checked again on every turn, since OpenRouter may
+    reprice a model after it was chosen:
+    - a paid turn whose model the catalog now marks free fails closed
+      (`MODEL_UNAVAILABLE`);
+    - so does a free-mode turn whose model is no longer free, or cannot be
+      confirmed free.
+  - Catalog `free` flags are recomputed from ids and prices, never read back
+    from a cache.
+  - Hermes's own profile memory is outside this rule; see
+    [R-15](../../docs/program/RISKS.md).
+  - The Company screen warns that free endpoints are rate-limited and may log
+    or train on what is sent.
+  - Hermes's own side calls keep their pinned Grok models.
 - **Fixed profiles.** The eight profile ids, their discipline, mission,
   runtime state and allowed skills are read-only. Configuration never adds,
   renames, activates or removes a profile, grants a toolset, or widens a

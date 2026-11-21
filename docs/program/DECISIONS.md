@@ -331,6 +331,54 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   workstation, `protocol/frige` and `protocol/texgraph`, and the stex-igor
   adapter on branch `feat/frige-passages`, which is unreleased.
 
+## D-022 — Free mode for Igor's sandbox; prices and descriptions in the Company screen
+
+- **Decided by:** the owner, 2026-11-21:
+  - "I want a 'free model' mode";
+  - asked how far it should reach: "Only the igor conversational sandbox has
+    free mode";
+  - asked which conversations may use free models: "Igor conversations only";
+  - "we also need to see model pricing and hovering over the name of a model
+    should produce a short description of it".
+
+  The owner also clarified that the "no Claude" rule governs Hermes's runtime
+  models, not development reviewers.
+- **Decision:**
+  - The catalog keeps free endpoints (`:free` variants, or zero prompt and
+    completion prices), marked `free`. Claude's free variants and
+    `openrouter/free` stay refused.
+  - The agent configuration gains `freeMode: {enabled, model}`, which applies
+    only to a generic turn from the Igor product that carries no project
+    sources.
+  - Every other turn keeps its paid task model: Frige's scope turns, the
+    legacy page and interview turns that fall back to Igor's conversation
+    task, an Igor turn about a project, and other products.
+  - A free model is refused for every paid task and default model.
+  - Hermes's side-call pins are unchanged.
+  - Each catalog model carries OpenRouter's description, reduced to plain
+    text.
+  - The Company screen shows prices beside every model choice and a model
+    card under each quest. A model's name shows its description on hover or
+    keyboard focus.
+- **Why this shape:**
+  - The obvious implementation, switching `igor.conversation`'s model, would
+    have sent Frige manuscripts to free endpoints. Frige's legacy page and
+    interview turns, and the fallback for unknown tasks, all use that task.
+    Routing therefore depends on where the turn comes from, which the
+    inference service knows, not only on the task.
+  - Free providers may log or train on prompts, so the owner chose to keep
+    manuscripts off them. Refusing free models for paid choices enforces
+    that in configuration as well as in routing.
+- **Contract:** additive fields in `stex.hermes.agent-config.v1`:
+  - `freeMode` on the document and the update;
+  - `free` and `description` on catalog models.
+
+  The Igor server relays them unchanged, and Pantheon and Frige do not read
+  them.
+- **Affects:** stex-igor `services/inference` (catalog, store, turn routing)
+  and `apps/igor` (the Company screen), on branch `feat/free-mode`
+  (unreleased); `protocol/hermes`.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
