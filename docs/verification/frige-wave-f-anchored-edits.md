@@ -129,6 +129,37 @@ listed in the acceptance table.
   The failure therefore does not come from this change. Recorded as
   [R-13](../program/RISKS.md).
 
+## Release (2026-11-21 UTC)
+
+The owner directed both branches to be merged ("merge them down"), which
+for stex-igor is a production release.
+
+- **Suite:** PR 8 merged as `44cd3ac` after CI passed. The CI run used
+  Linux with LuaLaTeX and passed the full `corepack pnpm test`, including
+  the preflight test.
+- **stex-igor:**
+  - PR 4 passed CI, and `main` was fast-forwarded from `bd8b3b0` to
+    `c5af494`, the commit the suite pins.
+  - Deploy run `44848866828` built and shipped the release. It installed
+    `stex-igor-c5af494971a8` in production as generation 14, after the
+    install script's two consecutive health checks; the script restores the
+    previous release when they fail.
+  - The workflow's last step, reading `/opt/stex/current/RELEASE.json`
+    over IAP SSH, failed with `Permission denied (publickey)`, so the run
+    is marked failed. That step never read a different release; it could
+    not connect.
+- **Checked from outside:**
+  - `https://igor.stexpedite.press/igor/login` answers 200;
+  - the API answers its own structured `401 UNAUTHORIZED`, not a proxy
+    error.
+
+  The active commit on the VM was not read back after the install.
+  Confirming it is an owner step: read `/opt/stex/ACTIVE.json` on the VM,
+  or re-run the workflow, which reinstalls the same generation.
+- **Not done:** no paid live turn. No `apply-igor-profile.sh` or Hermes
+  restart either; neither is needed, because the change is in the
+  inference service only.
+
 ## Independent review
 
 **Round 1** (2026-11-20). A separate reviewer agent ran with the diffs and
