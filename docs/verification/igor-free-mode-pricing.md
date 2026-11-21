@@ -71,10 +71,20 @@ The owner authorized the release ("all of that works").
     generation 15.
 - **From outside:** the sign-in page answers 200, and the API answers its
   own 401.
-- **Not yet done:**
-  - the operator step for R-15 (`apply-igor-profile.sh` on the VM, then a
-    restart of `hermes-igor`), so Hermes memory is still on until then;
-  - a live free-mode or passage turn.
+- **Operator step (2026-11-21, 19:19 UTC, owner-authorized: "update the vm"):**
+  - the released `apply-igor-profile.sh` and `agent-config-pins.mjs` were
+    copied to the VM, matched against the commit's SHA-256, installed in
+    `/root/stex-hermes-apply/` and run as root;
+  - the profile config was backed up first;
+  - output: every model Grok, no fallbacks, empty toolsets,
+    `memory.memory_enabled = false`, `memory.user_profile_enabled = false`,
+    `auxiliary.background_review.enabled = false`;
+  - `hermes-igor` restarted: active, no errors logged, Hermes API 200 on
+    loopback, and the inference service healthy with `agentConfig: ok`;
+  - the profile's `memories` directory was empty, so no saved memory
+    existed to leak;
+  - the uploaded files were removed from `/tmp`.
+- **Not yet done:** a live free-mode or passage turn.
 
 ## Independent review
 
