@@ -434,6 +434,9 @@ export function applyEdits(base, edits, { within = null } = {}) {
     const end = start + find.length;
     const splitsLineEnd = (at) => at > 0 && at < base.length && base[at - 1] === '\r' && base[at] === '\n';
     if (splitsLineEnd(start) || splitsLineEnd(end)) return { reason: `${which} would divide a line ending.` };
+    // A lone carriage return just before the span would fuse with a line feed the edit brings next
+    // to it (its replacement's first character, or, for a deletion, the character after the span).
+    if (start > 0 && base[start - 1] === '\r' && (replace ? replace[0] : base[end]) === '\n') return { reason: `${which} would join the carriage return before it into a line ending.` };
     resolved.push({ start, end, replace });
   }
   resolved.sort((left, right) => left.start - right.start);
@@ -519,7 +522,11 @@ export function resolvePassage(source, { start, end, text }) {
   // The line of the character at an offset. A passage's last character may be its line's own
   // line break, which belongs to that line, so a passage ending with one ends on that line.
   const lineOf = (offset) => editorText.slice(0, offset).split('\n').length;
-  return { start: raw[start], end: raw[end], text: source.slice(raw[start], raw[end]), startLine: lineOf(start), endLine: lineOf(end - 1) };
+  const canonical = source.slice(raw[start], raw[end]);
+  // The gateway bounds the passage it forwards by its canonical length, in which a CRLF is two
+  // characters; refuse here rather than accept a passage the gateway would drop.
+  if (canonical.length > MAX_PASSAGE) return { reason: `A selected passage must be under ${MAX_PASSAGE} characters, counting each line ending in the file.` };
+  return { start: raw[start], end: raw[end], text: canonical, startLine: lineOf(start), endLine: lineOf(end - 1) };
 }
 
 /**

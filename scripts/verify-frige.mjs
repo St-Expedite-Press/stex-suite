@@ -51,6 +51,14 @@ try {
   await Promise.all(children.map((child) => started(child, /ready/, 'Publishing stack')));
   browser = await launchBrowser(); const tab = await page(browser.devtools);
   const evaluate = tab.evaluate; pageEvaluate = evaluate;
+  // Dialogs the workflow expects are answered in the page (window.confirm is replaced first). A native
+  // dialog would block the page and every later check, so one is dismissed, recorded, and fails the run.
+  const unexpectedDialogs = [];
+  browser.devtools.listeners.add((message) => {
+    if (message.method !== 'Page.javascriptDialogOpening') return;
+    unexpectedDialogs.push(`${message.params.type}: ${message.params.message}`);
+    tab.send('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
+  });
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
@@ -79,6 +87,8 @@ try {
   await input('#source', changed + '\nStale browser edit.\n'); await click('#save-source');
   await until(() => evaluate(`/changed|stale|reload/i.test(document.querySelector('#save-state').textContent)`), 'visible stale save refusal');
   assert.doesNotMatch(await readFile(poemPath, 'utf8'), /Stale browser/); report.workflow.push('stale save refuses to overwrite concurrent source');
+  // The refused edit is still unsaved, so Refresh asks before discarding it; the author chooses to discard.
+  await evaluate('window.confirm = () => true');
   await click('#refresh'); await until(() => evaluate(`!document.querySelector('#save-state').textContent.includes('Unsaved')`), 'refresh');
   await click('#show-thread'); await input('#message', 'Prepare a synthetic proposal'); await click('#turn-form [type="submit"]');
   await until(() => evaluate(`!!document.querySelector('.changes .accept')`), 'visible proposal diff');
@@ -141,6 +151,31 @@ try {
   await evaluate('history.back()'); await until(async () => (await scopeParam()) === selected.id, 'back on the piece');
   await until(() => evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`), 'piece reopened');
   report.workflow.push('the open scope is in the address: a deep link survives reload, and Back and Forward move between scopes');
+  // Review finding H1: Back with unsaved edits asks first; refusing keeps the edit, the scope and the
+  // address, and steps back without adding a history entry (N3).
+  await click('#show-source');
+  await evaluate(`(() => { const area = document.querySelector('#source'); area.value += '\\nAn unsaved line.'; area.dispatchEvent(new Event('input', { bubbles: true })); window.__asked = 0; window.confirm = () => { window.__asked += 1; return false; }; })()`);
+  const entries = await evaluate('history.length');
+  await evaluate('history.back()');
+  await until(() => evaluate('window.__asked === 1'), 'Back asks before discarding unsaved edits');
+  await until(async () => (await scopeParam()) === selected.id, 'the address returns to the piece');
+  assert.equal(await evaluate(`document.querySelector('#source').value.endsWith('An unsaved line.')`), true, 'the unsaved edit survives');
+  assert.match(await evaluate(`document.querySelector('#conversation-title').textContent`), /Morning/);
+  assert.equal(await evaluate('history.length'), entries, 'no history entry is added');
+  await evaluate('window.confirm = () => true'); await click('#refresh');
+  await until(() => evaluate(`!document.querySelector('#source').value.endsWith('An unsaved line.')`), 'edit discarded on an accepted refresh');
+  report.workflow.push('Back with unsaved edits asks first; refusing keeps the edit, scope and address and adds no entry');
+  // Review finding M1: Back then Forward during a slow load ends where the address says.
+  await click('.tree-book'); await until(async () => (await scopeParam()) === null, 'whole book open');
+  await evaluate(`(() => { const original = window.fetch; window.__restoreFetch = () => { window.fetch = original; }; window.fetch = (url, options) => (String(url).includes('/api/nodes/${selected.id}') ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => original(url, options)) : original(url, options)); })()`);
+  await evaluate('history.back()'); await delay(200); await evaluate('history.forward()');
+  await delay(2500);
+  assert.equal(await scopeParam(), null, 'the address ends on the whole book');
+  assert.equal(await evaluate(`document.querySelector('.tree-book').getAttribute('aria-current')`), 'true', 'the screen ends on the whole book too');
+  await evaluate('window.__restoreFetch()');
+  await evaluate(`document.querySelector('.tree-piece').click()`);
+  await until(async () => (await scopeParam()) === selected.id && (await evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`)), 'piece reopened after the race');
+  report.workflow.push('Back then Forward during a slow load: the last navigation wins, and the address and screen agree');
   // The navigator filters by title or file and moves by arrow keys.
   await input('#tree-filter', 'morn');
   assert.deepEqual(await evaluate(`({ pieces: [...document.querySelectorAll('#book-tree .tree-piece')].map(node => node.querySelector('.tree-title').textContent), count: document.querySelector('#tree-count').textContent })`), { pieces: ['Morning'], count: '1 of 1 piece' });
@@ -265,6 +300,7 @@ try {
   assert.equal(report.keyboard.outline, 'solid'); assert.equal(report.keyboard.width, '2px');
   report.workflow.push('platform keyboard focus and tablet drawer Escape/inert behavior');
   assert.equal((await fetch('http://127.0.0.1:4437/frige/?book=fixture-book', { redirect: 'manual' })).headers.get('location'), base + '/frige/?book=fixture-book');
+  assert.deepEqual(unexpectedDialogs, [], 'no native dialog opened that the workflow did not expect');
   report.result = 'PASS'; report.browser = browser.browserPath; console.log('PASS: platform publishing workflow, real proof, five viewports');
 } catch (error) {
   report.result = 'FAIL'; report.error = error.stack; console.error(error); process.exitCode = 1;

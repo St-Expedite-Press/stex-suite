@@ -1235,6 +1235,17 @@ test('a selected passage resolves to the canonical bytes it covers, in the edito
   refused({ start: 0, end: 2, text: 'abc' }, /match its range/);
   refused({ start: 0, end: 1, text: '\uD800' }, /not valid text/);
   refused({ start: 0, end: 12_001, text: 'x'.repeat(12_001) }, /under 12000/);
+  // Review finding L1: 8,000 short CRLF lines are under the limit in the editor but over it in the file.
+  const crlfLines = 'ab\r\n'.repeat(4000); const shown = crlfLines.replace(/\r\n/g, '\n');
+  assert.match(resolvePassage(crlfLines, { start: 0, end: shown.length, text: shown }).reason, /counting each line ending in the file/);
+});
+
+test('an edit never fuses a lone carriage return with a line feed it brings next to it', () => {
+  // Review note N2: in a lone-CR piece, an inserted or exposed line feed would turn "\r" into a CRLF.
+  const base = 'one\rtwo\rthree';
+  assert.match(applyEdits(base, [{ find: 'two', replace: '\ntwo' }]).reason, /join the carriage return/);
+  assert.match(applyEdits('a\rX\nb', [{ find: 'X', replace: '' }]).reason, /join the carriage return/);
+  assert.equal(applyEdits(base, [{ find: 'two', replace: 'TWO' }]).source, 'one\rTWO\rthree');
 });
 
 test('a change is inside a passage only when every byte outside it is unchanged', () => {

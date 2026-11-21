@@ -1,7 +1,7 @@
 # Frige interface increment 1: navigation and exact passage selection
 
-**Date:** 2026-11-21. **Status:** implemented and tested locally. The
-independent review has not run (see the end). **Plan:**
+**Date:** 2026-11-21. **Status:** implemented and tested locally; one
+independent review round, all findings fixed or explained (see the end). **Plan:**
 [Wave F](../program/MASTER-PLAN.md#waves), [D-021](../program/DECISIONS.md).
 
 | Repository | Base | Branch |
@@ -107,8 +107,36 @@ end-to-end script is a throwaway file outside the repositories.
 
 ## Independent review
 
-Not run. The directive forbids Claude models for delegated development
-work, and the only reviewer agent available in this session is a Claude
-model. The charter requires a review for a change to behaviour, contracts
-and multiple subsystems. This increment is therefore not accepted until the
-owner or a non-Claude reviewer reviews it.
+**Round 1** (2026-11-21). The owner clarified that the "no Claude" rule
+governs Hermes's runtime models, not development reviewers, so a separate
+Claude reviewer agent ran against suite `9211a3b` and stex-igor `1e2556a`.
+
+- **Method:**
+  - reproduction scripts;
+  - a fuzz of about 17,000 resolved passages, with no byte changed outside
+    a passage;
+  - a headless-Chrome script, including a check that model and manuscript
+    text with HTML in it stayed inert.
+- **Critical:** none. The engine's passage checks and bounds held under
+  every attack.
+
+| # | Severity | Finding | Fix |
+| --- | --- | --- | --- |
+| H1 | High | Back or Forward between a section and its first piece discarded unsaved edits without asking: the guard asked only when the editor's piece changed, and both scopes share that piece | Every load asks first while there are unsaved edits, Refresh included. `verify:frige` refuses the question on Back and checks that the edit, scope and address survive |
+| M1 | Medium | Back then Forward during a slow load left the address on one scope and the screen on another | A load ticket makes the last navigation win, and Back or Forward compares with a scope still loading. `verify:frige` delays one fetch by 1.5 s and checks both end on the same scope |
+| L1 | Low | A passage of short CRLF lines fit Frige's 12,000-character limit, counted in the editor, but not the gateway's, counted in the file, so the gateway dropped it | Frige also limits the canonical text and refuses with the reason. Store test |
+| N1 | Note | The gateway-not-confirmed note was hidden for the gateway's own simulator | The note now follows the gateway's report whenever there is one |
+| N2 | Note | An edit could fuse a lone carriage return with a line feed it brought next to it (pre-existing, `applyEdits`) | Refused. Store test |
+| N3 | Note | Refusing the Back guard pushed a new history entry, losing forward history | Entries carry their position; a refused Back or Forward steps back with `history.go` and adds nothing. `verify:frige` checks `history.length` |
+| N4 | Note | The passage is not in the contract's provenance | By design (D-021): the contract names the author's turn, which holds the passage |
+| N5 | Note | Touch selection handles may not update the passage bar | The editor also follows the document's `selectionchange` |
+| N6 | Note | A large passage can push a turn over the context budget | Pre-existing; it fails honestly (413) and changes nothing |
+
+- **New verification guard:** `verify:frige` now fails, instead of hanging,
+  if a native dialog it did not expect opens. That happened while these
+  fixes were tested: Refresh now rightly asks before discarding the refused
+  stale edit, so the script answers that dialog explicitly.
+- **After the fixes:**
+  - `test:frige` 146, `test:pantheon` 22;
+  - `verify:frige` PASS (Chrome, real LuaLaTeX proofs, five widths);
+  - not re-reviewed.

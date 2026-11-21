@@ -8,7 +8,7 @@ if (book) { const link = document.createElement('a'); link.className = 'quiet-bu
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/graph/?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Project knowledge'; document.querySelector('.publishing-toolbar').append(link); }
 // `pending` counts undecided proposals per piece across the book (from the engine's contract history);
 // `passage` is the selected passage attached to the next message; `filter` narrows the book tree.
-const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null, pending: new Map(), passage: null, filter: '' };
+const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null, pending: new Map(), passage: null, filter: '', pendingScope: null };
 const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
 async function request(url, options = {}) {
@@ -526,18 +526,27 @@ const proofsOf = (contracts) => JSON.stringify([...contracts.values()].map((entr
  * @returns {Promise<boolean>}  `false` when the author kept unsaved edits instead.
  */
 async function loadNode(id, scopeId = id, { history: record = 'push' } = {}) {
-  if (state.sourceDirty && state.node?.id !== id && !confirm('Discard unsaved Markdown changes?')) return false;
+  // Every load replaces the editor's text with the saved text, so unsaved edits are guarded on every
+  // path, including a section and its first piece, which share the editor's piece.
+  if (state.sourceDirty && !confirm('Discard unsaved Markdown changes?')) return false;
   const scope = scopeFor(scopeId) || scopeFor(id);
-  const [node, turns, changeSet, contracts] = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
+  // The last navigation wins: a load overtaken by a later one is dropped when it arrives.
+  const ticket = ++loadTicket; state.pendingScope = scope.id;
+  let loaded;
+  try { loaded = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]); }
+  finally { if (ticket === loadTicket) state.pendingScope = null; }
+  if (ticket !== loadTicket) return null;
+  const [node, turns, changeSet, contracts] = loaded;
   const changedScope = state.scope?.id !== scope.id;
   state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
   if (changedScope) {
     state.notice = '';
     // A passage belongs to the conversation it was selected for.
     if (state.passage) { state.passage = null; renderPassageChip(); }
+    // Each entry records its position, so a refused Back or Forward can return without adding one.
     const address = scopeUrl(scope.id);
-    if (record === 'push' && address !== `${location.pathname}${location.search}${location.hash}`) history.pushState({ scope: scope.id }, '', address);
-    else if (record === 'replace') history.replaceState({ scope: scope.id }, '', address);
+    if (record === 'push' && address !== `${location.pathname}${location.search}${location.hash}`) { shownIndex += 1; history.pushState({ scope: scope.id, index: shownIndex }, '', address); }
+    else if (record === 'replace') history.replaceState({ scope: scope.id, index: shownIndex }, '', address);
   }
   renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
   if (changedScope) setView(scope.kind === 'node' ? 'source' : 'thread');
@@ -551,16 +560,29 @@ async function selectScope(scopeId, options = {}) {
   return loadNode(scope.anchorNodeId, scope.id, options);
 }
 
+/** Position of the history entry on screen, the last load started, and a popstate this page caused itself. */
+let shownIndex = 0; let loadTicket = 0; let ignoreNextPop = false;
+
 /**
  * Follows the browser's Back and Forward through scopes. Unsaved edits are
- * guarded as for a click; if the author keeps them, the address returns to
- * the scope still open.
+ * guarded as for a click. If the author keeps them, the browser is stepped
+ * back to the entry still on screen (`history.go`), so no entry is added and
+ * no forward history is lost. A Back or Forward made while another scope is
+ * still loading is compared with that scope, so the last one wins.
+ *
+ * @param {PopStateEvent} event
  */
-async function followHistory() {
+async function followHistory(event) {
+  if (ignoreNextPop) { ignoreNextPop = false; return; }
+  const arrived = Number.isInteger(event.state?.index) ? event.state.index : null;
   const wanted = scopeFor(new URLSearchParams(location.search).get('scope') || 'book') || scopeFor('book');
-  if (!wanted || wanted.id === state.scope?.id) return;
+  if (!wanted) return;
+  if (wanted.id === (state.pendingScope ?? state.scope?.id)) { if (arrived !== null) shownIndex = arrived; return; }
   const opened = await selectScope(wanted.id, { history: 'none' });
-  if (!opened && state.scope) history.pushState({ scope: state.scope.id }, '', scopeUrl(state.scope.id));
+  if (opened === false) {
+    // Back is one step, Forward minus one; an entry without a position is treated as one step Back.
+    ignoreNextPop = true; history.go(arrived === null || arrived === shownIndex ? 1 : shownIndex - arrived);
+  } else if (opened && arrived !== null) shownIndex = arrived;
 }
 
 // --- Selected passages -------------------------------------------------------
@@ -835,9 +857,13 @@ async function bootstrap() {
   state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   // The address names the open scope; an unknown or retired one opens the whole book, and the address is corrected.
   const initial = scopeFor(new URLSearchParams(location.search).get('scope') || 'book') || scopeFor('book');
+  // A reload keeps the entry's position, so Back and Forward still line up with it.
+  shownIndex = Number.isInteger(history.state?.index) ? history.state.index : 0;
   if (initial?.anchorNodeId) await loadNode(initial.anchorNodeId, initial.id, { history: 'replace' });
   renderBuild(state.build); renderLiveBuild(); refreshPreflight(); refreshIgor(); refreshPending();
-  addEventListener('popstate', () => { followHistory().catch((error) => { state.notice = error.message; renderTurns(); }); });
+  addEventListener('popstate', (event) => { followHistory(event).catch((error) => { state.notice = error.message; renderTurns(); }); });
+  // Touch selection handles fire no key or mouse events; the document's selection change covers them.
+  document.addEventListener('selectionchange', () => { if (document.activeElement === $('#source')) renderEditorState(); });
   // Navigator: filter by title or file; Enter opens the first match; Escape clears.
   $('#tree-filter').addEventListener('input', () => { state.filter = $('#tree-filter').value; renderNodes(); });
   $('#tree-filter').addEventListener('keydown', (event) => {

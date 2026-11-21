@@ -8,7 +8,7 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
-| Frige interface increment 1: navigation and passage selection (program Wave F) | [UI-1 evidence](frige-ui-1-navigation-passages.md) | Local branches; stub and fake transports only; not yet independently reviewed |
+| Frige interface increment 1: navigation and passage selection (program Wave F) | [UI-1 evidence](frige-ui-1-navigation-passages.md) | Local branches; stub and fake transports only; one review round, findings fixed |
 | Frige anchored edits and passage review (program Wave F) | [Wave F evidence](frige-wave-f-anchored-edits.md) | Merged (suite PR 8) and released (stex-igor `c5af494`); stub and fake transports only; one review round, findings fixed; no live turn |
 | Director proposals for Frige (program Wave 4b) | [Wave 4 evidence](director-proposals-w4.md) | Local branches; one live turn proved the format but exceeded the 30-second budget; output budget limits a proposal to short pieces |
 | Frige change contracts (program Wave 2) | [Wave 2 evidence](frige-change-contracts-w2.md) | Merged to suite `main`, not deployed; simulator and stub proposals; element scope in the browser; Chrome only |

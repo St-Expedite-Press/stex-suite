@@ -324,8 +324,11 @@ function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, 
       item.append(list);
     }
     // A gateway reports what it forwarded; a reply to a passage it did not confirm may not reflect the passage.
-    // The local simulator receives the passage from Frige itself, so it needs no confirmation.
-    if (afterPassage && turn.availability === 'available' && turn.meta?.usage?.transport !== 'fake' && turn.meta?.forwardedContext?.selection !== true) {
+    // A gateway's report decides when there is one (its own simulator included); without one, only Frige's
+    // local simulator, which receives the passage from Frige itself, needs no confirmation.
+    const reported = turn.meta?.forwardedContext;
+    const unconfirmed = reported ? reported.selection !== true : turn.meta?.usage?.transport !== 'fake';
+    if (afterPassage && turn.availability === 'available' && unconfirmed) {
       item.append(element('p', 'msg-aside', `Igor’s gateway did not confirm that it passed the selected passage on, so this reply may not take it into account.${afterPassage.action === 'ask' ? '' : ' Frige still allowed changes only inside the passage.'}`));
     }
     const setAside = [...(turn.droppedChanges || []), ...(turn.droppedParts || [])];
