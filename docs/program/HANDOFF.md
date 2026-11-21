@@ -48,9 +48,12 @@ Update this file whenever the state below changes.
     released, together with Igor's free mode, prices and descriptions
     ([D-022](DECISIONS.md)), as stex-igor `5db7e51`: generation 15 on
     2026-11-21, with the active release verified.
-    - **Operator step still due:** run `apply-igor-profile.sh` on the VM and
-      restart `hermes-igor`. That turns Hermes memory and background review
-      off (R-15).
+    - The operator step ran on 2026-11-21. `apply-igor-profile.sh` from
+      `5db7e51` was installed hash-checked in `/root/stex-hermes-apply/`
+      (the previous copies are kept as `*.prev-20261120`) and run as root.
+      The profile config was backed up first as
+      `config.yaml.pre-memory-20261121`. `hermes-igor` restarted healthy, and
+      Hermes memory and background review are off (R-15, closed).
     - It adds the navigator's search, marks, keys and deep links, a piece
       opening on its source, and exact passage selection with Ask, Revise,
       Explain, Alternatives and Compare.
@@ -103,7 +106,6 @@ Windows Application Control on the owner's machine blocks their launchers in
 | Release the stex-igor branches (3c, 4a, 4b) | Release after reviewing the Company screen's wording; then rerun `apply-igor-profile.sh` on the VM and restart Hermes | A push to `main` deploys to production; until then the suite's Company links and director proposals do nothing live |
 | A second live director turn | Approve one paid Frige turn on a synthetic book, about $0.02, now that the budget is 120 s | Shows a live proposal reaching Frige; the first turn ran out of time |
 | Output budget for long pieces | Keep 20,000 output characters: anchored edits (D-020) let a piece up to the 60,000-character offer budget be revised | Only a whole-piece rewrite of a long piece still needs a wider budget |
-| Apply the Igor profile on the VM (R-15) | Run `deploy/hermes/apply-igor-profile.sh` as root on the VM, then restart `hermes-igor`, then inspect (do not delete) any existing `MEMORY.md` and `USER.md` under the profile | Decided and in the release: memory and background review off. It only takes effect after this operator step; until then free-mode turns can still carry saved memory |
 | Live checks after the release | After the profile step, try one Frige passage turn and one free-mode Igor turn (free mode costs nothing; the passage turn is one paid Grok turn) | Released (`5db7e51`, generation 15); nothing has run live yet |
 | A live turn with anchored edits | Approve one paid Frige turn on a long synthetic piece, about $0.03 | Whether Grok writes exact anchors is unverified (R-14) |
 | Proposal channel ([D-017](DECISIONS.md)) | Keep the fenced block | Works with any catalog model; structured output would depend on each model |
