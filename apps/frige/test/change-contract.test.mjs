@@ -14,7 +14,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { ProjectStore, sourceHash } from '../src/project-store-vault.mjs';
 import { buildBook } from '../src/book-assembler.mjs';
-import { CHANGE_CONTRACT, MAX_EDITS_PER_CHANGE, applyEdits, conflictsWith, isContractId, lineStats, proofFor } from '../src/change-contract.mjs';
+import { CHANGE_CONTRACT, MAX_EDITS_PER_CHANGE, applyEdits, changedOnlyWithin, conflictsWith, isContractId, lineStats, proofFor, resolvePassage } from '../src/change-contract.mjs';
 import { designHash } from '../src/design-settings.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
@@ -1201,4 +1201,82 @@ test('anchored edits to several pieces form one contract that is accepted all-or
   await store.decideChanges(section.id, changeSet.id, { decision: 'accept' });
   assert.equal((await store.node(first)).source, FIRST.replace('One line,', 'One line, revised,'));
   assert.equal((await store.node(second)).source, SECOND.replace('Two.', 'Two, revised.'));
+});
+
+// --- Selected passages (Frige interface wave, increment 1) ----------------------
+//
+// The workstation sends a selection in the editor's coordinates (every line
+// ending one `\n`); the engine maps it to the canonical bytes, checks the text
+// is exactly what was selected, and limits any proposal to it.
+
+test('a selected passage resolves to the canonical bytes it covers, in the editor’s coordinates', () => {
+  const source = '﻿# Title\r\n\r\nThe river ran.\r\n  The river ran again — 𝔉.\r\nA bell.\r\n';
+  const editor = source.replace(/\r\n?/g, '\n');
+  const text = '  The river ran again — 𝔉.\n';
+  const start = editor.indexOf(text); const end = start + text.length;
+  const resolved = resolvePassage(source, { start, end, text });
+  // The passage keeps its CRLF and its line, and maps past every CRLF before it.
+  assert.equal(resolved.text, '  The river ran again — 𝔉.\r\n');
+  assert.equal(source.slice(resolved.start, resolved.end), resolved.text);
+  assert.deepEqual([resolved.startLine, resolved.endLine], [4, 4], 'a passage that ends with its line break ends on that line');
+  const across = resolvePassage(source, { start: editor.indexOf('ran.'), end: editor.indexOf('A bell') + 1, text: editor.slice(editor.indexOf('ran.'), editor.indexOf('A bell') + 1) });
+  assert.deepEqual([across.startLine, across.endLine], [3, 5]);
+  // A lone carriage return is one editor character too.
+  assert.equal(resolvePassage('a\rb\nc', { start: 2, end: 3, text: 'b' }).text, 'b');
+
+  const refused = (selection, pattern) => { const result = resolvePassage(source, selection); assert.ok('reason' in result, JSON.stringify(selection)); assert.match(result.reason, pattern); };
+  refused({ start: 3, end: 3, text: '' }, /no valid range/);
+  refused({ start: -1, end: 2, text: 'ab' }, /no valid range/);
+  refused({ start: 1.5, end: 3, text: 'ab' }, /no valid range/);
+  refused({ start, end, text: text.replace('river', 'rivet') }, /no longer at that place/);
+  refused({ start, end, text: text.replace('river', 'stream') }, /match its range/);
+  refused({ start: start + 1, end: end + 1, text }, /no longer at that place/);
+  refused({ start: editor.length - 1, end: editor.length + 1, text: 'xx' }, /past the end/);
+  refused({ start: 0, end: 2, text: 'abc' }, /match its range/);
+  refused({ start: 0, end: 1, text: '\uD800' }, /not valid text/);
+  refused({ start: 0, end: 12_001, text: 'x'.repeat(12_001) }, /under 12000/);
+});
+
+test('a change is inside a passage only when every byte outside it is unchanged', () => {
+  const before = 'one\ntwo\nthree\n';
+  const range = { start: 4, end: 8 }; // "two\n"
+  assert.equal(changedOnlyWithin(before, 'one\nTWO\nthree\n', range), true);
+  assert.equal(changedOnlyWithin(before, 'one\ntwo, and more\nthree\n', range), true);
+  assert.equal(changedOnlyWithin(before, 'one\nthree\n', range), true, 'deleting the passage is inside it');
+  assert.equal(changedOnlyWithin(before, 'one\nextra\ntwo\nthree\n', range), true, 'inserting at its edge is inside it');
+  assert.equal(changedOnlyWithin(before, 'ONE\ntwo\nthree\n', range), false);
+  assert.equal(changedOnlyWithin(before, 'one\ntwo\nthree!\n', range), false);
+  assert.equal(changedOnlyWithin(before, 'one\n', range), false, 'removing text after the passage is outside it');
+});
+
+test('within a passage, an anchor is looked for only there, so a phrase repeated elsewhere can still anchor', () => {
+  const base = 'The river ran.\nThe river ran again.\nThe river ran.\n';
+  const within = { start: 15, end: 36 }; // "The river ran again.\n"
+  assert.equal(applyEdits(base, [{ find: 'The river ran', replace: 'The stream ran' }], { within }).source, 'The river ran.\nThe stream ran again.\nThe river ran.\n');
+  assert.match(applyEdits(base, [{ find: 'river ran.', replace: 'x' }], { within }).reason, /not in the selected passage/);
+  assert.match(applyEdits('aXaYa', [{ find: 'a', replace: 'b' }], { within: { start: 0, end: 3 } }).reason, /more than once in the selected passage/);
+});
+
+test('a turn about a selected passage may propose changes only inside it', async (context) => {
+  const { store, first, second, section } = await twoPieceContract(context);
+  const { sources } = await store.scopeContext(section.id);
+  const base = sources.find((entry) => entry.nodeId === first).source;
+  const passage = 'One line,';
+  const bounds = { nodeId: first, start: base.indexOf(passage), end: base.indexOf(passage) + passage.length };
+  const propose = (proposal) => store.createChangeSet(section.id, { commentary: 'r', ...proposal, bounds }, sources);
+
+  const inside = await propose({ changes: [{ nodeId: first, edits: [{ find: 'line', replace: 'verse' }] }] });
+  assert.equal(inside.changeSet.changes[0].source, base.replace('One line,', 'One verse,'));
+  for (const [proposal, pattern] of [
+    [{ changes: [{ nodeId: first, edits: [{ find: 'one indented', replace: 'x' }] }] }, /not in the selected passage/],
+    [{ changes: [{ nodeId: first, source: `${base}Appended.\n` }] }, /reached outside it/],
+    [{ changes: [{ nodeId: second, source: `${SECOND}More.\n` }] }, /reached outside it/],
+    [{ layout: { set: { fontSize: '12pt', leading: '14pt' } } }, /layout change was set aside/],
+  ]) {
+    const { changeSet, dropped } = await propose(proposal);
+    assert.equal(changeSet, null, JSON.stringify(proposal)); assert.match(dropped[0].reason, pattern);
+  }
+  // A whole-text reply that changes only the passage is kept.
+  const whole = await propose({ changes: [{ nodeId: first, source: base.replace('One line,', 'A single line,') }] });
+  assert.equal(whole.changeSet.changes[0].source, base.replace('One line,', 'A single line,'));
 });

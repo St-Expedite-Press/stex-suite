@@ -123,6 +123,24 @@ validates it and records it as a
 applies it without the author's acceptance. The STEX inference gateway does
 not produce this field yet; readers that do not know it ignore it.
 
+**Request `selection`** (optional, added 2026-11-21;
+[D-021](../../docs/program/DECISIONS.md)) is the passage the author
+selected, which Frige has already checked against the piece's current
+source: `{ category: "selected-passage", nodeId, relativePath, sourceHash,
+action, startLine, endLine, text }`.
+
+- `action` is one of `ask`, `revise`, `explain`, `alternatives` or
+  `compare`.
+- `text` is the passage's exact bytes, at most 12,000 UTF-16 units.
+
+The gateway forwards it whole, under its own label, and only for a piece in
+`scopeSources`; otherwise it drops it. It never clips it. When it forwards
+one, its trusted instructions add the passage rule, and it reports
+`meta.forwardedContext.selection: true`. Except for `ask`, Frige keeps only
+proposed changes inside the passage, and resolves an edit's `find` within the
+passage. A reader that does not know the field ignores it, and Frige then
+records the passage as unconfirmed.
+
 **Request `answer`** — `{ promptId, values }` when the author answers a choice
 or form. The product validates the answer against the stored prompt (known
 option ids, required fields) and sends a readable summary as `message`.

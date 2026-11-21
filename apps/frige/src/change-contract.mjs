@@ -394,12 +394,18 @@ const MAX_EDIT_TEXT = 20_000;
  * position cannot move an edit: only text that is present exactly once can
  * anchor one, and the base hash still decides staleness at acceptance.
  *
+ * With `within`, a turn about a selected passage, an anchor is looked for
+ * only inside that range of `base` and must occur exactly once there, so every
+ * span lies inside the passage and a phrase repeated elsewhere in the piece
+ * can still anchor an edit to the passage.
+ *
  * @param {string} base     The source exactly as offered this turn.
  * @param {unknown} edits   Untrusted reply content.
+ * @param {{ within?: { start: number, end: number } }} [options]  The selected passage, as UTF-16 offsets into `base`.
  * @returns {{ source: string, spans: Array<{ start: number, end: number }> } | { reason: string }}
  *   `spans` are the replaced ranges of `base`, in order, as UTF-16 offsets.
  */
-export function applyEdits(base, edits) {
+export function applyEdits(base, edits, { within = null } = {}) {
   if (!Array.isArray(edits) || edits.length === 0) return { reason: 'The proposed edits are missing.' };
   if (edits.length > MAX_EDITS_PER_CHANGE) return { reason: `A change may hold at most ${MAX_EDITS_PER_CHANGE} edits to one piece.` };
   const crlf = base.includes('\r\n');
@@ -418,10 +424,13 @@ export function applyEdits(base, edits) {
     // After conversion, a carriage return not followed by a line feed is foreign to the piece's
     // convention. At a span's edge it would join the next line feed into a CRLF that no diff shows.
     if (/\r(?!\n)/.test(replace)) return { reason: `${which} would write a carriage return that does not end a line.` };
-    const start = base.indexOf(find);
-    if (start === -1) return { reason: `${which}: the text it replaces is not in the piece as it was offered.` };
+    // Within a selected passage, only the passage is searched; its offset maps a match back to the piece.
+    const [region, offset] = within ? [base.slice(within.start, within.end), within.start] : [base, 0];
+    const at = region.indexOf(find);
+    if (at === -1) return { reason: `${which}: the text it replaces is not in ${within ? 'the selected passage' : 'the piece as it was offered'}.` };
     // Searching from the next position also finds an occurrence that overlaps the first.
-    if (base.indexOf(find, start + 1) !== -1) return { reason: `${which}: the text it replaces occurs more than once; it must quote enough to be unique.` };
+    if (region.indexOf(find, at + 1) !== -1) return { reason: `${which}: the text it replaces occurs more than once${within ? ' in the selected passage' : ''}; it must quote enough to be unique.` };
+    const start = offset + at;
     const end = start + find.length;
     const splitsLineEnd = (at) => at > 0 && at < base.length && base[at - 1] === '\r' && base[at] === '\n';
     if (splitsLineEnd(start) || splitsLineEnd(end)) return { reason: `${which} would divide a line ending.` };
@@ -439,6 +448,95 @@ export function applyEdits(base, edits) {
   }
   source += base.slice(cursor);
   return { source, spans: resolved.map(({ start, end }) => ({ start, end })) };
+}
+
+// ---------------------------------------------------------------------------
+// Selected passages (Frige interface wave, increment 1)
+//
+// An author may select text in a piece and ask for an editorial action on it.
+// The browser's selection is not authority: the engine checks it against the
+// piece as it is now, and the passage it records is the engine's own slice of
+// the canonical bytes. A turn about a passage may propose changes only inside
+// it, except a plain question ("ask"), where the passage is context only.
+// ---------------------------------------------------------------------------
+
+/** The editorial actions an author can take on a selected passage. */
+export const PASSAGE_ACTIONS = Object.freeze(['ask', 'revise', 'explain', 'alternatives', 'compare']);
+
+/** Longest passage an author can select for one turn, in UTF-16 units of the editor's text. */
+export const MAX_PASSAGE = 12_000;
+
+/**
+ * A selection as the workstation sends it. Offsets count the editor's text,
+ * in which every line ending is one `\n` (a browser text field reports its
+ * value that way), so a CRLF piece is selected in the same coordinates as an
+ * LF one.
+ *
+ * @typedef {object} PassageSelection
+ * @property {string} nodeId
+ * @property {string} baseHash  The piece's hash when the author selected the passage.
+ * @property {number} start     Inclusive, in the editor's text.
+ * @property {number} end       Exclusive, in the editor's text.
+ * @property {string} text      The selected text, as the editor shows it.
+ * @property {string} action    One of {@link PASSAGE_ACTIONS}.
+ */
+
+/**
+ * A selection checked against the current source.
+ *
+ * @typedef {object} ResolvedPassage
+ * @property {number} start       Offset in the canonical source.
+ * @property {number} end         Offset in the canonical source.
+ * @property {string} text        The canonical bytes of the passage (CRLF kept).
+ * @property {number} startLine   1-based line of its first character.
+ * @property {number} endLine     1-based line of its last character.
+ */
+
+/**
+ * Resolves a selection against a piece's current source, or says why it
+ * cannot be. The caller has already checked that `baseHash` is the hash of
+ * `source`; this checks the range and that the text at it is exactly the
+ * text the author saw selected.
+ *
+ * @param {string} source  The piece's canonical source now.
+ * @param {{ start: unknown, end: unknown, text: unknown }} selection  Untrusted.
+ * @returns {ResolvedPassage | { reason: string }}
+ */
+export function resolvePassage(source, { start, end, text }) {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start) return { reason: 'The selected passage has no valid range.' };
+  if (typeof text !== 'string' || !text.isWellFormed()) return { reason: 'The selected passage is not valid text.' };
+  if (end - start > MAX_PASSAGE || text.length !== end - start) return { reason: `A selected passage must be under ${MAX_PASSAGE} characters and match its range.` };
+  // Map the editor's offsets to the source: CRLF is one editor character; so is a lone CR.
+  const raw = []; // raw[k] = source offset of editor character k; raw[length] = source length.
+  for (let index = 0; index < source.length; index += 1) {
+    raw.push(index);
+    if (source[index] === '\r' && source[index + 1] === '\n') index += 1;
+  }
+  raw.push(source.length);
+  if (end > raw.length - 1) return { reason: 'The selected passage runs past the end of the piece.' };
+  const editorText = source.replace(/\r\n?/g, '\n');
+  if (editorText.slice(start, end) !== text) return { reason: 'The selected text is no longer at that place in the piece.' };
+  // The line of the character at an offset. A passage's last character may be its line's own
+  // line break, which belongs to that line, so a passage ending with one ends on that line.
+  const lineOf = (offset) => editorText.slice(0, offset).split('\n').length;
+  return { start: raw[start], end: raw[end], text: source.slice(raw[start], raw[end]), startLine: lineOf(start), endLine: lineOf(end - 1) };
+}
+
+/**
+ * Whether a whole-text change to a piece alters only bytes inside a range:
+ * every byte before `start` and after `end` must be present, unchanged, at
+ * the same place from the start and from the end of the new text. Insertions
+ * at either edge of the range are inside it.
+ *
+ * @param {string} before
+ * @param {string} after
+ * @param {{ start: number, end: number }} range  Offsets into `before`.
+ * @returns {boolean}
+ */
+export function changedOnlyWithin(before, after, { start, end }) {
+  return before.slice(0, start) === after.slice(0, start)
+    && before.length - end <= after.length - start
+    && before.slice(end) === after.slice(after.length - (before.length - end));
 }
 
 /**

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
-import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
+import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, changedOnlyWithin, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
 /** Most contracts a history listing returns; the journal itself is not truncated. */
@@ -984,18 +984,23 @@ export class ProjectStore {
    *   commentary?: string,
    *   changes?: Array<{ nodeId: string, source?: string, edits?: import('./change-contract.mjs').SourceEdit[], summary?: string }>,
    *   layout?: { clear?: boolean, set?: Record<string, unknown>, summary?: string } | null,
+   *   bounds?: { nodeId: string, start: number, end: number } | null,
    * }} proposal  Untrusted reply content: text replacements, or one layout change for the scope's own section or piece.
+   *   `bounds` is not from the reply: it is the selected passage the engine resolved for this turn
+   *   (offsets into the offered source), and limits every change to it.
    * @param {import('./change-contract.mjs').OfferedSource[]} offered  The sources this turn offered.
    * @param {import('./change-contract.mjs').ContractProvenance} [provenance]
    * @returns {Promise<{ changeSet: import('./change-contract.mjs').ChangeContract | null, dropped: Array<{ nodeId: string, reason: string }> }>}
    */
   createChangeSet(scopeId, proposal, offered, provenance = {}) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered, provenance)); }
 
-  async #createChangeSet(scopeId, { commentary = '', changes = [], layout }, offered, provenance) {
+  async #createChangeSet(scopeId, { commentary = '', changes = [], layout, bounds = null }, offered, provenance) {
     const kept = []; const dropped = [];
+    const outsidePassage = 'A turn about a selected passage may change only that passage; this change reached outside it.';
     for (const change of Array.isArray(changes) ? changes : []) {
       const base = offered.find((entry) => entry.nodeId === change?.nodeId);
       if (!base) { dropped.push({ nodeId: String(change?.nodeId || '').slice(0, 100), reason: 'This node was not offered in the conversation scope.' }); continue; }
+      if (bounds && base.nodeId !== bounds.nodeId) { dropped.push({ nodeId: base.nodeId, reason: outsidePassage }); continue; }
       const anchored = change.edits !== undefined;
       if (anchored && change.source !== undefined) { dropped.push({ nodeId: base.nodeId, reason: 'A change gives either the whole new text or edits to it, not both.' }); continue; }
       // Text that is not well-formed Unicode (a lone surrogate) cannot be stored exactly as proposed.
@@ -1006,7 +1011,8 @@ export class ProjectStore {
         // Frige resolves the edits against the offered text (F5-B); the result is already in
         // the file's convention, and no byte outside the replaced spans is touched, so it is
         // not converted again: a piece with mixed line endings keeps them outside the spans.
-        const resolved = applyEdits(base.source, change.edits);
+        // A passage turn's anchors are looked for only inside the passage, so every span lies within it.
+        const resolved = applyEdits(base.source, change.edits, bounds ? { within: bounds } : {});
         if ('reason' in resolved) { dropped.push({ nodeId: base.nodeId, reason: resolved.reason }); continue; }
         source = resolved.source;
       } else {
@@ -1018,13 +1024,16 @@ export class ProjectStore {
       // A reply that differs only in line endings proposes nothing the author asked for; say so,
       // because the director's prose may announce a change that the thread then never shows.
       if (sameTextIgnoringLineEndings(source, base.source)) { dropped.push({ nodeId: base.nodeId, reason: 'The proposed change would leave the piece’s text as it is.' }); continue; }
+      // A whole-text reply in a passage turn must leave every byte outside the passage as it was.
+      if (bounds && !changedOnlyWithin(base.source, source, bounds)) { dropped.push({ nodeId: base.nodeId, reason: outsidePassage }); continue; }
       kept.push(buildChange(base, source, sourceHash(source), change.summary));
     }
     const scope = await this.scope(scopeId);
     // A contract holds either text changes or one layout change, so each
     // decision and rollback acts on one kind of canonical state.
     if (layout !== undefined && layout !== null) {
-      if (kept.length) dropped.push({ nodeId: '', reason: 'A contract holds either text changes or one layout change; the layout change was set aside.' });
+      if (bounds) dropped.push({ nodeId: '', reason: 'A turn about a selected passage proposes only text changes inside it; the layout change was set aside.' });
+      else if (kept.length) dropped.push({ nodeId: '', reason: 'A contract holds either text changes or one layout change; the layout change was set aside.' });
       else {
         const result = await this.#layoutChange(scope, layout);
         if (result.reason) dropped.push({ nodeId: '', reason: result.reason });

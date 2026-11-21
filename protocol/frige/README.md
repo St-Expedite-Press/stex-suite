@@ -124,6 +124,45 @@ additively: a profile without them is unchanged and keeps its hash.
   typeset with as
   `layout: {fontSize, leading, sizeFrom: "book" | "section" | "element", opensRecto}`.
 
+### Selected passages
+
+Added 2026-11-21 and additive ([D-021](../../docs/program/DECISIONS.md)).
+`POST /scopes/<id>/turn` may carry a passage the author selected, beside
+`message`:
+
+`selection: { nodeId, baseHash, start, end, text, action }`
+
+- `start` and `end` count the editor's text, in which every line ending is
+  one `\n`, which is how a browser text field reports its value.
+- `baseHash` is the piece's hash when it was selected.
+- `action` is `ask`, `revise`, `explain`, `alternatives` or `compare`.
+
+Before anything is recorded, Frige checks the selection against the piece as
+this conversation offers it now:
+
+- `409 PASSAGE_STALE` when `baseHash` is no longer the piece's hash. Nothing
+  is recorded, and the author selects again.
+- `400 INVALID_PASSAGE` when the selection is not valid:
+  - the action is unknown;
+  - the piece is not one this conversation offers;
+  - the range is invalid, runs past the end, or exceeds 12,000 characters;
+  - the text at that range differs from `text`;
+  - the turn is an answer to a choice or form.
+
+A selection that passes is mapped to the canonical bytes. It is recorded on
+the user turn as `passage: { nodeId, relativePath, title, baseHash, action,
+start, end, startLine, endLine, text }`: offsets into the source, its lines,
+and its exact bytes. That turn is the contract's `origin.userTurnId`, so the
+record of what was asked about needs no change to the contract schema.
+
+The passage goes to the gateway as the scope-turn request field
+[`selection`](../texgraph/README.md). For every action except `ask`, a
+proposal may change only that passage:
+
+- an edit's anchor is looked for only inside it;
+- a whole-text change must leave every byte outside it unchanged;
+- changes to other pieces, and layout changes, are set aside with a reason.
+
 ## Change contracts v1
 
 `stex.frige.change-contract.v1` is the record a proposal to change canonical

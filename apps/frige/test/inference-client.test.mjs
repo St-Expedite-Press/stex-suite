@@ -134,10 +134,15 @@ test('a scope turn sends the outline, settings and approved contracts as separat
   const hierarchy = { outline: { category: 'outline', entries: [{ nodeId: 'node-a' }], truncated: false }, settings: { category: 'document-settings', designHash: 'abc', book: {}, scope: null }, contracts: { category: 'approved-contract', entries: [] } };
   const reply = await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, hierarchy, turns: [], message: 'Hello.' });
   assert.equal(reply.availability, 'available');
-  assert.deepEqual(reply.meta.forwardedContext, { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1'] }, 'the gateway report is read and shaped');
+  assert.deepEqual(reply.meta.forwardedContext, { outline: { count: 1, truncated: true }, documentSettings: true, approvedContracts: ['c-1'], selection: false }, 'the gateway report is read and shaped');
   assert.deepEqual([received.outline, received.documentSettings, received.approvedContracts], [hierarchy.outline, hierarchy.settings, hierarchy.contracts]);
   assert.deepEqual(received.proposalForms, ['source', 'edits'], 'Frige tells the gateway it resolves anchored edits (D-020)');
   // A turn without that context sends none of the fields.
   await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'book', kind: 'book', title: 'Fixture', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Hello.' });
-  assert.equal('outline' in received, false);
+  assert.equal('outline' in received, false); assert.equal('selection' in received, false);
+  // A selected passage travels as its own labelled field, never inside the message (D-021).
+  const passage = { nodeId: 'node-a', relativePath: '01/A.md', title: 'A', baseHash: 'h', action: 'revise', start: 3, end: 9, startLine: 2, endLine: 2, text: 'A line' };
+  await requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-a', kind: 'node', title: 'A', nodeIds: [] }, sources: [], graph: {}, turns: [], message: 'Revise the selected passage.', passage });
+  assert.deepEqual(received.selection, { category: 'selected-passage', nodeId: 'node-a', relativePath: '01/A.md', sourceHash: 'h', action: 'revise', startLine: 2, endLine: 2, text: 'A line' });
+  assert.equal(received.message, 'Revise the selected passage.');
 });

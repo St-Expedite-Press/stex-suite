@@ -23,6 +23,8 @@ must keep compatible.
 | stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No (contained in `feat/director-proposals`) | Released in `bd8b3b0` |
 | stex-suite | `feat/frige-f5-workstation` | `06c5f13` (`origin/main`, after PR 7) | Wave F first increment: anchored edits, passage review, review fixes, records | Yes | Merged to `main` by PR 8 as `44cd3ac`, 2026-11-21 (CI green); pins stex-igor `c5af494` |
 | stex-igor | `feat/anchored-edits` | `bd8b3b0` (`main`) | Scope-turn adapter reads `edits`; teaches them only to a Frige that advertises `proposalForms` | Yes | Released: PR 4 fast-forwarded to `c5af494` with the owner's authorization, 2026-11-21; installed and health-checked, read-back step failed on SSH |
+| stex-suite | `feat/frige-ui-passages` | `af94e24` (`main`) | Interface increment 1: navigation, deep links, exact passage selection (D-021) | No | Review; pins stex-igor `c5af494` (unchanged), so merging deploys nothing |
+| stex-igor | `feat/frige-passages` | `c5af494` (`main`) | Adapter forwards a selected passage and adds its rule | No | A push to `main` deploys: owner authorization |
 | stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5` | Yes (2026-11-20) | Released: merged into the release branch and deployed in `bd8b3b0` (PR 3 merged) |
 
 ## Compatibility requirements
@@ -34,6 +36,7 @@ must keep compatible.
 | `stex.frige.change-contract.v1` | New. Record schema in `protocol/frige/change-contract.v1.schema.json`; stored records are validated against it in `test:frige` | `test:frige` |
 | `stex.texgraph.scope-turn.v3` | Frige reads an optional reply field `layout` and sends optional request fields `outline`, `documentSettings`, `approvedContracts` (additive; readers ignore unknown fields). The deployed gateway ignores the request fields and sends no `layout`; the local stex-igor branch forwards them and reports `meta.forwardedContext` | `test:frige`, `test:inference` |
 | `stex.hermes.turn.v1` | Unchanged in Wave 2 | `test:inference` |
+| Scope turn v3 request `selection` and `meta.forwardedContext.selection` (D-021) | Additive. The released gateway (`c5af494`) drops `selection`; Frige still bounds the proposal and marks the passage unconfirmed. Old Frige never sends it. Either release order is safe | `test:frige`, `test:inference`, end-to-end script |
 | Scope turn v3 `changes[].edits` and request `proposalForms` (D-020) | Additive fields. The gateway teaches and sends edits only to a Frige that sends `proposalForms` with `edits`. An older Frige gets the released whole-piece instructions unchanged, and stray edits are set aside with a notice. Either release order is safe | `test:frige`, `test:inference` (instructions compared with `bd8b3b0`'s), end-to-end script |
 | Design-system copies in stex-igor | Must match the suite sources | `test:stex-igor-sync` |
 | Submodule pointer | Unchanged in Wave 2; moved to the released `bd8b3b0` with Wave 4b | `git submodule status`, `test:stex-igor-sync` |

@@ -15,6 +15,7 @@ import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
+import { PASSAGE_ACTIONS, resolvePassage } from './src/change-contract.mjs';
 import { runPreflight } from './src/preflight.mjs';
 import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
@@ -248,24 +249,54 @@ async function saveAttachments(store, payload) {
 }
 async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
 
+/**
+ * Checks a selected passage against the piece as this turn offers it, before
+ * anything is recorded. The browser's selection is not trusted: the piece must
+ * be offered by this conversation, unchanged since the passage was selected,
+ * and hold exactly the selected text at that place.
+ *
+ * @param {{ sources: Array<{ nodeId: string, relativePath: string, title: string, hash: string, source: string }> }} context  This turn's scope context.
+ * @param {unknown} selection  Untrusted request field.
+ * @returns {{ nodeId: string, relativePath: string, title: string, baseHash: string, action: string, start: number, end: number, startLine: number, endLine: number, text: string }}
+ *   `start` and `end` are offsets into the canonical source; `text` is its exact bytes there.
+ */
+function resolveTurnPassage(context, selection) {
+  const invalid = (message) => Object.assign(new Error(message), { code: 'INVALID_PASSAGE' });
+  if (!selection || typeof selection !== 'object' || Array.isArray(selection)) throw invalid('The selected passage is malformed.');
+  if (!PASSAGE_ACTIONS.includes(selection.action)) throw invalid(`A passage action is one of: ${PASSAGE_ACTIONS.join(', ')}.`);
+  const offered = context.sources.find((entry) => entry.nodeId === selection.nodeId && entry.kind !== 'programme');
+  if (!offered) throw invalid('The selected passage is not in a piece this conversation offers to Igor.');
+  if (selection.baseHash !== offered.hash) throw Object.assign(new Error('The piece changed after the passage was selected. Select the passage again.'), { code: 'PASSAGE_STALE' });
+  const resolved = resolvePassage(offered.source, selection);
+  if ('reason' in resolved) throw invalid(resolved.reason);
+  return { nodeId: offered.nodeId, relativePath: offered.relativePath, title: offered.title, baseHash: offered.hash, action: selection.action, ...resolved };
+}
+
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
 async function scopeTurn(store, scopeId, payload) {
+  // The scope's offered sources come first: a selected passage is checked against them before
+  // anything is recorded, so a stale or invalid selection leaves the conversation untouched.
+  const context = await store.scopeContext(scopeId);
+  const passage = payload.selection === undefined || payload.selection === null ? null : resolveTurnPassage(context, payload.selection);
   // A turn is either a message or an answer to one of Hermes's choices or forms.
   // An answer is reserved, not recorded, until Hermes replies to it.
   let userTurn = null; let reservation = null;
   if (payload.answer && typeof payload.answer === 'object') {
+    if (passage) throw Object.assign(new Error('An answer to Igor’s question cannot carry a selected passage.'), { code: 'INVALID_PASSAGE' });
     reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values);
   } else {
     if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
-    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim() });
+    // The passage is kept with the author's message, so the thread and the contract's
+    // `origin.userTurnId` show exactly which text, at which revision, the turn was about.
+    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) });
   }
   try {
-    const [context, priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.scopeContext(scopeId), store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    const [priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
     // Context from the levels around the scope (outline, settings in force, approved contracts), labelled by category.
     const hierarchy = await store.hierarchy(context.scope, context.graph);
     const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null });
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null, passage });
     if (reservation) {
       // Hermes did not receive the answer: leave the question open and say why.
       if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
@@ -285,7 +316,9 @@ async function scopeTurn(store, scopeId, payload) {
     };
     // A reply (the director's or the simulator's) proposes text changes, or one layout change.
     const proposes = result.changes.length || result.layout;
-    const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout }, context.sources, provenance) : { changeSet: null, dropped: [] };
+    // Any action on a passage except a plain question may change only that passage.
+    const bounds = passage && passage.action !== 'ask' ? { nodeId: passage.nodeId, start: passage.start, end: passage.end } : null;
+    const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout, bounds }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);
     const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
     return { userTurn, assistantTurn, changeSet, availability: result.availability };
@@ -421,7 +454,8 @@ async function api(request, response, url, store) {
  * @type {Record<string, number>}
  */
 const STATUS_BY_CODE = {
-  STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409,
+  STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409, PASSAGE_STALE: 409,
+  INVALID_PASSAGE: 400,
   CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
 };
 

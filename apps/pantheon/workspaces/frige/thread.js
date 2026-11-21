@@ -280,7 +280,25 @@ function decisionNote(turn, { contracts, busy, onRevert }) {
   return note;
 }
 
-function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, onRevert, onAnswer, artifactUrl }) {
+const PASSAGE_LABELS = { ask: 'Question about', revise: 'Revise', explain: 'Explain', alternatives: 'Alternatives for', compare: 'Compare readings of' };
+
+/**
+ * The passage a message carried, exactly as the engine recorded it: the
+ * action, where it is, and its text at the revision it was selected in.
+ *
+ * @param {{ action: string, title: string, startLine: number, endLine: number, text: string, baseHash: string }} passage
+ * @returns {HTMLElement}
+ */
+function passageQuote(passage) {
+  const figure = element('figure', 'passage-quote');
+  const lines = passage.startLine === passage.endLine ? `line ${passage.startLine}` : `lines ${passage.startLine}–${passage.endLine}`;
+  const caption = element('figcaption', '', `${PASSAGE_LABELS[passage.action] || passage.action} · ${lines} of “${passage.title}”`);
+  if (passage.baseHash) caption.title = `Selected in revision ${passage.baseHash.slice(0, 12)}`;
+  figure.append(caption, element('pre', 'passage-text', passage.text));
+  return figure;
+}
+
+function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, onRevert, onAnswer, artifactUrl, afterPassage = null }) {
   if (turn.kind === 'changes-decided' || turn.kind === 'changes-reverted') return decisionNote(turn, { contracts, busy, onRevert });
   const fromUser = turn.role === 'user';
   const item = element('article', `msg ${fromUser ? 'from-user' : 'from-hermes'}${turn.kind === 'answer' ? ' is-answer' : ''}${turn.availability && turn.availability !== 'available' ? ' failed' : ''}`);
@@ -289,7 +307,7 @@ function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, 
   if (turn.meta?.skipped?.length) meta.append(element('span', 'msg-fallback', ` · ${turn.meta.skipped.join(', ')} unavailable`));
   item.append(meta);
   const body = element('div', 'msg-body');
-  if (fromUser) body.append(richText(turn.message));
+  if (fromUser) { if (turn.passage) body.append(passageQuote(turn.passage)); body.append(richText(turn.message)); }
   else {
     if (turn.commentary) body.append(richText(turn.commentary));
     for (const part of turn.parts || []) {
@@ -304,6 +322,11 @@ function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, 
       const list = element('ul', 'msg-aside');
       for (const suggestion of turn.graphSuggestions) list.append(element('li', '', suggestion.message));
       item.append(list);
+    }
+    // A gateway reports what it forwarded; a reply to a passage it did not confirm may not reflect the passage.
+    // The local simulator receives the passage from Frige itself, so it needs no confirmation.
+    if (afterPassage && turn.availability === 'available' && turn.meta?.usage?.transport !== 'fake' && turn.meta?.forwardedContext?.selection !== true) {
+      item.append(element('p', 'msg-aside', `Igor’s gateway did not confirm that it passed the selected passage on, so this reply may not take it into account.${afterPassage.action === 'ask' ? '' : ' Frige still allowed changes only inside the passage.'}`));
     }
     const setAside = [...(turn.droppedChanges || []), ...(turn.droppedParts || [])];
     if (setAside.length) item.append(element('p', 'msg-aside', `${setAside.length} item${setAside.length === 1 ? ' was' : 's were'} set aside: ${[...new Set(setAside.map((entry) => entry.reason))].join(' ')}`));
@@ -320,7 +343,13 @@ export function renderThread(box, { turns, thinking, notice, changeSet, contract
     box.replaceChildren(intro); return null;
   }
   const answers = new Map(turns.filter((turn) => turn.kind === 'answer').map((turn) => [turn.promptId, turn.values]));
-  const items = turns.map((turn) => message(turn, { changeSet, contracts, answers, drafts, busy: thinking, onDecide, onRevert, onAnswer, artifactUrl }));
+  // Each reply knows whether the message it answers carried a selected passage.
+  let lastUser = null;
+  const items = turns.map((turn) => {
+    const afterPassage = turn.role === 'assistant' ? lastUser?.passage || null : null;
+    if (turn.role === 'user') lastUser = turn;
+    return message(turn, { changeSet, contracts, answers, drafts, busy: thinking, onDecide, onRevert, onAnswer, artifactUrl, afterPassage });
+  });
   // Pending changes whose reply is no longer in view still need a decision.
   if (changeSet?.changes.some((change) => change.status === 'pending') && !turns.some((turn) => turn.changeSetId === changeSet.id)) items.push(changeCards(changeSet, onDecide));
   if (thinking) { const typing = element('article', 'msg from-hermes thinking'); typing.append(element('div', 'msg-meta', 'Igor'), element('div', 'typing', '')); typing.lastChild.append(element('i'), element('i'), element('i')); items.push(typing); }

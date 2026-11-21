@@ -244,6 +244,58 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   assert.equal((await call(`/contracts/not-a-contract${book}`)).status, 404);
 });
 
+test('a passage turn is checked against the current source, recorded with the message, and limits its proposal', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-passage-'));
+  await startFrige(root, 4419, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: 'fake' });
+  const prefix = 'http://127.0.0.1:4419/frige/api/stex/publishing/v1';
+  const call = async (route, { method = 'GET', payload } = {}) => {
+    const response = await fetch(`${prefix}${route}`, { method, headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) });
+    return { status: response.status, body: await response.json().catch(() => null) };
+  };
+  const project = (await call('/books', { method: 'POST', payload: { title: 'Passage Fixture' } })).body;
+  const book = `?book=${project.id}`;
+  const nodeId = (await call(`/project/graph${book}`)).body.readingOrder[0];
+  const file = path.join(root, 'books', project.id, 'manuscript', (await call(`/project/graph${book}`)).body.nodes.find((entry) => entry.id === nodeId).relativePath);
+  // A CRLF piece in which the selected phrase also occurs outside the passage.
+  const source = '# Passage\r\n\r\nThe river ran.\r\n  The river ran again.\r\nA bell sounded.\r\n';
+  const saved = (await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source, baseHash: (await call(`/nodes/${nodeId}${book}`)).body.hash } })).body;
+  const editor = source.replace(/\r\n/g, '\n'); const text = '  The river ran again.';
+  const selection = (overrides = {}) => ({ nodeId, baseHash: saved.hash, start: editor.indexOf(text), end: editor.indexOf(text) + text.length, text, action: 'revise', ...overrides });
+  const turns = async () => (await call(`/scopes/${nodeId}/turns${book}`)).body.length;
+
+  // A revise: the passage is recorded with the message, and the simulator's edit lands inside it.
+  const revise = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Revise the selected passage.', selection: selection() } });
+  assert.equal(revise.status, 200, JSON.stringify(revise.body));
+  const recorded = revise.body.userTurn.passage;
+  assert.deepEqual({ ...recorded, start: undefined, end: undefined }, { nodeId, relativePath: saved.relativePath, title: saved.title, baseHash: saved.hash, action: 'revise', start: undefined, end: undefined, startLine: 4, endLine: 4, text });
+  assert.equal(source.slice(recorded.start, recorded.end), text, 'offsets name the canonical bytes, past the CRLFs before them');
+  assert.equal(revise.body.changeSet.origin.userTurnId, revise.body.userTurn.id, 'the contract leads back to the passage');
+  await call(`/scopes/${nodeId}/changes/decide${book}`, { method: 'POST', payload: { changeSetId: revise.body.changeSet.id, nodeId, decision: 'accept' } });
+  assert.equal(await readFile(file, 'utf8'), source.replace(text, `${text} — simulated revision`), 'only the passage changed; CRLFs and the other lines are untouched');
+
+  // The piece has changed, so the old selection is stale: refused, and nothing is recorded.
+  const before = await turns();
+  const stale = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Again.', selection: selection() } });
+  assert.equal(stale.status, 409); assert.equal(stale.body.code, 'PASSAGE_STALE');
+  const current = (await call(`/nodes/${nodeId}${book}`)).body;
+  for (const [overrides, pattern] of [
+    [{ baseHash: current.hash, text: 'Not what is there.'.padEnd(text.length, '.') }, /no longer at that place/],
+    [{ baseHash: current.hash, action: 'rewrite-everything' }, /passage action is one of/],
+    [{ baseHash: current.hash, nodeId: 'node-not-offered-here' }, /not in a piece this conversation offers/],
+  ]) {
+    const refused = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Again.', selection: selection(overrides) } });
+    assert.equal(refused.status, 400, JSON.stringify(overrides)); assert.equal(refused.body.code, 'INVALID_PASSAGE'); assert.match(refused.body.error, pattern);
+  }
+  assert.equal(await turns(), before, 'a refused selection records no turn');
+
+  // An edit outside the passage is set aside and the reply says why; with "ask", the passage is context only.
+  const fresh = (overrides = {}) => { const shown = current.source.replace(/\r\n/g, '\n'); const at = shown.indexOf('A bell sounded.'); return { nodeId, baseHash: current.hash, start: at, end: at + 15, text: 'A bell sounded.', ...overrides }; };
+  const outside = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate edit: The river ran. => The stream ran.', selection: fresh({ action: 'revise' }) } });
+  assert.equal(outside.body.changeSet, null); assert.match(outside.body.assistantTurn.droppedChanges[0].reason, /not in the selected passage/);
+  const asked = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate edit: The river ran. => The stream ran.', selection: fresh({ action: 'ask' }) } });
+  assert.equal(asked.body.changeSet.changes.length, 1, 'a question about a passage may still propose elsewhere in the piece');
+});
+
 test('a contract records the context the gateway reports it forwarded, marked as confirmed', async (context) => {
   // A stub gateway that proposes one change and reports a trimmed outline and one contract forwarded.
   const gateway = http.createServer(async (request, response) => {

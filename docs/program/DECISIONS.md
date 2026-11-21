@@ -298,6 +298,39 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   card, the stex-igor scope-turn adapter and its trusted instructions (local
   branch `feat/anchored-edits`, unreleased), and `protocol/texgraph`.
 
+## D-021 — Selected passages are checked by the engine and bound the proposal
+
+- **Decided by:** principal agent, 2026-11-21, under the owner's Frige
+  interface directive (increment 1: navigation and exact passage
+  selection). Open to owner review.
+- **Decision:**
+  - **Coordinates.** A passage is sent in the editor's coordinates, one
+    `\n` per line ending, with the piece's hash and the exact selected text.
+    The engine refuses a stale hash or a mismatched text before recording
+    anything, maps the range to canonical bytes, and records the resolved
+    passage on the author's turn.
+  - **Bounds.** For every action except `ask`, any proposal from that turn
+    may change only the passage. Edit anchors are searched within it, so a
+    phrase repeated elsewhere in the piece still anchors an edit to the
+    passage.
+  - **Gateway.** The passage reaches the gateway as its own labelled
+    request field, and the gateway reports whether it forwarded it.
+- **Why:**
+  - The browser's selection is not authority. Offsets in the editor's
+    coordinates are what a text field reports, so CRLF pieces need no
+    browser-side mapping.
+  - Recording the passage on the user turn, which the contract already
+    names, avoids a change to `stex.frige.change-contract.v1`.
+  - Bounding by the passage makes "revise this" unable to reach other text,
+    whatever the model writes.
+- **Not done:**
+  - passages from pieces a section conversation withholds as too long;
+  - inline markers for proposals in the editor (interface increment 2).
+- **Affects:** Frige (`resolvePassage`, `changedOnlyWithin`, `applyEdits`
+  `within`, the turn route, the inference client and simulator), the
+  workstation, `protocol/frige` and `protocol/texgraph`, and the stex-igor
+  adapter on branch `feat/frige-passages`, which is unreleased.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
