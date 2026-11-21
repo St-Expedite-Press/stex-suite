@@ -56,6 +56,26 @@ service knows, as well as on the task.
 - **No suite browser script covers the Company screen.** This evidence comes
   from a throwaway script; `verify:igor` covers the chat screen only.
 
+## Release (2026-11-21)
+
+The owner authorized the release ("all of that works").
+
+- **Suite:** PR 10 merged as `e754f52` after CI passed.
+- **stex-igor:** PR 5 passed CI, and `main` was fast-forwarded from
+  `c5af494` to `5db7e51`, the commit the suite pins.
+- **Deploy run `44939125134`:** every step passed:
+  - build;
+  - ship over IAP;
+  - install with its health checks;
+  - "Verify the VM's active release", which reports `5db7e51` as
+    generation 15.
+- **From outside:** the sign-in page answers 200, and the API answers its
+  own 401.
+- **Not yet done:**
+  - the operator step for R-15 (`apply-igor-profile.sh` on the VM, then a
+    restart of `hermes-igor`), so Hermes memory is still on until then;
+  - a live free-mode or passage turn.
+
 ## Independent review
 
 **Round 1** (2026-11-21). A separate reviewer agent ran with attack scripts:

@@ -8,8 +8,8 @@ must keep compatible.
 
 | Repository | Revision | Role |
 | --- | --- | --- |
-| stex-suite | `44cd3ac` (`main`, after PR 8) | Current base; the program started from `d96340e` (PR 5 head) |
-| stex-igor | `c5af494` (`main`, deployed 2026-11-21 as generation 14) | Submodule pin on suite `main` since PR 8; `bd8b3b0` was the pin before |
+| stex-suite | `e754f52` (`main`, after PR 10) | Current base; the program started from `d96340e` (PR 5 head) |
+| stex-igor | `5db7e51` (`main`, deployed 2026-11-21 as generation 15, verified by the deploy workflow) | Submodule pin on suite `main` since PR 10; `c5af494` was the pin before |
 | Hermes runtime | `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac` | Pinned upstream source; not modified |
 
 ## Branches
@@ -23,9 +23,9 @@ must keep compatible.
 | stex-igor | `feat/agent-config` | `a8880aa` (on `feat/frige-scope-context`) | Wave 4a the Company: `7da59e0` | No (contained in `feat/director-proposals`) | Released in `bd8b3b0` |
 | stex-suite | `feat/frige-f5-workstation` | `06c5f13` (`origin/main`, after PR 7) | Wave F first increment: anchored edits, passage review, review fixes, records | Yes | Merged to `main` by PR 8 as `44cd3ac`, 2026-11-21 (CI green); pins stex-igor `c5af494` |
 | stex-igor | `feat/anchored-edits` | `bd8b3b0` (`main`) | Scope-turn adapter reads `edits`; teaches them only to a Frige that advertises `proposalForms` | Yes | Released: PR 4 fast-forwarded to `c5af494` with the owner's authorization, 2026-11-21; installed and health-checked, read-back step failed on SSH |
-| stex-suite | `feat/frige-ui-passages` | `af94e24` (`main`) | Interface increment 1: navigation, deep links, exact passage selection (D-021) | No | Review; pins stex-igor `c5af494` (unchanged), so merging deploys nothing |
-| stex-igor | `feat/frige-passages` | `c5af494` (`main`) | Adapter forwards a selected passage and adds its rule | No | A push to `main` deploys: owner authorization |
-| stex-igor | `feat/free-mode` | `1e2556a` (`feat/frige-passages`) | Igor free mode, catalog `free` and `description`, Company screen prices and descriptions (D-022); contains `feat/frige-passages` | No | A push to `main` deploys: owner authorization. Releasing it releases the passage adapter too |
+| stex-suite | `feat/frige-ui-passages` | `af94e24` (`main`) | Interface increment 1 (D-021), its review fixes, and the free-mode records (D-022) | Yes | Merged to `main` by PR 10 as `e754f52`, 2026-11-21 (CI green); pins stex-igor `5db7e51` |
+| stex-igor | `feat/frige-passages` | `c5af494` (`main`) | Adapter forwards a selected passage and adds its rule | Yes | Released inside `feat/free-mode` (`5db7e51`) |
+| stex-igor | `feat/free-mode` | `1e2556a` (`feat/frige-passages`) | Igor free mode, catalog `free` and `description`, Company screen prices and descriptions (D-022); contains `feat/frige-passages` | Yes | Released with the owner\'s authorization: PR 5 fast-forwarded `main` to `5db7e51`, deployed as generation 15 on 2026-11-21, active release verified |
 | stex-igor | `feat/skill-animate-still` | `d0598d8` (`main`) | Visual-production procedure for animating and scoring a still artwork (procedure only; grants nothing): `430b6e5` | Yes (2026-11-20) | Released: merged into the release branch and deployed in `bd8b3b0` (PR 3 merged) |
 
 ## Compatibility requirements
