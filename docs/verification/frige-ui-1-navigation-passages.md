@@ -105,6 +105,16 @@ end-to-end script is a throwaway file outside the repositories.
   history listing's limit. An undecided proposal older than that is not
   marked in the tree, though its own conversation still shows it.
 
+## Release (2026-11-21)
+
+- **Suite:** merged by PR 10 (`e754f52`).
+- **stex-igor:** the passage adapter is released in `5db7e51`, generation
+  15, with the active release verified
+  ([free-mode release](igor-free-mode-pricing.md#release-2026-11-21)).
+- **What hosted Igor now does:** it forwards a selected passage and confirms
+  it.
+- **Not yet done:** no live passage turn has run.
+
 ## Independent review
 
 **Round 1** (2026-11-21). The owner clarified that the "no Claude" rule
