@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks project store behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -6,6 +7,7 @@ import test from 'node:test';
 import { BookStore, sourceHash } from '../src/project-store.mjs';
 import { previewDocument, validatePageSource } from '../src/lualatex.mjs';
 
+/** Initializes a book store in a disposable directory. */
 async function temporaryStore() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-'));
   const store = new BookStore(root);

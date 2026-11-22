@@ -48,8 +48,8 @@ relationship subjects use accepted projects. Frige and Seaxneat provide
 be previewed and explicitly sent to Igor as the exact normal user message
 shown, after another access check. It never mines transcripts, generates
 inferences automatically, or mutates engine files. These paths are implemented
-and tested locally. The reviewed release is in progress; actual merge and
-deployment outcomes belong in [release evidence](../../docs/verification/platform-release.md).
+and tested locally. See the [status table](../../docs/STATUS.md) for current
+integration and release claims.
 
 `src/local-adapter.mjs` is the separate legacy read-only Markdown vault
 adapter, disabled without `STEX_VAULT_PATH`. It is not used by the projection

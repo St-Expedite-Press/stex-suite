@@ -1,10 +1,11 @@
+/** Suite local development source that builds, launches and stops the deterministic loopback stack. */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
-const shellPort = process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || '4300';
+const shellPort = process.env.STEX_PANTHEON_PORT || '4300';
 const frigePort = process.env.STEX_FRIGE_PORT || process.env.TEXGRAPH_PORT || '4310';
 const seaxneatPort = process.env.SEAXNEAT_PORT || '4320';
 const igorPort = process.env.STEX_IGOR_PORT || '4330';
@@ -12,6 +13,7 @@ const inferencePort = process.env.STEX_INFERENCE_PORT || '8100';
 const platformPort = process.env.STEX_PLATFORM_PORT || '4340';
 const shared = process.env.STEX_INFERENCE_SHARED_SECRET || 'stex-alpha-local';
 
+/** Starts a child pnpm command with its selected application environment. */
 function run(args, environment = {}) {
   const command = process.platform === 'win32' ? process.execPath : 'corepack';
   const invocation = process.platform === 'win32' ? [corepackEntry, ...args] : args;
@@ -24,6 +26,7 @@ function run(args, environment = {}) {
 }
 
 // Seaxneat and Igor serve production builds; build both before anything starts.
+/** Builds a workspace before service startup and exits on a failed build. */
 function build(directory, environment = {}) {
   const command = process.platform === 'win32' ? process.execPath : 'corepack';
   const args = ['pnpm', '--dir', directory, 'build'];
@@ -45,7 +48,7 @@ const python = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/
 // here: a missing uv or a platform crash is reported but never stops the stack.
 const synced = spawnSync('uv', ['sync', '--frozen'], { cwd: root, stdio: 'inherit', windowsHide: true });
 const platformReady = synced.status === 0 && existsSync(python);
-if (!platformReady) console.warn('Platform API not started: uv sync --frozen failed (see README Prerequisites). Pantheon will poll studios directly.');
+if (!platformReady) console.warn('Platform API not started: uv sync --frozen failed (see docs/DEVELOPER-GUIDE.md#prerequisites). Pantheon will poll studios directly.');
 
 const children = [
   run(['pnpm', '--dir', 'stex-igor/services/inference', 'dev'], {
@@ -95,6 +98,7 @@ if (platformReady) {
 }
 
 let stopping = false;
+/** Stops the stack children once and retains the selected exit code. */
 function stop(code = 0) {
   if (stopping) return;
   stopping = true;

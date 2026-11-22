@@ -121,7 +121,7 @@ Igor, Graph, and Activity. Instrumental workspaces use a compact header.
 ## Browser verification
 
 Both scripts drive an installed Chrome or Edge over the DevTools protocol with
-no extra dependencies (`scripts/browser/devtools.mjs`), and write screenshots
+no extra dependencies (`scripts/verify/browser/devtools.mjs`), and write screenshots
 and `report.json` to the system temp folder, or to `--out <dir>`.
 
 - `verify:splash` covers 15 viewports from 320×568 to 2560×1080, including
@@ -147,7 +147,7 @@ and `report.json` to the system temp folder, or to `--out <dir>`.
 | `STEX_PLATFORM_URL` | Python platform API origin for `/api/platform/v1/projects` (loopback HTTP only; default `http://127.0.0.1:4340`). Only listed read-only paths are forwarded, with no browser headers. Only a `200` JSON answer is relayed; any other status, redirect, compressed or over-4 MB body, timeout (5 s) or connection failure answers `502` |
 | `STEX_KNOWLEDGE_DATA_DIR` | Opt-in knowledge metadata journal directory; unset means disabled. Use an ignored path such as `services/knowledge/.local-data` resolved from the repository root |
 
-`STEX_LAB_PORT` is the legacy port fallback. Books-directory configuration
+Use `STEX_PANTHEON_PORT` to select the local shell port. Books-directory configuration
 belongs to Frige, including its `STEX_BOOKS_DIR` compatibility fallback;
 Pantheon ignores these filesystem settings.
 `corepack pnpm dev:alpha` sets the ports and application origins for the local
@@ -185,7 +185,7 @@ and explicitly sent to Igor as the exact normal user message shown. Source
 access is rechecked before that handoff. No automatic graph inference,
 transcript mining, engine writes or runtime tools are enabled. See the
 [knowledge contract](../../protocol/knowledge/README.md). These workflows are
-tested locally; the reviewed release is in progress and deployment evidence
+tested locally; current merge and deployment evidence
 belongs in [the release report](../../docs/verification/platform-release.md).
 Obsidian is the required direct human-facing knowledge integration. The
 metadata Graph does not implement actual-vault synchronization; that remains

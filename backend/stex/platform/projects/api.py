@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/v1", tags=["projects"])
 
 
 def project_service(request: Request) -> ProjectSummaryService:
+    """Resolve the aggregation service from the active request application."""
     service: ProjectSummaryService = request.app.state.projects
     return service
 

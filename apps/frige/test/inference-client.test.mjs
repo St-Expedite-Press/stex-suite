@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks inference client behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { inferenceHealth, layoutFrom, requestPageRevision, requestScopeTurn } from '../src/inference-client.mjs';
@@ -19,6 +20,7 @@ test('Frige alpha deterministic transport returns a labelled no-change response 
 test('the deterministic simulator proposes one labelled change only when asked, and never to the table of contents', async () => {
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
   process.env.STEX_FRIGE_INFERENCE_MODE = 'fake';
+  /** Encodes a synthetic inference turn for the tested contract. */
   const turn = (message, sources) => requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-fixture', kind: 'node', title: 'Piece', nodeIds: [] }, sources, graph: {}, turns: [], message });
   const programme = { nodeId: 'node-programme', title: 'Programme', kind: 'programme', relativePath: 'Programme.md', hash: 'h0', source: '# Programme\n' };
   const piece = { nodeId: 'node-piece', title: 'Piece', kind: 'poem', relativePath: '01/Piece.md', hash: 'h1', source: '# Piece\n\nA line.' };
@@ -42,6 +44,7 @@ test('the deterministic simulator proposes one labelled change only when asked, 
     const clipped = (await turn(`Simulate change: ${'𝄞'.repeat(300)}`, [piece])).changes[0].source;
     assert.equal(clipped, `# Piece\n\nA line.\n\n${'𝄞'.repeat(240)}\n`);
     // Layout requests shape a proposal; the engine validates every value.
+    /** Extracts the layout values asserted by the test. */
     const layoutOf = async (message) => (await turn(message, [piece])).layout;
     assert.deepEqual((await layoutOf('Simulate layout: 15pt / 18pt')).set, { fontSize: '15pt', leading: '18pt' });
     assert.deepEqual((await layoutOf('simulate layout: Recto OFF')).set, { opensRecto: false });
@@ -63,6 +66,7 @@ test('the deterministic simulator passes one anchored edit, quoted exactly, to t
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
   process.env.STEX_FRIGE_INFERENCE_MODE = 'fake';
   context.after(() => { if (previous === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = previous; });
+  /** Encodes a synthetic inference turn for the tested contract. */
   const turn = (message, sources) => requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-fixture', kind: 'node', title: 'Piece', nodeIds: [] }, sources, graph: {}, turns: [], message });
   const programme = { nodeId: 'node-programme', title: 'Programme', kind: 'programme', relativePath: 'Programme.md', hash: 'h0', source: '# Programme\n' };
   const piece = { nodeId: 'node-piece', title: 'Piece', kind: 'poem', relativePath: '01/Piece.md', hash: 'h1', source: '# Piece\n\nA line.' };

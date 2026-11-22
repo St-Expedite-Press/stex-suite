@@ -1,3 +1,4 @@
+/** Suite asset tooling source that checks asset hashes, budgets, provenance and derivative placement. */
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,7 @@ const assetId = /^[PFSEWHGR]\d{2}$/;
 const managedRoots = ['assets/masters', 'assets/reference', 'packages/design-system/brand'];
 const lfsPointer = 'version https://git-lfs.github.com/spec/v1';
 
+/** Enumerates files under a registered media root. */
 async function filesUnder(root, relative) {
   let entries;
   try { entries = await readdir(path.join(root, relative), { withFileTypes: true }); } catch { return []; }
@@ -25,11 +27,13 @@ async function filesUnder(root, relative) {
   return nested.flat();
 }
 
+/** Lists the roots where tracked media derivatives are permitted. */
 async function mediaRoots(root) {
   const applications = await readdir(path.join(root, 'apps'), { withFileTypes: true }).catch(() => []);
   return applications.filter((entry) => entry.isDirectory()).map((entry) => `apps/${entry.name}/public/media`);
 }
 
+/** Validates one manifest asset against its stored bytes and metadata. */
 async function checkFile(root, record, label, errors) {
   const name = path.posix.basename(record.path);
   if (!fileName.test(name)) errors.push(`${label}: ${record.path} does not follow <owner>-<subject>[-<variant>][-<width>w].<ext>.`);
@@ -42,6 +46,7 @@ async function checkFile(root, record, label, errors) {
   if (record.budgetBytes && actual.bytes > record.budgetBytes) errors.push(`${label}: ${record.path} is ${actual.bytes} bytes, over its ${record.budgetBytes}-byte budget.`);
 }
 
+/** Checks master and derivative lineage, naming, hashes and size limits. */
 export async function verifyAssets(root = repositoryRoot) {
   const errors = [];
   let manifest;

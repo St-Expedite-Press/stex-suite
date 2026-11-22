@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks preview proxy behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { previewPath, previewTarget } from '../src/preview-proxy.mjs';

@@ -1,8 +1,10 @@
+/** Seaxneat website engine source that maps workspace revisions and build state to read-only project summaries. */
 // stex.projects.summary.v1 (protocol/projects): read-only summaries for Pantheon,
 // mapped from store summaries. Labels are specific; state never relies on colour.
 // Provisioning is reported through project.status, not a running operation.
 const operationLabels = { build: 'Building', apply: 'Applying edit', restore: 'Restoring' };
 
+/** Maps the latest build and proposal state to the project status contract. */
 export function projectStatus(project) {
   const operation = project.operation || {};
   if (operation.state === 'running') return { state: 'working', label: operationLabels[operation.kind] || 'Working' };
@@ -13,6 +15,7 @@ export function projectStatus(project) {
   return { state: 'ready', label: 'Build ready' };
 }
 
+/** Converts engine-owned projects to the read-only summary contract. */
 export function projectSummaries(projects) {
   return {
     schemaVersion: 'stex.projects.summary.v1',

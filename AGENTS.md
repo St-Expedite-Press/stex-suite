@@ -54,34 +54,17 @@ masthead/motion behavior, typography and design tokens are protected during
 integration. Do not regenerate or reinterpret artwork or redesign approved
 presentation to satisfy a test. Preserve existing user data and workflows.
 
-## Where the project stands
+## Project status and map
 
-The Platform Transition migration follows Consolidation Alpha and is
-defined in [`docs/PLATFORM-TRANSITION.md`](docs/PLATFORM-TRANSITION.md). The earlier A0
-acceptance evidence remains historical. [`docs/STATUS.md`](docs/STATUS.md) is
-the authoritative status table and [`docs/verification/`](docs/verification/)
-holds acceptance evidence; update those, not this file, when status moves.
+The [status table](docs/STATUS.md) is authoritative for current capabilities
+and release claims. The [verification index](docs/verification/README.md)
+locates acceptance evidence, and the [whitepaper](docs/WHITEPAPER.md) maps
+repository and deployment ownership. The [developer guide](docs/DEVELOPER-GUIDE.md)
+owns local prerequisites, commands and canonical configuration.
 
-- **Active, implemented and tested locally:** Frige (`apps/frige`),
-  Seaxneat (`apps/seaxneat`), the Pantheon shell (`apps/pantheon`) with its
-  public splash, the Igor conversation application (`stex-igor/apps/igor`; fake transport
-  by default, live turns verified once on a local gateway), the shared design system (`packages/design-system`), the
-  brand asset library (`assets`), the pinned upstream Hermes source
-  (`stex-igor/runtime/hermes-agent`), and the `stex.hermes.turn.v1` fake/upstream API
-  adapter in `stex-igor/services/inference`.
-- **Registered but deferred:** Eostre (`apps/eostre`) and Woden
-  (`apps/woden`) — shell entries with an honest deferred state only.
-- **Hosted:** Igor at `igor.stexpedite.press`, deployed from the stex-igor
-  submodule. Its operational hardening is milestone D1, in progress.
-- **Not done or unverified:** provider-backed Frige exchanges, an OS-level
-  runtime isolation boundary for the local Windows gateway, vault integration,
-  deployment of anything other than Igor, and runtime execution across engines.
-  Explicit HTTP project context and optional metadata knowledge projections
-  are implemented locally; neither grants tools or shared canonical state.
-
-The historical Agent Studio migration that produced A0 is closed. Agent Studio
-(`St-Expedite-Press/agent-studio`) remains a read-only behavioral reference;
-never copy its Python/FastAPI, cloud, provider, credential, vault, or private
+The historical Agent Studio migration is closed. Agent Studio
+(`St-Expedite-Press/agent-studio`) remains a read-only behavioral reference.
+Never copy its Python/FastAPI, cloud, provider, credential, vault, or private
 Hermes runtime.
 
 **Default scope without a named milestone:** defects, tests, documentation,
@@ -92,43 +75,6 @@ a shared database, universal graph, identity system, or generalized scheduler
 requires a milestone the user explicitly authorizes (see *Milestone loop*).
 Remote Hermes verification additionally needs explicit credentials, budget,
 and authorization.
-
-## Repository map
-
-| Path | Role and owner | Shell route | Dev port | Owning check |
-| --- | --- | --- | --- | --- |
-| `apps/pantheon` | Unified presentation, workspaces, same-origin proxy and registry routes | `/` | 4300 | `test:pantheon`, `build:pantheon` |
-| `apps/frige` | **Frige** — manuscripts, proofs, preflight, revision authority | `/frige/` (`/texgraph/` redirects) | 4310 | `test:frige`, `verify:frige` |
-| `apps/seaxneat` | **Seaxneat** — website engine, previews and revisions; UI belongs to Pantheon | `/seaxneat/` compatibility entry | 4320 | `test:seaxneat`, `build:seaxneat` |
-| `stex-igor/apps/igor` | **Igor** — the Pantheon Director's conversation interface and records | `/igor/` | 4330 | `test:igor`, `build:igor`, `verify:igor`, `verify:igor-login` |
-| `apps/eostre` | **Eostre** — registered, deferred | `/eostre/` | — | — |
-| `apps/woden` | **Woden** — registered, deferred | `/woden/` | — | — |
-| `stex-igor/services/inference` | Sole application boundary to Hermes; fake transport by default | — | 8100 | `test:inference` |
-| `stex-igor/runtime/hermes-agent` | Pinned upstream Hermes source (submodule of stex-igor) | loopback API when explicitly activated | 8642 | upstream runtime checks |
-| `stex-igor/hermes` | Eight native profile specifications, reusable skill procedures and runtime policy | — | — | `test:hermes` |
-| `stex-igor` | **Submodule** `St-Expedite-Press/stex-igor`: everything that runs on the hosted VM; deploys on push to its `main` | — | — | `test:stex-igor-sync` |
-| `backend` | Python/FastAPI platform API: health and the read-only `stex.platform.projects.v1`; owns no engine state | `/api/platform/v1/projects` via Pantheon | 4340 | `test:platform`, `verify:platform-api` |
-| `services/knowledge` | Optional metadata journal/projections and separate read-only vault adapter | `/graph/` via Pantheon | — | `test:knowledge`, `verify:knowledge` |
-| `vault` | Portable knowledge foundation; direct Obsidian integration remains required future work | — | — | adapter tests |
-| `protocol` | Versioned contracts and reference vocabulary, never shared app logic | — | — | schema review |
-| `packages/design-system` | Shared CSS tokens, type, components, brand marks; no app logic | `/design-system/` | — | `test:design-system` |
-| `assets` | Brand masters, reference comps, and the asset manifest (Git LFS) | — | — | `test:assets` |
-| `docs` | Whitepaper, manuals, design system, status, verification evidence | — | — | link/command check |
-
-Ports are the `scripts/dev-alpha.mjs` defaults (`STEX_PANTHEON_PORT`,
-`STEX_FRIGE_PORT`, `SEAXNEAT_PORT`, `STEX_IGOR_PORT`, `STEX_INFERENCE_PORT`,
-`STEX_PLATFORM_PORT`); `dev:platform` starts the platform API alone. Legacy `STEX_LAB_PORT` and `TEXGRAPH_PORT` are compatibility
-aliases. Supported target: local development on Node ≥ 22.13, pnpm 9.15 via
-Corepack, uv with the pinned Python 3.12, Git, and LuaLaTeX for Frige proof
-tests.
-
-```powershell
-corepack pnpm install --frozen-lockfile
-corepack pnpm test                  # assets, design system, and every app suite
-corepack pnpm run test:<suite>      # one owning suite
-corepack pnpm build:seaxneat        # React production build
-corepack pnpm dev:alpha             # shell + apps + fake inference, loopback only
-```
 
 ### The stex-igor submodule
 

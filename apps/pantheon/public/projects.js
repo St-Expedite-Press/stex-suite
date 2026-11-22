@@ -1,3 +1,4 @@
+/** Pantheon browser source that loads and renders engine-owned project summaries and availability. */
 // Loads stex.projects.summary.v1 (protocol/projects) from each active studio (kind "studio")
 // through Pantheon's proxy and renders Continue working, Recent projects, the
 // Projects table, and studio counts. A studio that does not answer within 2 s,
@@ -8,8 +9,10 @@ const icons = { frige: 'book-open', seaxneat: 'code-xml' };
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
 // Element.append(null) would insert the text "null": optional nodes go through add().
+/** Appends the supplied nodes to the current display. */
 const add = (parent, ...children) => { parent.append(...children.filter((child) => child !== null && child !== undefined)); return parent; };
 
+/** Creates the requested DOM element with inert text. */
 function element(tag, attributes = {}, ...children) {
   const node = document.createElement(tag);
   for (const [name, value] of Object.entries(attributes)) {
@@ -18,6 +21,7 @@ function element(tag, attributes = {}, ...children) {
   return add(node, ...children);
 }
 
+/** Formats an update time as a recent relative timestamp. */
 function ago(iso) {
   const time = Date.parse(iso);
   if (!iso || Number.isNaN(time)) return null;
@@ -30,16 +34,19 @@ function ago(iso) {
   return new Date(time).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/** Selects the user-facing label for an engine status. */
 function statusText(project) {
   const when = ago(project.updatedAt);
   if (project.status.state === 'ready' && project.kind === 'book') return when ? `Edited ${when}` : project.status.label;
   return when ? `${project.status.label} · ${when}` : project.status.label;
 }
 
+/** Validates the values required by the project list consumer. */
 const validProject = (project) => project && typeof project.id === 'string' && typeof project.title === 'string' && project.title
   && typeof project.kind === 'string' && typeof project.openPath === 'string' && /^\/(?!\/)/.test(project.openPath) && !/(^|\/)\.\.(\/|\?|$)/.test(project.openPath)
   && ['ready', 'working', 'attention', 'failed'].includes(project.status?.state) && typeof project.status.label === 'string';
 
+/** Fetches one studio's project summaries and availability. */
 async function loadStudio(application) {
   try {
     const response = await fetch(`${application.route}api/stex/projects`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(2_000) });
@@ -55,6 +62,7 @@ async function loadStudio(application) {
 // Preferred source: the platform API's merged list (stex.platform.projects.v1),
 // which applies the same rules server-side. Any doubt about its answer throws,
 // and loadAll falls back to polling each studio from the browser as before.
+/** Loads the aggregate project list and availability from FastAPI. */
 async function loadFromPlatform(active) {
   const response = await fetch('/api/platform/v1/projects', { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(4_000) });
   if (!response.ok) throw new Error(String(response.status));
@@ -78,12 +86,14 @@ async function loadFromPlatform(active) {
   return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };
 }
 
+/** Loads projects from the studios when aggregation is unavailable. */
 async function loadFromStudios(active) {
   const results = await Promise.all(active.map(loadStudio));
   const projects = results.flatMap((result) => result.projects).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
   return { results, projects, unavailable: results.filter((result) => result.unavailable).map((result) => result.application.id) };
 }
 
+/** Selects the configured project source and loads the required lists. */
 async function loadAll() {
   const registry = await (await fetch('/api/applications', { headers: { accept: 'application/json' } })).json();
   // Only studios publish projects; other applications (Igor) are never polled.
@@ -98,8 +108,10 @@ async function loadAll() {
   }
 }
 
+/** Produces a message identifying the unavailable studios. */
 const unavailableNote = (ids) => ids.length ? element('p', { class: 'stex-meta notice' }, `${ids.map((id) => names[id] || id).join(' and ')} ${ids.length > 1 ? 'are' : 'is'} not responding, so ${ids.length > 1 ? 'their' : 'its'} projects are missing here.`) : null;
 
+/** Renders the explanation for an empty project list. */
 function emptyState() {
   return element('div', { class: 'empty' },
     element('p', {}, 'No projects yet.'),
@@ -108,6 +120,7 @@ function emptyState() {
 
 // The unavailable-studio note appears once per page: in the project list or
 // table. Continue working shows it only when it is the sole project view.
+/** Displays the most recently changed eligible project. */
 function renderContinue(container, { projects, unavailable }) {
   const latest = projects[0];
   const noteHere = !document.querySelector('[data-projects="recent"], [data-projects="all"]');
@@ -121,6 +134,7 @@ function renderContinue(container, { projects, unavailable }) {
   );
 }
 
+/** Renders one linkable project with its owner and status. */
 function projectRow(project) {
   return element('li', { 'data-stex-app': project.studio }, element('a', { class: 'project-row', href: project.href },
     element('span', { class: `project-icon project-icon--${icons[project.studio] || 'book-open'}`, 'aria-hidden': 'true' }),
@@ -128,11 +142,13 @@ function projectRow(project) {
     element('span', { class: `status status--${project.status.state}` }, statusText(project))));
 }
 
+/** Renders the available project items as a list. */
 function renderList(container, { projects, unavailable }, limit) {
   if (!projects.length) { add(container, emptyState(), unavailableNote(unavailable)); return; }
   add(container, element('ul', { class: 'project-list' }, ...projects.slice(0, limit).map(projectRow)), unavailableNote(unavailable));
 }
 
+/** Renders the full sortable project collection. */
 function renderTable(container, { projects, unavailable }) {
   if (!projects.length) { add(container, emptyState(), unavailableNote(unavailable)); return; }
   const header = element('tr', {}, ...['Project', 'Studio', 'Kind', 'Status'].map((label) => element('th', { scope: 'col' }, label)));
@@ -143,6 +159,7 @@ function renderTable(container, { projects, unavailable }) {
   add(container, element('table', { class: 'project-table' }, element('thead', {}, header), element('tbody', {}, ...rows)), unavailableNote(unavailable));
 }
 
+/** Updates the visible studio project counts. */
 function renderCounts({ results }) {
   for (const result of results) {
     const slot = document.querySelector(`[data-project-count="${result.application.id}"]`);
@@ -152,7 +169,7 @@ function renderCounts({ results }) {
   }
 }
 
-const views = { continue: renderContinue, recent: (container, data) => renderList(container, data, Number(container.dataset.limit) || 5), all: renderTable };
+const views = { continue: renderContinue, /** Selects the newest entries for the command center. */ recent: (container, data) => renderList(container, data, Number(container.dataset.limit) || 5), all: renderTable };
 
 loadAll().then((data) => {
   for (const container of document.querySelectorAll('[data-projects]')) {

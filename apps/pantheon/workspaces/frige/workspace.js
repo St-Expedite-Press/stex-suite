@@ -1,3 +1,4 @@
+/** Pantheon publishing workspace source that coordinates responsive view modes and the contents drawer. */
 // Workstation layout below desktop width. Presentation state only: it shows
 // and hides panes and never reads or changes a book.
 //   >= 1024px  three columns; this module does nothing.
@@ -14,11 +15,13 @@ const covered = [...document.querySelectorAll('.skip-link, .masthead, .tabs, .pu
 const phone = matchMedia('(max-width: 639.98px)');
 const tablet = matchMedia('(min-width: 640px) and (max-width: 1023.98px)');
 
+/** Activates the selected workspace pane. */
 function setView(view) {
   shell.dataset.view = view;
   for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.view === view));
 }
 
+/** Opens or closes the responsive contents drawer. */
 function setDrawer(open, { restoreFocus = false } = {}) {
   shell.dataset.drawer = open ? 'open' : 'closed';
   contents.setAttribute('aria-expanded', String(open));
@@ -29,6 +32,7 @@ function setDrawer(open, { restoreFocus = false } = {}) {
 }
 
 // The same buttons are view switches on phones and a drawer toggle on tablets.
+/** Applies the layout mode corresponding to the current viewport. */
 function applyMode() {
   setDrawer(false);
   if (phone.matches) { contents.removeAttribute('aria-expanded'); setView(shell.dataset.view || 'editor'); }

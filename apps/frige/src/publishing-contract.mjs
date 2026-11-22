@@ -1,3 +1,4 @@
+/** Frige publishing engine source that maps versioned publishing routes to their supported methods. */
 // stex.frige.publishing.v1: an additive HTTP facade over the owning engine.
 // The payloads and store validators remain the existing publishing operations.
 const fixed = {

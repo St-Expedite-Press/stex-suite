@@ -1,13 +1,17 @@
+/** Pantheon publishing workspace source that renders conversations, editorial proposals and linked artifacts. */
 // The conversation thread: Igor's replies as typed parts (prose, artifact cards,
 // choices and forms), the changes it suggests shown inside the reply that made them,
 // and the author's answers. Everything is built from text nodes, so nothing a model
 // writes is ever parsed as HTML.
 import { collapse, diffHunks, diffRows, lineEndingsDiffer } from './line-diff.js';
 
+/** Creates the requested DOM element with inert text. */
 export const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
+/** Creates a labeled native button with the supplied handler. */
 const button = (className, text, onClick) => { const node = element('button', className, text); node.type = 'button'; node.addEventListener('click', onClick); return node; };
 
 // **bold**, *italic* or _italic_, and `code` within a line.
+/** Appends safely rendered inline formatting to the target node. */
 function inline(text) {
   const nodes = []; let last = 0;
   for (const match of text.matchAll(/\*\*(.+?)\*\*|`([^`]+)`|\*(?=\S)([^*]+?)\*|(?<![\p{L}\p{N}])_(?=\S)([^_]+?)_(?![\p{L}\p{N}])/gu)) {
@@ -20,6 +24,7 @@ function inline(text) {
 }
 
 // Paragraphs, short headings, and bulleted or numbered lists; other line breaks are kept.
+/** Renders the allowed assistant text formatting with inert DOM nodes. */
 export function richText(text) {
   const fragment = document.createDocumentFragment();
   const bullet = /^\s*[-*•]\s+/; const numbered = /^\s*\d+[.)]\s+/;
@@ -43,11 +48,15 @@ export function richText(text) {
   return fragment;
 }
 
+/** Formats a message timestamp for display. */
 const time = (at) => (at ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+/** Formats a byte count for an artifact summary. */
 const size = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1_048_576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1_048_576).toFixed(1)} MB`);
 const decisionText = { accepted: 'Accepted', rejected: 'Rejected', stale: 'Not applied — edited since the suggestion', failed: 'Not applied', superseded: 'Replaced by a newer suggestion', reverted: 'Rolled back' };
+/** Selects singular or plural wording for a count. */
 const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 // A proof may be from another day, so its note carries the date as well as the time.
+/** Formats the date divider shown in a conversation. */
 const dateAndTime = (at) => new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 
 /**
@@ -97,13 +106,17 @@ function contractTerms(changeSet) {
 function layoutDiff(change) {
   const before = change.before || {}; const after = change.after || {};
   const inherited = change.inherited || {};
+  /** Formats the enabled state for a layout change. */
   const yesNo = (value) => (value ? 'yes' : 'no');
   // An unset value names what it follows and shows that value, as recorded when proposed.
   const follows = change.level === 'node' ? 'as its section' : 'as the book';
+  /** Formats a before or after type-size setting. */
   const size = (override) => (override.fontSize ? `${override.fontSize} / ${override.leading}` : `${follows} (${inherited.fontSize} / ${inherited.leading})`);
+  /** Formats the recto-opening setting for the proposal. */
   const recto = (override) => (override.opensRecto === undefined
     ? (inherited.opensRecto === undefined ? 'not set' : `not set (${yesNo(inherited.opensRecto)})`)
     : yesNo(override.opensRecto));
+  /** Formats the current running-head setting. */
   const head = (override) => override.headText || (inherited.headText ? `not set (${inherited.headText})` : 'not set');
   const rows = [['Body size / leading', size], ['Opens on a recto', recto], ...(change.level === 'section' ? [['Recto running head', head]] : [])];
   const list = element('dl', 'change-layout');
@@ -115,6 +128,7 @@ function layoutDiff(change) {
 }
 
 // Pending changes as line diffs, each with its own decision.
+/** Builds review cards for the offered editorial changes. */
 function changeCards(changeSet, onDecide) {
   const pending = changeSet.changes.filter((change) => change.status === 'pending');
   const box = element('section', 'changes');
@@ -157,11 +171,13 @@ function changeCards(changeSet, onDecide) {
 
 // Artifact text is fetched once and kept for later renders of the thread.
 const contentCache = new Map();
+/** Fetches and displays the content of a selected text artifact. */
 function loadText(url) {
   if (!contentCache.has(url)) contentCache.set(url, fetch(url).then((response) => (response.ok ? response.text() : Promise.reject(new Error('Unavailable')))));
   return contentCache.get(url);
 }
 
+/** Renders a conversation attachment and its permitted actions. */
 function artifactCard(part, artifactUrl) {
   const url = artifactUrl(part.artifactId); const card = element('article', `artifact-card kind-${part.kind}`);
   const header = element('header');
@@ -237,6 +253,7 @@ function promptCard(part, answer, onAnswer, drafts, busy) {
   if (answer) { status.textContent = 'Answered'; form.append(status); return form; }
   const submit = element('button', 'prompt-submit', part.type === 'form' ? part.submitLabel || 'Send' : 'Answer'); submit.type = 'submit'; submit.disabled = busy;
   form.append(submit, status);
+  /** Reads the currently selected prompt values. */
   const valuesOf = () => (part.type === 'choice'
     ? { selected: [...form.querySelectorAll('.prompt-option input:checked')].map((input) => input.value), ...(form.elements.namedItem('other')?.value.trim() ? { other: form.elements.namedItem('other').value.trim() } : {}) }
     : Object.fromEntries(part.fields.map((field) => { const input = form.elements.namedItem(field.id); return [field.id, field.kind === 'checkbox' ? input.checked : input.value]; })));
@@ -298,6 +315,7 @@ function passageQuote(passage) {
   return figure;
 }
 
+/** Renders one conversation message or derives the displayable failure. */
 function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, onRevert, onAnswer, artifactUrl, afterPassage = null }) {
   if (turn.kind === 'changes-decided' || turn.kind === 'changes-reverted') return decisionNote(turn, { contracts, busy, onRevert });
   const fromUser = turn.role === 'user';
@@ -339,6 +357,7 @@ function message(turn, { changeSet, contracts, answers, drafts, busy, onDecide, 
 }
 
 // Renders the whole thread; returns the element a new reply should scroll to.
+/** Renders conversation turns, proposals and artifact cards. */
 export function renderThread(box, { turns, thinking, notice, changeSet, contracts, empty, drafts, onDecide, onRevert, onAnswer, artifactUrl }) {
   if (!turns.length && !thinking && !notice) {
     const intro = element('div', 'thread-empty');

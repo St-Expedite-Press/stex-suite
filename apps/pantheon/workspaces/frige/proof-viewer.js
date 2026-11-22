@@ -1,3 +1,4 @@
+/** Pantheon publishing workspace source that renders and navigates a compiler-generated PDF with PDF.js. */
 // Native proof viewer: spreads or single pages from the compiled PDF, laid out by
 // the compiler page map. Returns null when PDF.js cannot load so the caller can
 // fall back to the browser's own PDF viewer.
@@ -5,8 +6,10 @@ import { appUrl } from './base-path.js';
 
 const POINTS_TO_CSS = 96 / 72;
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+/** Limits the PDF zoom to the supported range. */
 const clampZoom = (value) => Math.min(4, Math.max(0.25, value));
 
+/** Creates a multi-page PDF viewer for the mounted proof artifact. */
 export async function createProofViewer(root, { describePage, onSelectPage }) {
   let pdfjs;
   try {
@@ -14,6 +17,7 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     pdfjs.GlobalWorkerOptions.workerSrc = appUrl('/vendor/pdfjs/pdf.worker.min.mjs');
   } catch { return null; }
 
+  /** Creates a proof navigation button with its handler. */
   const button = (text, title) => Object.assign(document.createElement('button'), { type: 'button', className: 'quiet-button', textContent: text, title });
   const toolbar = document.createElement('div'); toolbar.className = 'viewer-toolbar';
   const previous = button('◀', 'Previous spread (←)'); const next = button('▶', 'Next spread (→)');
@@ -34,10 +38,12 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
   // 'fit-width', 'fit-page', or a magnification where 1 is the printed size.
   let zoomSetting = 'fit-width'; let renderGeneration = 0;
   // A proof of one section starts mid-book; captions, sides and the readout use book page numbers.
+  /** Maps a PDF index to its compiler page reference. */
   const bookPageOf = (number) => describePage(number).bookPage ?? number;
 
   // A bound book opens on a lone recto; later spreads are verso + recto. The
   // compiler map supplies them when it describes this exact PDF.
+  /** Calculates page dimensions and the current row layout. */
   function layout() {
     if (mode.value === 'single') return Array.from({ length: pdf.numPages }, (_, index) => [index + 1]);
     if (map?.spreads?.length && map.pagination?.physicalPageCount === pdf.numPages) return map.spreads.map((spread) => spread.pages);
@@ -47,6 +53,7 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
   }
 
   // CSS pixels per PDF point.
+  /** Computes the render scale for the current zoom mode. */
   function scale() {
     if (typeof zoomSetting === 'number') return zoomSetting * POINTS_TO_CSS;
     const columns = mode.value === 'spread' ? 2 : 1;
@@ -54,8 +61,10 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     const pageFit = (scroller.clientHeight - 32 - 22) / pageSize.height;
     return Math.max(0.1, zoomSetting === 'fit-page' ? Math.min(widthFit, pageFit) : widthFit);
   }
+  /** Calculates the effective zoom shown in the controls. */
   const magnification = () => scale() / POINTS_TO_CSS;
 
+  /** Updates the displayed zoom state. */
   function showZoom() {
     const preset = typeof zoomSetting === 'number' ? [...zoom.options].find((option) => Number(option.value) === zoomSetting) : null;
     custom.hidden = typeof zoomSetting !== 'number' || Boolean(preset);
@@ -63,6 +72,7 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     zoom.value = typeof zoomSetting === 'number' ? (preset ? preset.value : 'custom') : zoomSetting;
   }
 
+  /** Renders the visible PDF page into its canvas. */
   async function renderPage(slot) {
     if (slot.dataset.rendered) return;
     const generation = String(renderGeneration); slot.dataset.rendered = generation;
@@ -77,8 +87,10 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     } catch { if (slot.dataset.rendered === generation) slot.querySelector('.proof-sheet').textContent = 'This page could not be rendered.'; }
   }
   // Far-off pages give their canvas back so long books stay light.
+  /** Frees page resources outside the rendered region. */
   function releasePage(slot) { if (!slot.dataset.rendered) return; delete slot.dataset.rendered; slot.querySelector('.proof-sheet').replaceChildren(); }
 
+  /** Builds the visible page placeholders and layout. */
   function build() {
     observer?.disconnect(); slots = new Map(); renderGeneration += 1;
     const pageScale = scale(); const width = pageSize.width * pageScale; const height = pageSize.height * pageScale;
@@ -108,12 +120,15 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     showZoom(); applyHighlight(); updatePosition();
   }
 
+  /** Resolves the page row intersecting the current viewport. */
   function visibleRow() {
     const top = scroller.getBoundingClientRect().top;
     const index = [...scroller.children].findIndex((row) => row.getBoundingClientRect().bottom > top + 24);
     return Math.max(0, index);
   }
+  /** Chooses the current PDF page from the visible row. */
   const visiblePage = () => (rows[visibleRow()] || [1])[0];
+  /** Reports the visible proof position to the workspace. */
   function updatePosition() {
     const pages = rows[visibleRow()] || [];
     const offset = pdf ? bookPageOf(1) - 1 : 0;
@@ -121,14 +136,21 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
     position.textContent = pdf ? (offset ? `${shown} · ${pdf.numPages}-page proof` : `${shown} of ${pdf.numPages}`) : '';
   }
   // Scroll only the viewer; scrollIntoView would also move the Studio window.
+  /** Scrolls to the requested page position. */
   function scrollTo(element) { if (element) scroller.scrollTop += element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12; }
+  /** Navigates one page in the requested direction. */
   function step(direction) { scrollTo(scroller.children[Math.min(rows.length - 1, Math.max(0, visibleRow() + direction))]); }
+  /** Updates the highlighted page elements. */
   function applyHighlight() { for (const [number, slot] of slots) slot.classList.toggle('selected', number >= highlighted[0] && number <= highlighted[1]); }
+  /** Moves the viewport to the selected proof page. */
   function showPage(number) { scrollTo(slots.get(number)?.parentElement); updatePosition(); }
 
   // Every relayout keeps the page that was at the top of the view.
+  /** Recalculates the page layout after a viewport or zoom change. */
   function relayout() { if (!pdf) return; const page = visiblePage(); build(); showPage(page); }
+  /** Applies a supported fit mode or zoom value. */
   function setZoom(value) { zoomSetting = typeof value === 'number' ? clampZoom(value) : value; relayout(); }
+  /** Adjusts effective zoom by one supported increment. */
   function stepZoom(direction) {
     const current = magnification();
     const target = direction > 0 ? ZOOM_STEPS.find((value) => value > current + 0.01) : [...ZOOM_STEPS].reverse().find((value) => value < current - 0.01);
@@ -161,6 +183,7 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
 
   return {
     // Loading a newer proof keeps the reader on the same page number.
+    /** Loads the selected proof revision, replacing the previous document. */
     async load(url, pageMap) {
       const keep = pdf ? visiblePage() : null;
       const task = pdfjs.getDocument({ url, isEvalSupported: false });
@@ -174,6 +197,7 @@ export async function createProofViewer(root, { describePage, onSelectPage }) {
       return true;
     },
     showPage,
+    /** Sets the highlighted source range in the proof display. */
     highlight(first, last = first) { highlighted = [first || 0, last || 0]; applyHighlight(); },
   };
 }

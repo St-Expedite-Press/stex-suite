@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks base path behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -9,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/** Starts Frige with disposable publishing state and fake inference. */
 async function startFrige(root, port, context, environment = { STEX_FRIGE_SHELL_URL: '/' }) {
   const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_FRIGE_PORT: String(port), STEX_FRIGE_PROJECT_DIR: root, STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_FRIGE_BASE_PATH: '/frige', ...environment } });
   context.after(async () => { child.kill(); await rm(root, { recursive: true, force: true }); });
@@ -96,6 +98,7 @@ test('serves stex.projects.summary.v1 from file times without touching the manus
 });
 
 const repositoryRoot = path.resolve(appDirectory, '..', '..');
+/** Reads the status, headers and raw bytes of an HTTP fixture response. */
 const rawGet = (port, requestPath) => new Promise((resolve, reject) => {
   // node:http keeps the path as written, so traversal attempts reach the server unnormalised.
   http.get({ host: '127.0.0.1', port, path: requestPath }, (response) => { let text = ''; response.on('data', (chunk) => { text += chunk; }); response.on('end', () => resolve({ status: response.statusCode, text })); }).on('error', reject);
@@ -172,6 +175,7 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   // The deterministic simulator stands in for the director: no gateway, no provider.
   await startFrige(root, 4417, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: 'fake' });
   const prefix = 'http://127.0.0.1:4417/frige/api/stex/publishing/v1';
+  /** Calls the local fixture boundary with the encoded request. */
   const call = async (route, { method = 'GET', payload } = {}) => {
     const response = await fetch(`${prefix}${route}`, { method, headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) });
     return { status: response.status, contract: response.headers.get('x-stex-contract'), body: await response.json().catch(() => null) };
@@ -248,6 +252,7 @@ test('a passage turn is checked against the current source, recorded with the me
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-passage-'));
   await startFrige(root, 4419, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: 'fake' });
   const prefix = 'http://127.0.0.1:4419/frige/api/stex/publishing/v1';
+  /** Calls the local fixture boundary with the encoded request. */
   const call = async (route, { method = 'GET', payload } = {}) => {
     const response = await fetch(`${prefix}${route}`, { method, headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) });
     return { status: response.status, body: await response.json().catch(() => null) };
@@ -260,7 +265,9 @@ test('a passage turn is checked against the current source, recorded with the me
   const source = '# Passage\r\n\r\nThe river ran.\r\n  The river ran again.\r\nA bell sounded.\r\n';
   const saved = (await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source, baseHash: (await call(`/nodes/${nodeId}${book}`)).body.hash } })).body;
   const editor = source.replace(/\r\n/g, '\n'); const text = '  The river ran again.';
+  /** Resolves the requested revision selection within the owning engine. */
   const selection = (overrides = {}) => ({ nodeId, baseHash: saved.hash, start: editor.indexOf(text), end: editor.indexOf(text) + text.length, text, action: 'revise', ...overrides });
+  /** Reads the conversation history for the requested target. */
   const turns = async () => (await call(`/scopes/${nodeId}/turns${book}`)).body.length;
 
   // A revise: the passage is recorded with the message, and the simulator's edit lands inside it.
@@ -289,6 +296,7 @@ test('a passage turn is checked against the current source, recorded with the me
   assert.equal(await turns(), before, 'a refused selection records no turn');
 
   // An edit outside the passage is set aside and the reply says why; with "ask", the passage is context only.
+  /** Creates isolated route test data for the next scenario. */
   const fresh = (overrides = {}) => { const shown = current.source.replace(/\r\n/g, '\n'); const at = shown.indexOf('A bell sounded.'); return { nodeId, baseHash: current.hash, start: at, end: at + 15, text: 'A bell sounded.', ...overrides }; };
   const outside = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate edit: The river ran. => The stream ran.', selection: fresh({ action: 'revise' }) } });
   assert.equal(outside.body.changeSet, null); assert.match(outside.body.assistantTurn.droppedChanges[0].reason, /not in the selected passage/);
@@ -309,6 +317,7 @@ test('a contract records the context the gateway reports it forwarded, marked as
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-confirmed-'));
   await startFrige(root, 4418, context, { STEX_FRIGE_SHELL_URL: '/', STEX_FRIGE_INFERENCE_MODE: '', TEXGRAPH_INFERENCE_MODE: '', STEX_INFERENCE_URL: `http://127.0.0.1:${gateway.address().port}`, STEX_INFERENCE_SHARED_SECRET: 'test-only' });
   const prefix = 'http://127.0.0.1:4418/frige/api/stex/publishing/v1';
+  /** Posts the synthetic payload to the selected fixture route. */
   const post = async (route, payload) => (await fetch(`${prefix}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })).json();
   const project = await post('/books', { title: 'Confirmed Fixture' });
   const graph = await (await fetch(`${prefix}/project/graph?book=${project.id}`)).json();

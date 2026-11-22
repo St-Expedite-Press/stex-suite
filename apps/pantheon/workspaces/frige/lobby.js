@@ -1,8 +1,10 @@
+/** Pantheon publishing workspace source that loads the publishing library and opens user-selected projects. */
 import { appUrl } from './base-path.js';
 const projects = document.querySelector('#projects');
 const createForm = document.querySelector('#create-project');
 const createState = document.querySelector('#create-state');
 
+/** Renders one publishing project link. */
 function card(project) {
   const item = document.createElement('li');
   const link = document.createElement('a');
@@ -15,6 +17,7 @@ function card(project) {
   return item;
 }
 
+/** Loads the library entries and displays an honest error on failure. */
 async function load() {
   const response = await fetch(appUrl('/api/books'), { headers: { accept: 'application/json' } });
   const list = await response.json();

@@ -1,3 +1,4 @@
+/** Suite local development source that inspects tools required for local build and acceptance. */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -8,19 +9,24 @@ const root = process.cwd();
 const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
 
+/** Runs a tool probe and returns its first captured output. */
 function probe(command, args) {
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 60_000 });
   if (result.error || result.status !== 0) return null;
   return `${result.stdout || ''}${result.stderr || ''}`.trim();
 }
 
+/** Extracts the first nonempty line of tool output. */
 const firstLine = (text) => text.split(/\r?\n/)[0].trim();
+/** Parses the numeric parts of a tool version. */
 const version = (text) => (/(\d+)\.(\d+)\.(\d+)/.exec(text) || []).slice(1).map(Number);
+/** Compares numeric version components against the required version. */
 const atLeast = (actual, minimum) => {
   for (let index = 0; index < 3; index += 1) if (actual[index] !== minimum[index]) return actual[index] > minimum[index];
   return true;
 };
 
+/** Locates and probes the Corepack command for this platform. */
 function corepack(args) {
   return process.platform === 'win32' ? probe(process.execPath, [corepackEntry, ...args]) : probe('corepack', args);
 }
@@ -32,10 +38,12 @@ const pnpmExpected = manifest.packageManager.split('@')[1];
 const checks = [
   {
     level: 'required', name: 'Node.js', need: `${manifest.engines.node}, 22 or 24 LTS`,
+    /** Executes the requested local operation and reports its result. */
     run: () => atLeast(version(process.versions.node), nodeMinimum) ? `v${process.versions.node}` : null,
   },
   {
     level: 'required', name: 'Corepack', need: 'bundled with Node (removed in Node 25+)',
+    /** Executes the requested local operation and reports its result. */
     run: () => {
       if (process.platform === 'win32' && !existsSync(corepackEntry)) return null;
       const found = corepack(['--version']);
@@ -44,30 +52,37 @@ const checks = [
   },
   {
     level: 'required', name: 'pnpm', need: pnpmExpected,
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = corepack(['pnpm', '--version']); return found && firstLine(found) === pnpmExpected ? firstLine(found) : null; },
   },
   {
     level: 'required', name: 'Installed packages', need: 'corepack pnpm install --frozen-lockfile',
+    /** Executes the requested local operation and reports its result. */
     run: () => existsSync(path.join(root, 'node_modules', '.modules.yaml')) ? 'node_modules present' : null,
   },
   {
     level: 'required', name: 'Git', need: 'Seaxneat workspaces and revisions',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('git', ['--version']); return found && firstLine(found); },
   },
   {
     level: 'required', name: 'Git LFS', need: 'brand masters and splash media (then run: git lfs install)',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('git', ['lfs', 'version']); return found && firstLine(found); },
   },
   {
     level: 'required', name: 'uv', need: 'Python platform API (test:platform); uv provisions the pinned Python 3.12',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('uv', ['--version']); return found && firstLine(found); },
   },
   {
     level: 'recommended', name: 'LuaLaTeX', need: 'Frige proofs; proof tests skip without it',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('lualatex', ['--version']); return found && firstLine(found); },
   },
   {
     level: 'recommended', name: 'TeX packages', need: 'fontspec, microtype, geometry',
+    /** Executes the requested local operation and reports its result. */
     run: () => {
       const found = probe('kpsewhich', ['fontspec.sty', 'microtype.sty', 'geometry.sty']);
       const paths = (found || '').split(/\r?\n/).filter((line) => line.endsWith('.sty'));
@@ -76,14 +91,17 @@ const checks = [
   },
   {
     level: 'optional', name: 'pdffonts', need: 'Frige font-embedding preflight (Poppler or MiKTeX)',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('pdffonts', ['-v']); return found && firstLine(found); },
   },
   {
     level: 'optional', name: 'FFmpeg', need: 'rebuilding web media from masters (assets:build)',
+    /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('ffmpeg', ['-version']); return found && probe('ffprobe', ['-version']) ? firstLine(found) : null; },
   },
   {
     level: 'optional', name: 'Chrome or Edge', need: 'browser verification (verify:splash, verify:home; or set STEX_BROWSER)',
+    /** Executes the requested local operation and reports its result. */
     run: () => [process.env.STEX_BROWSER, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((candidate) => candidate && existsSync(candidate)) || null,
   },

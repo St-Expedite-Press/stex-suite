@@ -1,10 +1,11 @@
+/** Suite acceptance source that exercises conversation, context consent and retry with stub inference. */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import http from 'node:http';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { repositoryRoot } from './assets/manifest.mjs';
+import { repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser acceptance for Igor (milestone I1). Runs an isolated stack on spare
@@ -21,8 +22,10 @@ const replyDelayMs = 1500;
 const viewports = [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844]];
 
 // Stub inference: records every turn, answers after a delay, fails on demand.
+/** Serves deterministic turn replies and counts requests for retry assertions. */
 function inferenceStub(state) {
   return http.createServer(async (request, response) => {
+    /** Sends a JSON response from the stub inference server. */
     const json = (status, value) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(value)); };
     if (request.url.startsWith('/v1/hermes/health')) return json(200, { ok: true, contract: 'stex.hermes.turn.v1', transport: 'fake', configured: true });
     if (request.url !== '/v1/hermes/turn' || request.method !== 'POST') return json(404, { error: 'not found' });
@@ -39,6 +42,7 @@ function inferenceStub(state) {
   });
 }
 
+/** Verifies the composed conversation, context and retry workflow using stub inference. */
 async function main() {
   const dist = path.join(repositoryRoot, 'stex-igor', 'apps', 'igor', 'dist', 'index.html');
   if (!existsSync(dist)) throw new Error('Igor is not built: run corepack pnpm build:igor first.');
@@ -52,6 +56,7 @@ async function main() {
   const state = { turns: [], failedOnce: new Set() };
   const stub = inferenceStub(state);
   await new Promise((resolve) => stub.listen(ports.inference, '127.0.0.1', resolve));
+  /** Reads the current source and metadata for a selected graph node. */
   const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), env: { ...process.env, ...env } });
   const children = [
     node('stex-igor/apps/igor', { STEX_IGOR_PORT: String(ports.igor), STEX_IGOR_DATA_DIR: path.join(data, 'igor'), STEX_INFERENCE_URL: `http://127.0.0.1:${ports.inference}`, STEX_INFERENCE_SHARED_SECRET: secret, STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}` }),
@@ -59,6 +64,7 @@ async function main() {
     node('apps/pantheon', { STEX_PANTHEON_PORT: String(ports.pantheon), STEX_IGOR_URL: `http://127.0.0.1:${ports.igor}`, STEX_FRIGE_URL: `http://127.0.0.1:${ports.frige}`, STEX_SEAXNEAT_URL: 'http://127.0.0.1:4499', STEX_KNOWLEDGE_DATA_DIR: path.join(data, 'knowledge') }),
   ];
   const failures = []; const report = { flows: {}, viewports: [] };
+  /** Records a named acceptance assertion and fails the run if it fails. */
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   let browser;
   try {
@@ -69,6 +75,7 @@ async function main() {
     const tab = await page(devtools);
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     // Polls from Node, so a cross-document navigation (the handoff) only loses one probe.
+    /** Waits for the expected conversation condition in the browser. */
     const waitFor = async (expression, timeout = 8000) => {
       const end = Date.now() + timeout;
       for (;;) {
@@ -79,8 +86,11 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
     };
+    /** Enters a message into the browser composer. */
     const type = async (selector, text) => { await tab.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`); await tab.send('Input.insertText', { text }); };
+    /** Sends the current composer message by keyboard. */
     const enter = (modifiers = 0) => tab.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers, text: '\r' }).then(() => tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers }));
+    /** Reads the conversation stream as visible text. */
     const transcript = () => tab.evaluate(`[...document.querySelectorAll('.igor-message')].map((node) => ({ role: node.classList.contains('igor-message--user') ? 'user' : 'assistant', status: node.dataset.status, text: node.querySelector('.igor-message__content')?.textContent.trim() || '', badge: node.querySelector('.igor-message__badge')?.textContent.trim() || null }))`);
 
     // 1. Handoff from the Pantheon home composer: navigation happens before the reply.
@@ -194,6 +204,7 @@ async function main() {
     const withdrawn = state.turns.at(-1).turn;
     check(JSON.stringify(withdrawn.context) === '{}' && withdrawn.conversation.id !== offered.conversation.id && withdrawn.conversation.messages.length === 1, 'Withdrawal reused old source context, history or runtime session.');
     report.flows.projectContext = { approvedSources: offered.context?.projectContext?.sources?.length, withdrawnSources: Object.keys(withdrawn.context || {}).length, freshSession: withdrawn.conversation.id !== offered.conversation.id };
+    /** Reads the composed knowledge handoff from the page. */
     const knowledge = async (route = '', body) => { const response = await fetch(base + '/api/knowledge/v1' + route, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const value = await response.json(); if (!response.ok) throw Error(value.error); return value; };
     let projection = await knowledge();
     const approvedSource = offered.context.projectContext.sources[0];

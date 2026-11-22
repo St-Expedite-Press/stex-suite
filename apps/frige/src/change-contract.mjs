@@ -1,3 +1,4 @@
+/** Frige publishing engine source that validates exact editorial proposals and records matching proof evidence. */
 /**
  * Change contracts — `stex.frige.change-contract.v1`.
  *
@@ -210,6 +211,7 @@ function label(value) {
  * @returns {boolean}
  */
 export function sameTextIgnoringLineEndings(left, right) {
+  /** Normalizes line endings for a text-only equality check. */
   const unified = (text) => text.replace(/\r\n/g, '\n');
   return unified(left) === unified(right);
 }
@@ -228,7 +230,9 @@ export function isContractRecord(record, id) {
   if (!record || typeof record !== 'object' || !isContractId(id)) return false;
   const { id: recordId, scopeId, changes } = /** @type {Record<string, unknown>} */ (record);
   if (recordId !== id || typeof scopeId !== 'string' || !Array.isArray(changes)) return false;
+  /** Checks the required textual fields on a change record. */
   const text = (value) => typeof value === 'string';
+  /** Checks the recorded layout override representation. */
   const override = (value) => value === null || (typeof value === 'object' && !Array.isArray(value));
   return changes.every((change) => {
     if (!change || typeof change !== 'object') return false;
@@ -304,6 +308,7 @@ export function isContractId(value) {
  * @returns {LineStats}
  */
 export function lineStats(before, after) {
+  /** Splits text into logical lines for comparison. */
   const linesOf = (text) => (text === '' ? [] : text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n'));
   const prior = linesOf(before);
   const next = linesOf(after);
@@ -409,6 +414,7 @@ export function applyEdits(base, edits, { within = null } = {}) {
   if (!Array.isArray(edits) || edits.length === 0) return { reason: 'The proposed edits are missing.' };
   if (edits.length > MAX_EDITS_PER_CHANGE) return { reason: `A change may hold at most ${MAX_EDITS_PER_CHANGE} edits to one piece.` };
   const crlf = base.includes('\r\n');
+  /** Selects the line-ending convention for inserted replacement text. */
   const convention = (text) => (crlf ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
   /** @type {Array<{ start: number, end: number, replace: string }>} */
   const resolved = [];
@@ -432,6 +438,7 @@ export function applyEdits(base, edits, { within = null } = {}) {
     if (region.indexOf(find, at + 1) !== -1) return { reason: `${which}: the text it replaces occurs more than once${within ? ' in the selected passage' : ''}; it must quote enough to be unique.` };
     const start = offset + at;
     const end = start + find.length;
+    /** Checks whether an edit boundary would divide a CRLF sequence. */
     const splitsLineEnd = (at) => at > 0 && at < base.length && base[at - 1] === '\r' && base[at] === '\n';
     if (splitsLineEnd(start) || splitsLineEnd(end)) return { reason: `${which} would divide a line ending.` };
     // A lone carriage return just before the span would fuse with a line feed the edit brings next
@@ -521,6 +528,7 @@ export function resolvePassage(source, { start, end, text }) {
   if (editorText.slice(start, end) !== text) return { reason: 'The selected text is no longer at that place in the piece.' };
   // The line of the character at an offset. A passage's last character may be its line's own
   // line break, which belongs to that line, so a passage ending with one ends on that line.
+  /** Converts an offset to its one-based source line. */
   const lineOf = (offset) => editorText.slice(0, offset).split('\n').length;
   const canonical = source.slice(raw[start], raw[end]);
   // The gateway bounds the passage it forwards by its canonical length, in which a CRLF is two
@@ -685,7 +693,9 @@ export function proofFor(record, build, { readingOrder = null } = {}) {
   // profile proves nothing about this target.
   // A piece that has since left the table of contents can no longer be typeset,
   // so it no longer has to be; pieces added since the proposal are not required.
+  /** Determines which proof coverage this change requires. */
   const required = (change) => (Array.isArray(change.pieces) ? change.pieces : []).filter((id) => !readingOrder || readingOrder.includes(id));
+  /** Checks whether the compiler evidence covers the requested unit. */
   const proved = (change) => (change.kind === LAYOUT_CHANGE
     ? build.pageMap?.designHash === change.afterHash && required(change).length > 0 && required(change).every((id) => Object.hasOwn(typeset, id))
     : typeset[change.nodeId] === change.afterHash);

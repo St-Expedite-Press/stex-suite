@@ -1,3 +1,4 @@
+/** Seaxneat website engine source that builds the restricted environment inherited by workspace commands. */
 // Generated workspaces are untrusted code. Their install, build and preview
 // processes receive an allow-list of the variables pnpm, Next and Git need to
 // run, never Seaxneat's own environment: no STEX_* settings, inference or

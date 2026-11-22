@@ -384,4 +384,4 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 
 ## Open decisions for the owner
 
-See [the handoff](HANDOFF.md#decisions-waiting-on-the-owner).
+See [the handoff](HANDOFF.md#current-work).

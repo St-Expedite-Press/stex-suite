@@ -1,3 +1,4 @@
+/** Frige HTTP entry point for publishing, compatibility routes, and engine-owned state. */
 import { createReadStream, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
@@ -29,21 +30,24 @@ try {
     if (match && appEnvironment.has(match[1]) && !process.env[match[1]]) process.env[match[1]] = match[2];
   }
 } catch { /* The host may provide application-safe configuration directly. */ }
+/** Resolves a canonical setting, then its compatibility setting, then the default. */
 function configuration(canonical, legacy, fallback) {
   const current = process.env[canonical]; const previous = process.env[legacy];
   if (current && previous && current !== previous) console.warn(`${canonical} takes precedence over ${legacy}.`);
   return current || previous || fallback;
 }
+/** Keeps an existing compatibility path when the canonical location is absent. */
 function preservedDefault(current, legacy) { return existsSync(current) || !existsSync(legacy) ? current : legacy; }
 const legacyDirectory = path.join(directory, '..', 'texgraph');
 const projectDirectory = path.resolve(configuration('STEX_FRIGE_PROJECT_DIR', 'TEXGRAPH_PROJECT_DIR', preservedDefault(path.join(directory, '.local-book'), path.join(legacyDirectory, '.local-book'))));
-const projectsDirectory = path.resolve(configuration('STEX_FRIGE_PROJECTS_DIR', 'TEXGRAPH_PROJECTS_DIR', preservedDefault(path.join(directory, '..', 'pantheon', '.local-projects'), path.join(directory, '..', 'lab', '.local-projects'))));
+const projectsDirectory = path.resolve(configuration('STEX_FRIGE_PROJECTS_DIR', 'TEXGRAPH_PROJECTS_DIR', path.join(directory, '..', 'pantheon', '.local-projects')));
 const booksDirectory = path.resolve(configuration('STEX_FRIGE_BOOKS_DIR', 'TEXGRAPH_BOOKS_DIR', process.env.STEX_BOOKS_DIR || path.join(directory, 'books')));
 const platformOrigin = new URL(process.env.STEX_PANTHEON_URL || 'http://127.0.0.1:4300');
 if (platformOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(platformOrigin.hostname) || platformOrigin.username || platformOrigin.password || platformOrigin.pathname !== '/' || platformOrigin.search || platformOrigin.hash) throw new Error('STEX_PANTHEON_URL must be a loopback HTTP origin.');
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(configuration('STEX_FRIGE_PORT', 'TEXGRAPH_PORT', 4310));
+/** Validates the normalized mount prefix for publishing routes. */
 function basePath(value) {
   const normalized = String(value || '').trim().replace(/\/+$/, '');
   if (!normalized) return '';
@@ -61,6 +65,7 @@ const mimeTypes = {
 // origin under /design-system/; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons']);
+/** Resolves a permitted public design-system resource. */
 function designSystemFile(pathname) {
   // No ':' anywhere: on Windows it would reach NTFS stream aliases such as `::$DATA`.
   if (pathname.includes(':')) return null;
@@ -70,15 +75,18 @@ function designSystemFile(pathname) {
 }
 // The proof viewer's PDF.js browser build; only these two files are exposed.
 const pdfjsFiles = new Set(['pdf.min.mjs', 'pdf.worker.min.mjs']);
+/** Maps an allowed PDF.js resource name to its installed path. */
 function pdfjsFile(name) {
   try { return path.join(path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json')), 'build', name); } catch { return null; }
 }
 
+/** Sends an uncached JSON response with the selected HTTP status. */
 function json(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(value));
 }
 
+/** Reads and validates a bounded JSON request body. */
 async function body(request) {
   let raw = '';
   for await (const chunk of request) {
@@ -91,6 +99,7 @@ async function body(request) {
 // Interface files (pages, scripts, styles, design system, masthead media).
 // They revalidate by ETag and honour a single byte range, which browsers
 // (Safari in particular) require before they will play <video>.
+/** Streams a static file with the server's content and cache headers. */
 async function staticFile(request, response, file) {
   let info;
   try { info = await stat(file); } catch { return json(response, 404, { error: 'Not found.' }); }
@@ -113,11 +122,13 @@ async function staticFile(request, response, file) {
   pipeline(createReadStream(file, { start, end }), response, () => {});
 }
 
+/** Extracts the requested publishing page identifier from the URL. */
 function pageId(url) {
   const match = url.pathname.match(/^\/api\/pages\/([a-z0-9-]+)(?:\/|$)/);
   return match?.[1] || null;
 }
 
+/** Streams an approved artifact with its corresponding media type. */
 async function serveFile(response, file) {
   try {
     await access(file);
@@ -128,6 +139,7 @@ async function serveFile(response, file) {
   }
 }
 
+/** Resolves the selected engine store for a project context request. */
 async function contextStoreFor(id, url) {
   const candidate = new ProjectStore(path.join(booksDirectory, id));
   try { await validateContextTree(candidate); }
@@ -135,6 +147,7 @@ async function contextStoreFor(id, url) {
   const selected = new URL(url); selected.searchParams.set('book', id);
   return storeFor(selected);
 }
+/** Selects the engine-owned store for the requested book or project. */
 async function storeFor(url) {
   const bookId = url.searchParams.get('book');
   if (bookId) {
@@ -163,6 +176,7 @@ async function storeFor(url) {
 
 // The Frige root is a chooser, not an implicit mutation of any manuscript.
 // A selected project remains explicit in the `book` query parameter.
+/** Lists authorized local book workspaces with their labels. */
 async function availableBooks() {
   const entries = await readdir(booksDirectory, { withFileTypes: true }).catch(() => []);
   const records = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
@@ -181,6 +195,7 @@ async function availableBooks() {
 // are tooling, not author changes. Symlinks are not followed (Dirent uses
 // lstat). At most 5,000 entries per book are visited; files in a folder are
 // stat-ed together.
+/** Finds the newest modification under a bounded directory traversal. */
 async function newestChange(root, budget = { entries: 5000 }) {
   const entries = (await readdir(root, { withFileTypes: true }).catch(() => []))
     .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
@@ -193,6 +208,7 @@ async function newestChange(root, budget = { entries: 5000 }) {
 }
 
 // stex.projects.summary.v1 (protocol/projects): read-only summaries for Pantheon.
+/** Converts engine-owned projects to the read-only summary contract. */
 async function projectSummaries() {
   const books = await availableBooks();
   const projects = await Promise.all(books.map(async (book) => {
@@ -202,6 +218,7 @@ async function projectSummaries() {
   return { schemaVersion: 'stex.projects.summary.v1', application: 'frige', projects };
 }
 
+/** Creates a publishing project scaffold after validating its inputs. */
 async function createBookProject(payload) {
   const title = String(payload?.title || '').trim().replace(/\s+/g, ' ').slice(0, 140);
   const author = String(payload?.author || '').trim().replace(/\s+/g, ' ').slice(0, 160);
@@ -225,11 +242,14 @@ async function createBookProject(payload) {
   return { id, title, reference: `stex://frige/project/${id}` };
 }
 
+/** Extracts a syntactically valid publishing node identifier from the URL. */
 function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:\/|$)/)?.[1] || null; }
 
 const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
+/** Loads attachment metadata for the selected publishing project. */
 async function attachmentManifest(store) { try { const value = JSON.parse(await readFile(path.join(store.stateDirectory, 'documents.json'), 'utf8')); return Array.isArray(value) ? value : []; } catch { return []; } }
+/** Writes validated upload bytes and records their pending review state. */
 async function saveAttachments(store, payload) {
   const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
   if (!uploads.length || uploads.length > 10) throw new Error('Attach between one and ten files.');
@@ -247,6 +267,7 @@ async function saveAttachments(store, payload) {
   }
   await mkdir(store.stateDirectory, { recursive: true }); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return created;
 }
+/** Approves a successfully extracted attachment and records its review time. */
 async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
 
 /**
@@ -261,6 +282,7 @@ async function reviewAttachment(store, id) { const manifest = await attachmentMa
  *   `start` and `end` are offsets into the canonical source; `text` is its exact bytes there.
  */
 function resolveTurnPassage(context, selection) {
+  /** Constructs the failure returned for rejected inputs at this boundary. */
   const invalid = (message) => Object.assign(new Error(message), { code: 'INVALID_PASSAGE' });
   if (!selection || typeof selection !== 'object' || Array.isArray(selection)) throw invalid('The selected passage is malformed.');
   if (!PASSAGE_ACTIONS.includes(selection.action)) throw invalid(`A passage action is one of: ${PASSAGE_ACTIONS.join(', ')}.`);
@@ -274,6 +296,7 @@ function resolveTurnPassage(context, selection) {
 
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
+/** Resolves approval context and submits a scoped publishing turn. */
 async function scopeTurn(store, scopeId, payload) {
   // The scope's offered sources come first: a selected passage is checked against them before
   // anything is recorded, so a stale or invalid selection leaves the conversation untouched.
@@ -327,6 +350,7 @@ async function scopeTurn(store, scopeId, payload) {
 
 // Artifact content is served as inert data: images by their checked type, text as
 // plain text, never as HTML or script, with a sandboxing policy and no sniffing.
+/** Serves artifact metadata or content according to the request. */
 async function artifactResponse(response, store, id, content, download) {
   if (!content) { const record = await store.artifact(id); return record ? json(response, 200, record) : json(response, 404, { error: 'Artifact not found.' }); }
   const found = await store.artifactContent(id);
@@ -343,6 +367,7 @@ async function artifactResponse(response, store, id, content, download) {
   response.end(found.content);
 }
 
+/** Handles graph, source and proof routes for the selected manuscript store. */
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
   const attachmentId = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/approve$/)?.[1];
@@ -401,6 +426,7 @@ async function vaultApi(request, response, url, store) {
   return false;
 }
 
+/** Dispatches legacy page publishing operations for the selected store. */
 async function api(request, response, url, store) {
   if (store instanceof ProjectStore) return vaultApi(request, response, url, store);
   const id = pageId(url);

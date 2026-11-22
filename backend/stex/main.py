@@ -35,6 +35,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # trust_env=False: engine calls are loopback-only and never go through a proxy.
+        """Make the validated application dependencies available for the server lifetime."""
         async with httpx2.AsyncClient(transport=transport, follow_redirects=False, trust_env=False) as client:
             app.state.projects = ProjectSummaryService(
                 registry,
@@ -55,6 +56,7 @@ def create_app(
     )
 
     @app.get("/health", response_model=Health, tags=["health"])
+    # Report process readiness independently of engine availability.
     async def health() -> Health:
         return Health()
 

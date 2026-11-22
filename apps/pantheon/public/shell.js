@@ -1,3 +1,4 @@
+/** Pantheon browser entry point for shared masthead motion controls. */
 // Masthead motion for the editorial pages; behaviour lives in motion.js.
 import { startMotion } from './motion.js';
 

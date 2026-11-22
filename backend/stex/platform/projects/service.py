@@ -40,10 +40,12 @@ class InvalidSummaryError(ValueError):
 
 
 def _reject_constant(value: str) -> None:
+    """Reject nonstandard constants while decoding an engine JSON body."""
     raise InvalidSummaryError(f"non-standard JSON constant {value}")
 
 
 def valid_entry(entry: object) -> bool:
+    """Accept only summary entries that the browser project consumer can use."""
     if not isinstance(entry, dict):
         return False
     title, open_path, status = entry.get("title"), entry.get("openPath"), entry.get("status")
@@ -78,6 +80,7 @@ def _text(value: str) -> str:
 
 
 def _project(application: Application, entry: dict[str, Any]) -> PlatformProject:
+    """Map an accepted engine entry to a platform row and registry-relative link."""
     reference, updated_at = entry.get("reference"), entry.get("updatedAt")
     open_path = _text(entry["openPath"])
     return PlatformProject(
@@ -103,6 +106,7 @@ class ProjectSummaryService:
         timeout_seconds: float = 2.0,
         max_bytes: int = 2_000_000,
     ) -> None:
+        """Retain the validated registry, engine origins, client and request limits."""
         self._registry = registry
         self._origins = dict(engine_origins)
         self._client = client
@@ -110,6 +114,7 @@ class ProjectSummaryService:
         self._max_bytes = max_bytes
 
     async def list_projects(self) -> PlatformProjects:
+        """Poll active studios concurrently and stably sort the eligible projects."""
         studios = self._registry.active_studios()
         loaded = await asyncio.gather(*(self._load(studio) for studio in studios))
         projects = [project for result in loaded if result is not None for project in result]
@@ -123,6 +128,7 @@ class ProjectSummaryService:
         )
 
     async def _load(self, application: Application) -> Sequence[PlatformProject] | None:
+        """Load one studio within its own time budget and classify an unavailable response."""
         origin = self._origins.get(application.id)
         if origin is None:
             return None
@@ -136,6 +142,7 @@ class ProjectSummaryService:
 
     async def _fetch(self, url: str, application_id: str) -> list[Any]:
         # identity encoding: the size bound applies to bytes as sent, not after decompression.
+        """Read bounded identity-encoded JSON and validate the owner and schema."""
         headers = {"accept": "application/json", "accept-encoding": "identity"}
         async with self._client.stream("GET", url, headers=headers) as response:
             if not response.is_success:

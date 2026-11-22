@@ -1,10 +1,11 @@
+/** Suite acceptance source that exercises responsive command-center and project workflows. */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import http from 'node:http';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readManifest, repositoryRoot } from './assets/manifest.mjs';
+import { readManifest, repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser verification of the Pantheon command center (/home/ and its tabs).
@@ -24,9 +25,11 @@ const ports = { pantheon: 4426, seaxneat: 4427, frige: 4428, igor: 4429, platfor
 const platformMode = process.env.STEX_VERIFY_PLATFORM !== 'off';
 const expectedSource = platformMode ? 'platform' : 'studios';
 const outDirectory = outDirectoryFromArgs('stex-home-verification');
+/** Returns a deterministic relative timestamp for the project fixtures. */
 const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 // Seaxneat stub: two fixture websites, or a failure when `failing` is set.
+/** Serves representative Seaxneat summaries and unavailable states. */
 function seaxneatStub(state) {
   return http.createServer((request, response) => {
     if (request.url !== '/seaxneat/api/stex/projects') { response.writeHead(404); response.end(); return; }
@@ -63,6 +66,7 @@ const measure = `(async () => {
   };
 })()`;
 
+/** Runs the responsive command-center acceptance workflow with disposable data. */
 async function main() {
   const manifest = await readManifest();
   const p11 = manifest.assets.find((asset) => asset.id === 'P11');
@@ -84,6 +88,7 @@ async function main() {
   const stubState = { failing: false };
   const stub = seaxneatStub(stubState);
   await new Promise((resolve) => stub.listen(ports.seaxneat, '127.0.0.1', resolve));
+  /** Reads the current source and metadata for a selected graph node. */
   const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), env: { ...process.env, ...env } });
   const children = [
     node('apps/frige', { STEX_FRIGE_PORT: String(ports.frige), STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_FRIGE_PROJECT_DIR: data, STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_SHELL_URL: '/home/' }),
@@ -95,6 +100,7 @@ async function main() {
     names.push('Platform API');
   }
   const failures = []; const report = { platformMode, viewports: [], data: {}, igor: {}, motion: {} };
+  /** Records a named acceptance assertion and fails the run if it fails. */
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   let browser;
   try {
@@ -102,6 +108,7 @@ async function main() {
     browser = await launchBrowser();
     const { devtools } = browser; report.browser = browser.browserPath;
     const base = `http://127.0.0.1:${ports.pantheon}`;
+    /** Waits for the rendered project view to settle before asserting it. */
     const settle = (tab) => tab.evaluate(`new Promise((resolve) => { const done = () => !document.querySelector('[data-projects-status]'); const poll = () => done() ? resolve(true) : setTimeout(poll, 50); setTimeout(() => resolve(false), 6000); poll(); })`);
 
     for (const [width, height] of viewports) {

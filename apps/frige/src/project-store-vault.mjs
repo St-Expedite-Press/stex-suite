@@ -1,3 +1,4 @@
+/** Frige publishing engine source that owns book source, graph, editorial transactions and proof metadata. */
 import { createHash, randomUUID } from 'node:crypto';
 import { access, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -21,9 +22,12 @@ const OUTLINE_BUDGET = 20_000;
 const MAX_APPROVED_CONTRACTS = 8;
 const SCOPE_SOURCE_BUDGET = 60_000;
 const NODE_ID = /^[a-z][a-z0-9-]{5,80}$/;
+/** Computes the exact source revision digest. */
 export const sourceHash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
+/** Generates a stable identifier for a manuscript source node. */
 const nodeIdFor = (relativePath) => `node-${sourceHash(relativePath.replaceAll('\\', '/').toLowerCase()).slice(0, 20)}`;
 
+/** Checks whether the requested local path is accessible. */
 async function exists(file) { try { await access(file, constants.F_OK); return true; } catch { return false; } }
 
 /**
@@ -113,7 +117,9 @@ function layoutTargetOf(graph, scope) {
  */
 function inheritedLayout(graph, profile, target) {
   const resolved = resolveLayout(profile, { sectionKey: target.sectionKey, nodeId: target.nodeId });
+  /** Selects the book-level layout defaults for the current node. */
   const bookRule = (kind) => Boolean(normalizeDesign(profile).rectoOpeners && OPENER_KINDS.includes(kind));
+  /** Finds the applicable layout record for a node. */
   const nodeOf = (id) => graph.nodes.find((node) => node.id === id);
   const anchor = target.section ? nodeOf(target.section.anchorNodeId) : null;
   if (target.level === 'node') {
@@ -125,20 +131,24 @@ function inheritedLayout(graph, profile, target) {
   const headText = anchor?.kind === 'section-note' ? anchor.title : target.section?.title || null;
   return { fontSize: resolved.fontSize, leading: resolved.leading, sizeFrom: resolved.sizeFrom, opensRecto: bookRule(anchor?.kind), headText };
 }
+/** Accepts a bounded relative path under the selected project. */
 function safeRelative(value) {
   const normalized = String(value || '').replaceAll('\\', '/').replace(/^\/+/, '');
   if (!normalized || normalized.split('/').some((part) => part === '..' || !part)) throw new Error('Invalid project-relative path.');
   return normalized;
 }
+/** Checks whether a candidate resolves inside the selected root. */
 function contained(root, relative) {
   const resolved = path.resolve(root, safeRelative(relative));
   if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) throw new Error('Path escapes the project.');
   return resolved;
 }
+/** Derives the displayed label from manuscript source or its filename. */
 function titleOf(source, fallback) {
   const heading = /^#{1,3}\s+(.+)$/m.exec(source)?.[1]?.trim();
   return heading || fallback.replace(/\.md$/i, '').replaceAll(/[-_]/g, ' ');
 }
+/** Classifies a manuscript node for navigation and layout. */
 function kindOf(relative) {
   const name = path.posix.basename(relative).toLowerCase();
   const folders = relative.toLowerCase();
@@ -149,6 +159,7 @@ function kindOf(relative) {
   if (name.includes('cycle_note') || name.includes('cycle note')) return 'cycle-note';
   return 'poem';
 }
+/** Finds eligible manuscript Markdown files for graph construction. */
 async function markdownFiles(root, prefix = '') {
   const entries = await readdir(root, { withFileTypes: true });
   const result = [];
@@ -160,6 +171,7 @@ async function markdownFiles(root, prefix = '') {
   }
   return result.sort((a, b) => a.localeCompare(b));
 }
+/** Resolves the ordered source references in the book programme. */
 function programmeLinks(source, programmePath) {
   const links = [];
   const base = path.posix.dirname(programmePath);
@@ -173,6 +185,7 @@ function programmeLinks(source, programmePath) {
   }
   return links;
 }
+/** Creates diagnostics for the current source graph. */
 function diagnosticsFor(relative, source) {
   const diagnostics = [];
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(source)) diagnostics.push({ code: 'control-characters', nodePath: relative, message: 'Invisible control characters are present; the proof omits them.' });
@@ -182,7 +195,9 @@ function diagnosticsFor(relative, source) {
   return diagnostics;
 }
 
+/** Returns a string value in the form expected by this boundary. */
 const text = (value) => typeof value === 'string' && value.length > 0;
+/** Reports unsupported artifact metadata before any part is saved. */
 function partShapeProblem(part) {
   if (!part || typeof part !== 'object') return 'A part must be an object.';
   if (part.type === 'text') return text(part.text) ? null : 'A text part needs text.';
@@ -193,6 +208,7 @@ function partShapeProblem(part) {
 }
 
 // The declared type of an image must match its file signature.
+/** Identifies a supported binary image signature. */
 function imageSignature(bytes) {
   if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
@@ -201,8 +217,10 @@ function imageSignature(bytes) {
   return null;
 }
 
+/** Creates the structured refusal for an invalid review answer. */
 const invalidAnswer = (message) => Object.assign(new Error(message), { code: 'INVALID_ANSWER' });
 // Normalizes an answer against its prompt and writes the readable summary sent to Hermes.
+/** Resolves the answer record associated with the reviewed input. */
 function answerFor(prompt, values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) throw invalidAnswer('An answer must be an object.');
   if (prompt.type === 'choice') {
@@ -265,6 +283,7 @@ const sectionId = (folder, slot) => `section-${createHash('sha256').update(folde
 function assignRunIds(folder, runs, earlier, past = []) {
   const ids = runs.map(() => null);
   const claimed = new Set();
+  /** Checks whether two source runs share enough members to retain identity. */
   const shares = (left, right) => left.nodeIds.filter((id) => right.nodeIds.includes(id)).length;
   // 1. Shared pieces, largest overlaps first across all pairs, so one run's
   //    order in the book cannot let it take a better match from another. On a
@@ -327,6 +346,7 @@ function canonicalBook(root, nodes, readingOrder, prior = null, remembered = {})
   const programme = nodes.find((node) => node.kind === 'programme');
   const sections = [];
   let current = null;
+  /** Chooses a section label from the canonical manuscript structure. */
   const sectionName = (node) => {
     const folder = node.relativePath.split('/')[0] || 'Manuscript';
     return folder.replace(/^\d+[_-]?/, '').replaceAll('_', ' ').replaceAll('-', ' ').trim() || 'Manuscript';
@@ -391,6 +411,7 @@ function scopeFromGraph(graph, id = 'book') {
 }
 
 export class ProjectStore {
+  /** Binds the store to one project and its local derived state. */
   constructor(root) {
     this.root = path.resolve(root);
     this.manuscriptDirectory = path.join(this.root, 'manuscript');
@@ -409,19 +430,26 @@ export class ProjectStore {
 
   // Manuscript writes, contract decisions, rollbacks and proof links run one at a time, so a hash check
   // and the write it guards can never interleave with another write.
+  /** Queues a write behind earlier operations on the same store. */
   exclusive(task) {
     const run = this.writes.then(task, task);
     this.writes = run.catch(() => {});
     return run;
   }
 
+  /** Resolves and confines a manuscript source path. */
   sourcePath(relativePath) { return contained(this.manuscriptDirectory, relativePath); }
+  /** Resolves the file for a known source node. */
   nodePath(id) { if (!NODE_ID.test(id)) throw new Error('Invalid graph node id.'); return id; }
   // Book, section and page conversations are separate threads keyed by scope id.
+  /** Derives the storage key for the selected conversation scope. */
   scopeKey(scopeId) { return scopeId === 'book' ? 'book' : this.nodePath(scopeId); }
+  /** Resolves the turn journal within the store's state area. */
   conversationPath(scopeId) { return path.join(this.conversationsDirectory, `${this.scopeKey(scopeId)}.jsonl`); }
+  /** Resolves the change-set journal within the store's state area. */
   changeSetPath(scopeId) { return path.join(this.proposalsDirectory, `${this.scopeKey(scopeId)}.json`); }
 
+  /** Prepares the store and loads or creates the required derived state. */
   async initialize() {
     if (!(await exists(this.manuscriptDirectory))) throw new Error('This project does not contain a manuscript directory.');
     await Promise.all([mkdir(this.conversationsDirectory, { recursive: true }), mkdir(this.proposalsDirectory, { recursive: true }), mkdir(this.contractsDirectory, { recursive: true }), mkdir(this.buildsDirectory, { recursive: true }), mkdir(this.liveBuildsDirectory, { recursive: true })]);
@@ -498,6 +526,7 @@ export class ProjectStore {
     if (outcomes.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-decided', changeSetId: record.id, decisions: outcomes.map(decisionOf) });
   }
 
+  /** Rebuilds the source graph under the store's serialization rules. */
   async refreshGraph() {
     if (this.refreshing) return this.refreshing;
     this.refreshing = this.#refreshGraph();
@@ -508,6 +537,7 @@ export class ProjectStore {
     }
   }
 
+  /** Rebuilds the manuscript graph while the caller owns the update lock. */
   async #refreshGraph() {
     const programmeRelative = 'Programme.md';
     const programmeFile = this.sourcePath(programmeRelative);
@@ -619,12 +649,16 @@ export class ProjectStore {
     }
   }
 
+  /** Returns the current publishing graph. */
   async graph({ refresh = false } = {}) { return refresh || !(await exists(this.graphPath)) ? this.refreshGraph() : JSON.parse(await readFile(this.graphPath, 'utf8')); }
+  /** Resolves an offered book, section or piece scope from the graph. */
   async scope(id = 'book') {
     const graph = await this.graph();
     return scopeFromGraph(graph, id === 'book' ? id : this.nodePath(id));
   }
+  /** Returns the publishing setup ticket for the selected project. */
   async settingsTicket() { try { return JSON.parse(await readFile(path.join(this.root, 'texgraph', 'settings.json'), 'utf8')); } catch { return {}; } }
+  /** Reads the current source and metadata for a selected graph node. */
   async node(id) {
     const graph = await this.graph();
     const summary = graph.nodes.find((entry) => entry.id === this.nodePath(id));
@@ -632,7 +666,9 @@ export class ProjectStore {
     const source = await readFile(this.sourcePath(summary.relativePath), 'utf8');
     return { ...summary, source, hash: sourceHash(source) };
   }
+  /** Validates the expected source revision before saving an edit. */
   updateNode(id, source, baseHash) { return this.exclusive(() => this.#writeNode(id, source, baseHash)); }
+  /** Writes a validated node revision and refreshes its derived state. */
   async #writeNode(id, source, baseHash) {
     if (typeof source !== 'string' || source.length > MAX_SOURCE) throw new Error('Source must be Markdown under 400 KB.');
     // Every write names the text it replaces. A save without a base hash could
@@ -658,6 +694,7 @@ export class ProjectStore {
    */
   static aliasesOf(scope) { return [scope.id, ...(Array.isArray(scope.legacyIds) ? scope.legacyIds : [])]; }
 
+  /** Appends the accepted turn to the local conversation history. */
   async appendTurn(scopeId, turn) {
     // Always recorded under the scope's current id, even when addressed by an earlier one.
     const { id } = await this.scope(scopeId);
@@ -665,12 +702,15 @@ export class ProjectStore {
     await writeFile(this.conversationPath(id), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
     return record;
   }
+  /** Reads the conversation history for the requested target. */
   async turns(scopeId, limit = 40) {
     const scope = await this.scope(scopeId);
     const aliases = ProjectStore.aliasesOf(scope);
     // `tolerant` skips lines that do not parse. It is used for other pieces' own
     // files, read only for old section turns, so damage there cannot break this thread.
+    /** Decodes one stored turn record from the journal. */
     const parse = (line, tolerant) => { try { return JSON.parse(line); } catch (error) { if (tolerant) return null; throw error; } };
+    /** Reads the appropriate stored conversation log. */
     const read = async (key, tolerant = false) => {
       try { return (await readFile(this.conversationPath(key), 'utf8')).trim().split('\n').filter(Boolean).map((line) => parse(line, tolerant)).filter(Boolean); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
     };
@@ -686,7 +726,9 @@ export class ProjectStore {
   }
   // Artifacts from Hermes replies are product state: metadata and content under
   // .texgraph/artifacts, referenced from turns by id so threads stay small.
+  /** Resolves an artifact identifier inside the project's state directory. */
   artifactPath(id, extension) { if (!/^art-[a-f0-9]{16}$/.test(id)) throw new Error('Invalid artifact id.'); return path.join(this.stateDirectory, 'artifacts', `${id}.${extension}`); }
+  /** Persists validated assistant artifact parts and their metadata. */
   async storeParts(addressedScopeId, parts = [], meta = null) {
     // Artifacts are recorded under the scope's current id, even when addressed by an earlier one.
     const scopeId = (await this.scope(addressedScopeId)).id;
@@ -711,8 +753,11 @@ export class ProjectStore {
     }
     return { parts: stored, dropped };
   }
+  /** Reads the metadata of a project artifact. */
   async artifact(id) { try { return JSON.parse(await readFile(this.artifactPath(id, 'json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  /** Reads the content for a validated artifact target. */
   async artifactContent(id) { const record = await this.artifact(id); return record ? { record, content: await readFile(this.artifactPath(id, 'data')) } : null; }
+  /** Lists artifacts available to the selected conversation scope. */
   async artifacts() {
     const directory = path.join(this.stateDirectory, 'artifacts');
     const names = await readdir(directory).catch(() => []);
@@ -722,6 +767,7 @@ export class ProjectStore {
   // An answer must match a stored prompt in this scope's thread, once, with valid values.
   // It is reserved while Hermes replies and recorded only once Hermes has it, so a
   // failed turn leaves the question open to answer again.
+  /** Reserves a reviewed answer before issuing its turn. */
   reserveAnswer(scopeId, promptId, values) {
     return this.exclusive(async () => {
       const thread = await this.turns(scopeId, 100_000);
@@ -736,16 +782,20 @@ export class ProjectStore {
   }
   // Committing runs under the same lock as reserving, so a concurrent reservation always
   // sees the answer either as reserved or as written, never as neither.
+  /** Finalizes a reserved answer after the turn is accepted. */
   commitAnswer(reservation) {
     return this.exclusive(async () => {
       try { return await this.appendTurn(reservation.scopeId, { role: 'user', kind: 'answer', promptId: reservation.promptId, partId: reservation.partId, values: reservation.values, message: reservation.message }); }
       finally { this.answering.delete(reservation.key); }
     });
   }
+  /** Clears a reserved answer when the turn cannot finish. */
   releaseAnswer(reservation) { this.answering.delete(reservation.key); }
+  /** Records the answer to a reviewed prompt. */
   async recordAnswer(scopeId, promptId, values) { return this.commitAnswer(await this.reserveAnswer(scopeId, promptId, values)); }
   // What the director is shown for a scope: the book offers its table of contents,
   // a section or page each of its nodes, within a size budget.
+  /** Builds the bounded source and design context for a turn. */
   async scopeContext(scopeId) {
     const graph = await this.graph({ refresh: true }); const scope = scopeFromGraph(graph, scopeId === 'book' ? 'book' : this.nodePath(scopeId));
     const ids = scope.kind === 'book' ? [graph.book.tableOfContentsNodeId].filter(Boolean) : scope.nodeIds;
@@ -787,6 +837,7 @@ export class ProjectStore {
    * }>}
    */
   async hierarchy(scope, graph) {
+    /** Locates the section that owns a selected unit. */
     const sectionOf = (id) => graph.book.sections.find((section) => section.nodeIds.includes(id));
     const design = await this.design();
     // Pages are offered only from a verified book-order proof that still matches
@@ -797,6 +848,7 @@ export class ProjectStore {
     const included = Array.isArray(reference?.includedNodeIds) ? reference.includedNodeIds : [];
     const referenceCurrent = Boolean(reference) && reference.designHash === designHash(design)
       && JSON.stringify(graph.readingOrder.slice(0, included.length)) === JSON.stringify(included);
+    /** Collects page references associated with the selected node. */
     const pagesOf = (node) => {
       if (!referenceCurrent || reference.sourceHashes?.[node.id] !== node.hash) return null;
       const entry = reference.nodes?.find((mapped) => mapped.nodeId === node.id && mapped.firstPage);
@@ -815,6 +867,7 @@ export class ProjectStore {
     }
 
     const { sections = {}, nodes = {}, ...book } = design;
+    /** Checks whether the selected node owns the scoped settings. */
     const own = (map, key) => (key && Object.hasOwn(map, key) ? map[key] : null);
     let inScope = null;
     if (scope.kind === 'node') {
@@ -994,6 +1047,7 @@ export class ProjectStore {
    */
   createChangeSet(scopeId, proposal, offered, provenance = {}) { return this.exclusive(() => this.#createChangeSet(scopeId, proposal, offered, provenance)); }
 
+  /** Validates and saves the offered revision proposal without applying it. */
   async #createChangeSet(scopeId, { commentary = '', changes = [], layout, bounds = null }, offered, provenance) {
     const kept = []; const dropped = [];
     const outsidePassage = 'A turn about a selected passage may change only that passage; this change reached outside it.';
@@ -1088,6 +1142,7 @@ export class ProjectStore {
     if (!proposal || typeof proposal !== 'object') return { reason: 'The proposed layout change is invalid.' };
 
     const current = await this.design();
+    /** Checks whether the object itself supplies the requested key. */
     const own = (map) => (map && Object.hasOwn(map, target.key) ? map[target.key] : null);
     const before = own(current[target.field]);
     let after = null;
@@ -1196,6 +1251,7 @@ export class ProjectStore {
    */
   decideChanges(scopeId, changeSetId, choice) { return this.exclusive(() => this.#decideChanges(scopeId, changeSetId, choice)); }
 
+  /** Applies approved changes under the serialized revision transaction. */
   async #decideChanges(scopeId, changeSetId, { nodeId = null, decision }) {
     if (!['accept', 'reject'].includes(decision)) throw new Error('Decision must be accept or reject.');
     const record = await this.changeSet(scopeId);
@@ -1360,6 +1416,7 @@ export class ProjectStore {
    */
   revertChanges(contractId, options = {}) { return this.exclusive(() => this.#revertChanges(contractId, options)); }
 
+  /** Restores exact prior content when the current revision still permits rollback. */
   async #revertChanges(contractId, { nodeId = null } = {}) {
     const record = await this.contract(contractId);
     if (!record) throw codedError('Change contract not found.', 'CONTRACT_NOT_FOUND');
@@ -1443,6 +1500,7 @@ export class ProjectStore {
     }
   }
 
+  /** Resolves the explicitly approved source excerpts for the turn. */
   async approvedSourceExcerpts() {
     try {
       const documents = JSON.parse(await readFile(path.join(this.stateDirectory, 'documents.json'), 'utf8'));
@@ -1450,9 +1508,13 @@ export class ProjectStore {
       return Promise.all(approved.map(async (entry) => ({ id: entry.id, name: entry.name, excerpt: (await readFile(contained(this.stateDirectory, entry.extraction), 'utf8')).slice(0, 6000) })));
     } catch { return []; }
   }
+  /** Resolves the build artifact directory for the selected project or page. */
   buildDirectory() { return this.buildsDirectory; }
+  /** Resolves a mounted preview path without allowing traversal. */
   previewPath() { return path.join(this.buildsDirectory, 'current.pdf'); }
+  /** Reads the current proof status and its revision markers. */
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  /** Promotes an accepted proof result to the current preview. */
   async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
   /**
    * Records the outcome of a build as the project's latest, and links a
@@ -1469,6 +1531,7 @@ export class ProjectStore {
     return record;
   }
   // The book's publication profile is product state, kept beside the proofs, not in the vault.
+  /** Reads the publishing profile and its layout overrides. */
   async design() { try { return normalizeDesign(JSON.parse(await readFile(path.join(this.stateDirectory, 'design.json'), 'utf8'))); } catch { return normalizeDesign({}); } }
   /**
    * Validates and saves the publication profile.
@@ -1488,6 +1551,7 @@ export class ProjectStore {
    */
   saveDesign(input) {
     return this.exclusive(async () => {
+      /** Constructs the failure returned for rejected inputs at this boundary. */
       const invalid = (message) => codedError(message, 'INVALID_DESIGN');
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('A design profile must be an object of settings.');
       const current = await this.design();
@@ -1501,6 +1565,7 @@ export class ProjectStore {
       const errors = [];
       // Checked against the table of contents as it is now, not a cached reading of it.
       const graph = (input.sections !== undefined || input.nodes !== undefined) ? await this.graph({ refresh: true }) : null;
+      /** Derives a display label for the selected source piece. */
       const pieceTitle = (key) => graph.nodes.find((node) => node.id === key)?.title || key;
       for (const [level, field, exists, name] of [
         ['section', 'sections', (key) => graph.book.sections.some((section) => section.folder === key), (key) => key],
@@ -1527,6 +1592,7 @@ export class ProjectStore {
     });
   }
   // The latest verified book-order page map: book page numbers for isolated proofs and for the book tree.
+  /** Reads the pinned reference edition's page mappings. */
   async referenceMap() {
     for (const name of ['reference-map.json', 'page-map.json']) {
       try {
@@ -1536,8 +1602,11 @@ export class ProjectStore {
     }
     return null;
   }
+  /** Validates and persists updated reference page mappings. */
   async saveReferenceMap(manifest) { await writeAtomic(path.join(this.buildsDirectory, 'reference-map.json'), `${JSON.stringify(manifest, null, 2)}\n`); }
+  /** Reads the current live proof build state. */
   async liveBuildStatus() { try { return JSON.parse(await readFile(path.join(this.liveBuildsDirectory, 'latest.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+  /** Schedules a proof build using the submitted revision and settings. */
   async queueLiveBuild(scopeId = 'book') {
     const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
     const scope = scopeFromGraph(graph, scopeId);

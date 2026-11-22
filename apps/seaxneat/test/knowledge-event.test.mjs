@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks knowledge event behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -7,9 +8,11 @@ import { knowledgeEvent } from '../src/knowledge-event.mjs';
 import { projectContext } from '../src/project-context.mjs';
 import { SeaxneatStore, defaultRunner } from '../src/project-store.mjs';
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-seax-knowledge-'));
   context.after(() => rm(root, { recursive: true, force: true }));
+  /** Simulates a workspace subprocess for the owning test scenario. */
   const runner = async (command, args, cwd, options) => command === 'pnpm' || args.includes('pnpm') ? { ok: true, stdout: '', stderr: '' } : defaultRunner(command, args, cwd, options);
   const store = await new SeaxneatStore({ root, runner }).initialize();
   const project = await store.create({ title: 'Synthetic accepted website' });

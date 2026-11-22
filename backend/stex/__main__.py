@@ -9,6 +9,7 @@ from stex.main import create_app
 
 
 def main() -> None:
+    """Start uvicorn with the validated local platform settings."""
     settings = Settings.from_environment()
     # Uvicorn's own "Uvicorn running on ..." line is printed only after the socket
     # is bound; launchers wait for it. Per-request access logs stay off.

@@ -1,3 +1,4 @@
+/** Suite acceptance source that checks the running platform API against disposable engines. */
 // Integration check for the Python platform API (M1) against the real Node
 // engines: Frige and Seaxneat run on disposable data, the platform runs beside
 // them, and its stex.platform.projects.v1 answer must agree with each studio's
@@ -11,14 +12,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const python = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 
+/** Reserves and releases an available loopback port for a test process. */
 const freePort = () => new Promise((resolve, reject) => {
   const server = net.createServer().once('error', reject);
   server.listen(0, '127.0.0.1', () => { const { port } = server.address(); server.close(() => resolve(port)); });
 });
 
+/** Waits for the service to report ready before sending requests. */
 async function ready(url, child, name) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
@@ -29,12 +32,14 @@ async function ready(url, child, name) {
   throw new Error(`${name} did not become ready at ${url}.`);
 }
 
+/** Fetches the requested URL and decodes its JSON response. */
 const getJson = async (url) => {
   const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`${url} answered ${response.status}`);
   return response.json();
 };
 
+/** Checks the platform API against real disposable Frige and Seaxneat processes. */
 async function main() {
   const sync = spawnSync('uv', ['sync', '--frozen'], { cwd: root, stdio: 'inherit' });
   if (sync.status !== 0 || !existsSync(python)) throw new Error('uv sync --frozen failed; the platform environment is unavailable.');
@@ -58,6 +63,7 @@ async function main() {
       STEX_PLATFORM_PORT: String(ports.platform), STEX_FRIGE_URL: origins.frige, STEX_SEAXNEAT_URL: origins.seaxneat } }),
   };
   const failures = [];
+  /** Records a named acceptance assertion and fails the run if it fails. */
   const check = (condition, message) => { if (!condition) failures.push(message); };
   const report = {};
   try {

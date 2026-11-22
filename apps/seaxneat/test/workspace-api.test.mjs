@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks workspace api behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -7,9 +8,11 @@ import test from 'node:test';
 import { workspaceApi, workspaceVersion } from '../src/workspace-api.mjs';
 import { SeaxneatStore, defaultRunner } from '../src/project-store.mjs';
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-workspace-api-'));
   const control = { fail: false, hold: null };
+  /** Simulates a workspace subprocess for the owning test scenario. */
   const runner = async (command, args, cwd, options) => {
     if (command === 'pnpm' || args.includes('pnpm')) {
       if (control.hold) await control.hold;
@@ -17,14 +20,17 @@ async function fixture(context) {
     }
     return defaultRunner(command, args, cwd, options);
   };
-  const store = await new SeaxneatStore({ root, runner, previewStarter: async () => ({ state: 'starting', target: 'http://127.0.0.1:9999' }) }).initialize();
+  const store = await new SeaxneatStore({ root, runner, /** Starts or simulates the selected workspace preview. */ previewStarter: async () => ({ state: 'starting', target: 'http://127.0.0.1:9999' }) }).initialize();
   const handler = workspaceApi(store, {
+    /** Reads and validates a bounded JSON request body. */
     body: async (request) => { let raw = ''; for await (const part of request) raw += part; return JSON.parse(raw); },
+    /** Sends the route result with its selected status and response headers. */
     send: (response, status, value) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(value)); },
   });
   const server = http.createServer((request, response) => handler(request, response, new URL(request.url, 'http://localhost')));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   context.after(async () => { await new Promise((resolve) => server.close(resolve)); await rm(root, { recursive: true, force: true }); });
+  /** Sends a request to the owning HTTP API and returns its decoded result. */
   const api = async (route, payload, method) => {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/stex/workspace/v1${route}`, { method: method || (payload === undefined ? 'GET' : 'POST'), headers: { 'content-type': 'application/json' }, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
     const value = await response.json(); assert.equal(value.schemaVersion, workspaceVersion);

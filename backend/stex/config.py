@@ -55,6 +55,7 @@ class Settings:
     max_summary_bytes: int = 2_000_000
 
     def __post_init__(self) -> None:
+        """Reject invalid ports, bind hosts and engine origins during construction."""
         if self.host not in LOOPBACK_HOSTS:
             raise ConfigurationError("STEX_PLATFORM_HOST must be a loopback address.")
         if not 0 < self.port < 65536:
@@ -64,6 +65,7 @@ class Settings:
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> Settings:
+        """Read platform settings from the mapping or process environment."""
         env = os.environ if environment is None else environment
         port_text = env.get("STEX_PLATFORM_PORT", "4340")
         if not (port_text.isascii() and port_text.isdecimal()):

@@ -1,9 +1,12 @@
+/** Pantheon server source that renders Pantheon shell and workspace documents. */
 // Editorial pages behind the splash: one shell (masthead, tabs) around each
 // page's content. Project data is loaded in the browser from each studio's
 // stex.projects.summary.v1 endpoint (protocol/projects); Pantheon stores none.
 
+/** Escapes interpolated text before it reaches a generated HTML page. */
 const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
+/** Renders the knowledge page and its configured or disabled state. */
 export function graphPage() {
   return shell({ active: 'graph', title: 'User Graph', scripts: ['/knowledge.js'], body: `<section class="knowledge-workspace"><p class="eyebrow">Knowledge</p><h1>User Graph and sources</h1><p>Keep explicit project knowledge with revision evidence. Source text stays with its engine; relationships never change manuscripts or website files.</p><p id="knowledge-notice" role="status">Loading knowledge…</p><div id="knowledge-content"></div></section>` });
 }
@@ -72,6 +75,7 @@ function navigation(active) {
   return `<nav class="tabs" aria-label="Pantheon"><ul>${items}</ul>${company}<button class="motion-toggle" type="button" hidden>Pause motion</button></nav>`;
 }
 
+/** Wraps a Pantheon page in the common navigation and document structure. */
 export function shell({ active, title, body, scripts = [], styles = [], app = 'pantheon', instrumental = false, contentClass = 'page', skipTarget = 'main', contentTag = 'main' }) {
   const pageScripts = ['/shell.js', ...scripts].map((src) => `<script type="module" src="${src}"></script>`).join('');
   return `<!doctype html>
@@ -98,6 +102,7 @@ ${body}
 </html>`;
 }
 
+/** Renders the platform-owned Seaxneat entry with its build assets. */
 export function developmentPage() {
   return shell({ active: 'studios', title: 'Website workspace', app: 'seaxneat',
     scripts: ['/workspace-assets/seaxneat.js'], styles: ['/workspace-assets/seaxneat.css'],
@@ -105,6 +110,7 @@ export function developmentPage() {
   });
 }
 
+/** Composes the Frige library or workstation in the platform shell. */
 export function publishingPage(fragment, workstation = false) {
   return shell({ active: 'studios', title: workstation ? 'Publishing workspace' : 'Book projects', app: 'frige',
     instrumental: workstation, contentClass: workstation ? 'platform-workspace frige-workstation' : 'page frige-lobby', skipTarget: workstation ? 'conversation' : 'main',
@@ -130,10 +136,12 @@ export function directorPage({ view = 'conversations' } = {}) {
   });
 }
 
+/** Builds the studio image markup from approved derivatives. */
 const emblemImage = (studio) => `<img class="studio-emblem" alt="" width="${studio.width}" height="64" loading="lazy" src="/media/studios/${studio.emblem}-${studio.width}w.webp" srcset="/media/studios/${studio.emblem}-${studio.width}w.webp 1x, /media/studios/${studio.emblem}-${studio.width * 2}w.webp 2x">`;
 
 // Studio entries carry their real registry state. Project counts are filled in
 // by projects.js from the studios' summaries.
+/** Renders the studio entries from the application registry. */
 function studioList(applications, { counts = false } = {}) {
   const entries = studios.map((studio) => {
     const application = applications.find((entry) => entry.id === studio.id);
@@ -150,6 +158,7 @@ function studioList(applications, { counts = false } = {}) {
 
 const noscript = '<noscript><p class="stex-meta">Project lists need JavaScript; the studios above still open.</p></noscript>';
 
+/** Renders the command center with its project and Igor entry points. */
 export function homePage(applications) {
   return shell({ active: 'home', title: 'Home', scripts: ['/projects.js', '/igor.js'], body: `
     <h1 class="stex-visually-hidden">Pantheon home</h1>
@@ -180,6 +189,7 @@ export function homePage(applications) {
     </section>` });
 }
 
+/** Renders the project listing shell. */
 export function projectsPage() {
   return shell({ active: 'projects', title: 'Projects', scripts: ['/projects.js'], body: `
     <h1 class="page-title">Projects</h1>
@@ -187,6 +197,7 @@ export function projectsPage() {
     <div data-projects="all"><p class="stex-meta" data-projects-status>Loading projects…</p>${noscript}</div>` });
 }
 
+/** Renders the active and deferred studio entries. */
 export function studiosPage(applications) {
   return shell({ active: 'studios', title: 'Studios', scripts: ['/projects.js'], body: `
     <h1 class="page-title">Studios</h1>
@@ -194,6 +205,7 @@ export function studiosPage(applications) {
     ${studioList(applications, { counts: true })}` });
 }
 
+/** Renders an honest deferred shell page. */
 export function unbuiltPage(id) {
   const copy = {
     graph: ['Graph', 'The User Graph view is not built yet. The optional, read-only User Graph adapter exists in services/knowledge; a browsing view arrives with its own milestone.'],
@@ -205,6 +217,7 @@ export function unbuiltPage(id) {
     <p><a class="section-link" href="/home/">Back to home</a></p>` });
 }
 
+/** Renders the stated availability of a deferred studio. */
 export function deferredStudioPage(application, description) {
   const studio = studios.find((entry) => entry.id === application.id);
   return shell({ active: 'studios', title: studio?.name || application.name, app: application.id, body: `

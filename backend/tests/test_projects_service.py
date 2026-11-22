@@ -1,3 +1,5 @@
+"""Project merge, availability and parity checks for the STEX platform."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,16 +19,19 @@ REGISTRY = load_registry(DEFAULT_REGISTRY)
 
 
 async def listing(studios: Studios, **options: Any) -> PlatformProjects:
+    """Fetch the platform listing over the supplied fixture transport."""
     async with httpx2.AsyncClient(transport=studios.transport(), follow_redirects=False) as client:
         service = ProjectSummaryService(REGISTRY, ORIGINS, client, **options)
         return await service.list_projects()
 
 
 def states(result: PlatformProjects) -> dict[str, str]:
+    """Extract the per-studio availability values from a result."""
     return {studio.id: studio.state for studio in result.studios}
 
 
 def test_merges_active_studios_newest_first_and_links_through_the_registry_route() -> None:
+    """Verify that merges active studios newest first and links through the registry route."""
     website = entry(
         "site",
         "2026-11-07T09:00:00Z",
@@ -58,6 +63,7 @@ def test_merges_active_studios_newest_first_and_links_through_the_registry_route
 
 
 def test_only_active_studios_are_polled_with_a_json_accept_header() -> None:
+    """Verify that only active studios are polled with a JSON accept header."""
     studios = Studios({FRIGE: json_reply(summary("frige")), SEAXNEAT: json_reply(summary("seaxneat"))})
     result = asyncio.run(listing(studios))
     assert [studio.id for studio in result.studios] == ["frige", "seaxneat"]
@@ -95,6 +101,7 @@ def test_only_active_studios_are_polled_with_a_json_accept_header() -> None:
     ],
 )
 def test_a_studio_with_an_unusable_answer_is_unavailable_and_the_others_are_kept(reply: Any) -> None:
+    """Verify that a studio with an unusable answer is unavailable and the others are kept."""
     studios = Studios(
         {FRIGE: reply, SEAXNEAT: json_reply(summary("seaxneat", entry("site", openPath="/?p=1")))}
     )
@@ -105,12 +112,16 @@ def test_a_studio_with_an_unusable_answer_is_unavailable_and_the_others_are_kept
 
 
 def test_an_unreachable_studio_is_unavailable() -> None:
+    """Verify that an unreachable studio is unavailable."""
     result = asyncio.run(listing(Studios({SEAXNEAT: json_reply(summary("seaxneat"))})))
     assert states(result) == {"frige": "unavailable", "seaxneat": "available"}
 
 
 def test_a_slow_studio_is_cut_off_at_its_budget_while_studios_are_polled_concurrently() -> None:
+    """Verify that a slow studio is cut off at its budget while studios are polled concurrently."""
+
     async def slow(_request: httpx2.Request) -> httpx2.Response:
+        """Delay the synthetic engine response past the request budget."""
         await asyncio.sleep(5)
         return httpx2.Response(200, json=summary("frige", entry("late")))
 
@@ -123,6 +134,7 @@ def test_a_slow_studio_is_cut_off_at_its_budget_while_studios_are_polled_concurr
 
 
 def test_an_oversized_summary_is_unavailable() -> None:
+    """Verify that an oversized summary is unavailable."""
     padded = summary("frige", entry("big", title="x" * 5_000))
     result = asyncio.run(
         listing(
@@ -151,6 +163,7 @@ def test_an_oversized_summary_is_unavailable() -> None:
     ],
 )
 def test_entries_breaking_the_consumer_rules_are_dropped(override: dict[str, Any]) -> None:
+    """Verify that entries breaking the consumer rules are dropped."""
     bad = entry("bad", **override)
     studios = Studios(
         {FRIGE: json_reply(summary("frige", bad, entry("good"))), SEAXNEAT: json_reply(summary("seaxneat"))}
@@ -161,6 +174,7 @@ def test_entries_breaking_the_consumer_rules_are_dropped(override: dict[str, Any
 
 
 def test_entries_that_are_allowed_keep_their_meaning_and_unknown_fields_are_not_passed_through() -> None:
+    """Verify that entries that are allowed keep their meaning and unknown fields are not passed through."""
     allowed = entry("odd", "not a time", reference=None, openPath="/..hidden/?x=1", injected="<script>")
     studios = Studios(
         {FRIGE: json_reply(summary("frige", allowed)), SEAXNEAT: json_reply(summary("seaxneat"))}
@@ -175,6 +189,7 @@ def test_entries_that_are_allowed_keep_their_meaning_and_unknown_fields_are_not_
 
 
 def test_nothing_is_cached_between_calls() -> None:
+    """Verify that nothing is cached between calls."""
     documents = [summary("frige", entry("first")), summary("frige", entry("second"))]
     studios = Studios(
         {
@@ -184,6 +199,7 @@ def test_nothing_is_cached_between_calls() -> None:
     )
 
     async def twice() -> list[list[str]]:
+        """Read twice across a changed underlying fixture response."""
         async with httpx2.AsyncClient(transport=studios.transport()) as client:
             service = ProjectSummaryService(REGISTRY, ORIGINS, client)
             return [[p.id for p in (await service.list_projects()).projects] for _ in range(2)]
@@ -192,9 +208,11 @@ def test_nothing_is_cached_between_calls() -> None:
 
 
 def test_a_studio_without_a_configured_origin_is_unavailable_without_a_request() -> None:
+    """Verify that a studio without a configured origin is unavailable without a request."""
     studios = Studios({FRIGE: json_reply(summary("frige"))})
 
     async def run() -> PlatformProjects:
+        """Read the project list with a deliberately missing origin."""
         async with httpx2.AsyncClient(transport=studios.transport()) as client:
             return await ProjectSummaryService(REGISTRY, {"frige": FRIGE}, client).list_projects()
 
@@ -203,12 +221,14 @@ def test_a_studio_without_a_configured_origin_is_unavailable_without_a_request()
 
 
 def test_sort_time_matches_date_parse_or_zero() -> None:
+    """Verify that sort time matches Date.parse or returns zero."""
     assert sort_time("2026-11-05T17:02:11.000Z") == sort_time("2026-11-05T17:02:11+00:00") > 0
     assert sort_time(None) == sort_time("garbage") == 0
     assert valid_entry(entry("x")) and not valid_entry(["x"])
 
 
 def test_equal_and_missing_times_keep_studio_then_source_order() -> None:
+    """Verify that equal and missing times keep studio then source order."""
     same = "2026-11-05T10:00:00Z"
     studios = Studios(
         {
@@ -221,5 +241,6 @@ def test_equal_and_missing_times_keep_studio_then_source_order() -> None:
 
 
 def test_a_parent_segment_followed_by_a_newline_is_kept_as_the_browser_keeps_it() -> None:
+    """Verify that a parent segment followed by a newline is kept as the browser keeps it."""
     assert valid_entry(entry("x", openPath="/x/..\n"))
     assert not valid_entry(entry("x", openPath="/x/.."))

@@ -1,3 +1,4 @@
+/** Pantheon regression tests source that checks server behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -18,16 +19,18 @@ test('publishing UI resolves versioned APIs without changing proof resources or 
   assert.throws(() => appUrl('api/project/graph'), /start with/);
 });
 
+/** Starts Pantheon with disposable roots and waits for readiness. */
 async function startPantheon(root, port, context, environment = {}) {
   const child = spawn(process.execPath, ['server.mjs'], { cwd: appDirectory, env: { ...process.env, STEX_PANTHEON_PORT: String(port), STEX_FRIGE_BOOKS_DIR: root, ...environment } });
   context.after(async () => { child.kill(); await rm(root, { recursive: true, force: true }); });
   await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Lab server did not start.')), 5_000);
+    const timeout = setTimeout(() => reject(new Error('Pantheon server did not start.')), 5_000);
     child.stdout.on('data', (data) => { if (data.toString().includes('ready')) { clearTimeout(timeout); resolve(); } });
     child.on('error', reject);
   });
 }
 
+/** Starts Frige with disposable publishing state and fake inference. */
 async function startFrige(root, port, context) {
   const local = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-compat-'));
   const child = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve(appDirectory, '../frige'), env: { ...process.env, STEX_FRIGE_PORT: String(port), STEX_FRIGE_BOOKS_DIR: root, STEX_FRIGE_PROJECT_DIR: local, STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_INFERENCE_MODE: 'fake' } });
@@ -134,6 +137,7 @@ test('serves the public splash with a real local entry and no counterfeit authen
 });
 
 // Every local file a page references (src, href, srcset) is served with its type and nosniff.
+/** Verifies the linked assets, fragment targets or descriptors in a response. */
 async function assertReferences(html, base) {
   const types = { '.webm': 'video/webm', '.mp4': 'video/mp4', '.webp': 'image/webp', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
   const references = new Set([...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map(([, reference]) => reference));
@@ -394,8 +398,10 @@ test('diff rows always rebuild both texts with true line numbers, and every chan
   const { collapse, diffRows } = await import('../workspaces/frige/line-diff.js');
   // A seeded generator, so a failure names a reproducible case.
   let seed = 20261120;
+  /** Generates deterministic variation for property-style assertions. */
   const random = (limit) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % limit; };
   const vocabulary = ['a', 'b', 'c', '', '  d', 'e — é', '𝔉'];
+  /** Returns a string value in the form expected by this boundary. */
   const text = (length) => Array.from({ length }, () => vocabulary[random(vocabulary.length)]).join('\n');
   for (let index = 0; index < 400; index += 1) {
     const before = text(random(30)); const after = random(4) === 0 ? text(random(30)) : before.split('\n').map((line) => (random(6) === 0 ? vocabulary[random(vocabulary.length)] : line)).join('\n');
@@ -413,6 +419,7 @@ test('diff rows always rebuild both texts with true line numbers, and every chan
 
 test('a proposal card says when line endings change, which a line diff cannot show', async () => {
   const { diffRows, lineEndingsDiffer } = await import('../workspaces/frige/line-diff.js');
+  /** Produces the changed text used by the diff reconstruction test. */
   const differ = (before, after) => lineEndingsDiffer(before, after, diffRows(before, after));
   const mixed = 'one\r\ntwo\nthree\r\n';
   assert.equal(differ(mixed, 'one\r\nTWO\nthree\r\n'), false, 'an edit that keeps a mixed piece’s endings is not flagged');
@@ -424,6 +431,7 @@ test('a proposal card says when line endings change, which a line diff cannot sh
 test('forwards only the read-only platform routes, without browser headers, and fails closed', async (context) => {
   const seen = [];
   const merged = { schemaVersion: 'stex.platform.projects.v1', studios: [{ id: 'frige', state: 'available' }, { id: 'seaxneat', state: 'unavailable' }], projects: [] };
+  /** Supplies a test upstream response from the local fixture. */
   let reply = (response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(merged)); };
   const platform = http.createServer((request, response) => { seen.push({ method: request.method, path: request.url, cookie: request.headers.cookie, origin: request.headers.origin }); reply(response); });
   await new Promise((resolve) => platform.listen(4415, '127.0.0.1', resolve));
@@ -462,7 +470,7 @@ test('forwards only the read-only platform routes, without browser headers, and 
   for (const [label, write] of [
     ['non-200 status', (response) => { response.writeHead(422, { 'content-type': 'application/json' }); response.end('{"detail":[]}'); }],
     ['compressed body', (response) => { response.writeHead(200, { 'content-type': 'application/json', 'content-encoding': 'gzip' }); response.end(Buffer.from([0x1f, 0x8b])); }],
-    ['oversized chunked body', (response) => { response.writeHead(200, { 'content-type': 'application/json' }); const chunk = Buffer.alloc(1 << 20, 32); let sent = 0; const pump = () => { while (sent < 6 && response.write(chunk)) sent += 1; if (sent < 6) response.once('drain', () => { sent += 1; pump(); }); else response.end('{}'); }; pump(); }],
+    ['oversized chunked body', (response) => { response.writeHead(200, { 'content-type': 'application/json' }); const chunk = Buffer.alloc(1 << 20, 32); let sent = 0; /** Forwards response chunks during the streaming fixture. */ const pump = () => { while (sent < 6 && response.write(chunk)) sent += 1; if (sent < 6) response.once('drain', () => { sent += 1; pump(); }); else response.end('{}'); }; pump(); }],
   ]) {
     reply = write;
     const refused = await fetch(`${base}/api/platform/v1/projects`);

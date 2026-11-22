@@ -8,7 +8,7 @@ must keep compatible.
 
 | Repository | Revision | Role |
 | --- | --- | --- |
-| stex-suite | `e754f52` (`main`, after PR 10) | Current base; the program started from `d96340e` (PR 5 head) |
+| stex-suite | `b669759` (`main`, after PR 12) | Source-release preparation base; the program started from `d96340e` (PR 5 head) |
 | stex-igor | `5db7e51` (`main`, deployed 2026-11-21 as generation 15, verified by the deploy workflow) | Submodule pin on suite `main` since PR 10; `c5af494` was the pin before |
 | Hermes runtime | `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac` | Pinned upstream source; not modified |
 

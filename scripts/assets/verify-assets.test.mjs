@@ -1,3 +1,4 @@
+/** Suite asset tooling source that checks verify assets behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -6,8 +7,10 @@ import path from 'node:path';
 import test from 'node:test';
 import { verifyAssets } from './verify-assets.mjs';
 
+/** Computes a stable content digest for the record being verified. */
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context, files, assets) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-assets-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -19,7 +22,9 @@ async function fixture(context, files, assets) {
   return root;
 }
 
+/** Builds the expected asset metadata for the fixture. */
 const record = (file, content, extra = {}) => ({ path: file, sha256: digest(content), bytes: Buffer.byteLength(content), ...extra });
+/** Validates a composed renderer asset before using its URL. */
 const asset = (master, derivatives = [], extra = {}) => ({ id: 'P01', owner: 'pantheon', provenance: { author: 'Test', rights: 'Test' }, alt: 'Test', master, derivatives, ...extra });
 
 test('the repository asset manifest matches the files on disk', async () => {
@@ -36,6 +41,7 @@ test('requires a copy served by another application to stay byte-identical to it
   const source = 'apps/pantheon/public/media/pantheon-still-960w.webp';
   const copy = 'apps/frige/public/media/pantheon-still-960w.webp';
   const master = record('assets/masters/pantheon/pantheon-still.png', 'master');
+  /** Produces synthetic derivative records used by the asset tests. */
   const derivatives = (copyContent) => [record(source, 'small', { width: 960 }), record(copy, copyContent, { width: 960, copyOf: source })];
   const matching = await fixture(context, { 'assets/masters/pantheon/pantheon-still.png': 'master', [source]: 'small', [copy]: 'small' }, [asset(master, derivatives('small'))]);
   assert.deepEqual(await verifyAssets(matching), []);

@@ -16,14 +16,13 @@ coverage/
 *.log
 *.tsbuildinfo
 apps/frige/.local-book/
-apps/pantheon/.local-projects/
+apps/*/.local-projects/
 services/knowledge/.local-data/
 apps/frige/books/*/.texgraph/
 apps/frige/books/*/.obsidian/
 # Untracked author files kept by the owner outside version control (D-015).
 apps/texgraph/
 apps/texgraph/.local-book/
-apps/lab/.local-projects/
 apps/texgraph/books/*/.texgraph/
 apps/texgraph/books/*/.obsidian/
 apps/seaxneat/.local-data/

@@ -1,3 +1,4 @@
+/** Pantheon HTTP entry point for shell pages, mounted workspaces, and loopback proxies. */
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
@@ -18,7 +19,7 @@ const publishingTemplates = {
   workstation: await readFile(path.join(publishingDirectory, 'index.html'), 'utf8'),
 };
 const publishingAssets = new Set(['app.js', 'base-path.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'proof-viewer.js', 'style.css', 'thread.js', 'workspace.js']);
-const port = Number(process.env.STEX_PANTHEON_PORT || process.env.STEX_LAB_PORT || 4300);
+const port = Number(process.env.STEX_PANTHEON_PORT || 4300);
 const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v2.json');
 let applications = shellApplications;
 try { applications = validateRegistry(JSON.parse(await readFile(registryFile, 'utf8'))); }
@@ -39,18 +40,27 @@ const knowledgeRoute = knowledgeApi({ knowledge, targets: proxyTargets });
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
 const pages = {
+  /** Renders the command center for the shell route. */
   '/home/': () => homePage(applications),
+  /** Renders the combined project library. */
   '/projects/': () => projectsPage(),
+  /** Renders the studio navigation page. */
   '/studios/': () => studiosPage(applications),
+  /** Renders the optional knowledge view using journal availability. */
   '/graph/': () => graphPage(),
+  /** Renders the deferred activity view. */
   '/activity/': () => unbuiltPage('activity'),
+  /** Renders the website workspace entry document. */
   '/workspaces/seaxneat/': () => developmentPage(),
 };
+/** Sends the route result with its selected status and response headers. */
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
+/** Sends a shell document with its HTML and security headers. */
 function sendPage(response, html, headers = {}) { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers }); response.end(html); }
 
 // Static files revalidate by ETag and honour a single byte range, which browsers
 // (Safari in particular) require before they will play <video>.
+/** Streams a static file with the server's content and cache headers. */
 async function staticFile(request, response, file) {
   let info;
   try { info = await stat(file); } catch { return send(response, 404, { error: 'Not found.' }); }
@@ -73,6 +83,7 @@ async function staticFile(request, response, file) {
   pipeline(createReadStream(file, { start, end }), response, () => {});
 }
 
+/** Resolves a permitted public design-system resource. */
 function designSystemFile(pathname) {
   const relative = pathname.slice('/design-system/'.length);
   const file = path.resolve(designSystemDirectory, relative.endsWith('/') || !relative ? `${relative}index.html` : relative);

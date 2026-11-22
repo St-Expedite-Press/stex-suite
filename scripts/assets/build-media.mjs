@@ -1,3 +1,4 @@
+/** Suite asset tooling source that generates approved web media and records derivative metadata. */
 import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -21,6 +22,7 @@ const loops = {
     loop: { id: 'P10', master: 'assets/masters/pantheon/pantheon-splash-loop.mp4' },
     still: { id: 'P01', master: 'assets/masters/pantheon/pantheon-splash-still.png' },
     output: 'apps/pantheon/public/media/splash',
+    /** Supplies the crop calculation for the selected derivative. */
     crop: () => null,
     quality: { av1: 42, h264: 26, webp: 78 },
     // Desktop motion <= 2.5 MB (AV1), mobile <= 0.8 MB.
@@ -36,6 +38,7 @@ const loops = {
     loop: { id: 'P11', master: 'assets/masters/pantheon/pantheon-masthead-loop.mp4' },
     still: { id: 'P02', master: 'assets/masters/pantheon/pantheon-masthead-still.png' },
     output: 'apps/pantheon/public/media/masthead',
+    /** Supplies the crop calculation for the selected derivative. */
     crop: (width) => (width >= 1280 ? 'crop=1920:288:0:300' : 'crop=1920:480:0:220'),
     quality: { av1: 48, h264: 28, webp: 72 },
     budgets: { webm: { 1920: 1_800_000, 1280: 900_000, 960: 650_000 }, mp4: { 1920: 2_000_000, 1280: 1_000_000, 960: 750_000 }, webp: { 1920: 230_000, 1280: 115_000, 960: 110_000 } },
@@ -61,6 +64,7 @@ const copies = {
   'apps/pantheon/public/media/studios/frige-': 'apps/frige/public/media/studios/frige-',
 };
 
+/** Invokes the media tool and raises on a failed exit. */
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
   if (result.error?.code === 'ENOENT') throw new Error(`${command} is not on PATH; install FFmpeg to rebuild media.`);
@@ -68,16 +72,20 @@ function run(command, args) {
   return result.stdout.trim();
 }
 
+/** Reads stream and container metadata using ffprobe. */
 const probe = (file, entries) => run('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', `stream=${entries}`, '-of', 'json', file]);
+/** Extracts the decoded width and height of a derivative. */
 const dimensions = (file) => { const [stream] = JSON.parse(probe(file, 'width,height')).streams; return { width: stream.width, height: stream.height }; };
 // RFC 6381 codec string for a <source type>, from the encoded profile and level.
 // Pages must use exactly this value (apps/pantheon tests compare them).
+/** Extracts the browser-facing codec metadata for a derivative. */
 function codecs(file) {
   const [stream] = JSON.parse(probe(file, 'codec_name,profile,level,pix_fmt')).streams;
   if (stream.codec_name === 'av1') return `av01.0.${String(stream.level).padStart(2, '0')}M.${stream.pix_fmt.includes('10') ? '10' : '08'}`;
   if (stream.codec_name === 'h264' && stream.profile === 'High') return `avc1.6400${stream.level.toString(16).toUpperCase().padStart(2, '0')}`;
   return null;
 }
+/** Creates the canonical asset filename stem for a requested width. */
 const stem = (master) => path.posix.basename(master).replace(/\.[^.]+$/, '');
 const bitexact = ['-map_metadata', '-1', '-fflags', '+bitexact'];
 
@@ -85,6 +93,7 @@ const bitexact = ['-map_metadata', '-1', '-fflags', '+bitexact'];
 // frames toward source frames 0..F-1, reaching 100% on the final frame. The
 // output ends on source frame F-1 and starts on frame F: the wrap is one
 // natural source step.
+/** Encodes a loop with the configured crop and media settings. */
 function buildLoop(master, temporary) {
   const total = Number(JSON.parse(probe(master, 'nb_read_frames')).streams[0].nb_read_frames);
   const weight = `min(1,(N+1)/${fadeFrames})`;
@@ -104,15 +113,20 @@ function buildLoop(master, temporary) {
 // AV1: 10-bit avoids banding in sun halos; the temporal filter is off because
 // it smooths away the engraved hatching (the identity of the artwork).
 const encoders = {
+  /** Builds a WebM derivative using the supported browser codec. */
   webm: (frames, quality) => ['-c:v', 'libsvtav1', '-crf', String(quality.av1), '-preset', '4', '-g', String(frames), '-pix_fmt', 'yuv420p10le', '-svtav1-params', 'tune=0:enable-tf=0'],
+  /** Builds an MP4 derivative using the supported browser codec. */
   mp4: (frames, quality) => ['-c:v', 'libx264', '-crf', String(quality.h264), '-preset', 'slow', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],
 };
 
+/** Produces and validates the configured sizes for one motion asset. */
 async function buildLoopJob(name, job, temporary) {
   await mkdir(path.join(repositoryRoot, job.output), { recursive: true });
   const outputs = { [job.loop.id]: [], [job.still.id]: [] };
   const { loop, frames } = buildLoop(job.loop.master, temporary);
+  /** Builds the scale and crop filters for the selected width. */
   const filter = (width) => [job.crop(width), `scale=${width}:-2:flags=lanczos`].filter(Boolean).join(',');
+  /** Records the canonical target, byte budget and crop recipe. */
   const record = (target, budget, width) => ({ target, budget, recipe: `scripts/assets/build-media.mjs ${name}`, ...(job.crop(width) ? { crop: job.crop(width).replace('crop=', '') } : {}) });
   for (const width of widths) {
     for (const container of ['webm', 'mp4']) {
@@ -127,6 +141,7 @@ async function buildLoopJob(name, job, temporary) {
   return outputs;
 }
 
+/** Builds the canonical emblem sizes and associated destinations. */
 async function buildEmblems() {
   await mkdir(path.join(repositoryRoot, emblemOutput), { recursive: true });
   const outputs = {};
@@ -142,6 +157,7 @@ async function buildEmblems() {
   return outputs;
 }
 
+/** Builds the selected media jobs and updates validated manifest records. */
 async function main() {
   const requested = process.argv.slice(2);
   const jobs = requested.length ? requested : [...Object.keys(loops), 'emblems'];

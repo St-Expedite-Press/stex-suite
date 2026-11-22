@@ -1,7 +1,10 @@
+/** Seaxneat website engine source that exports only validated project revisions for explicit approval. */
 import { createHash } from 'node:crypto';
 
 const files = { page: 'app/page.tsx', layout: 'app/layout.tsx', styles: 'app/globals.css' };
+/** Returns an owning-API failure with the appropriate status and code. */
 const failure = (status, code, message) => Object.assign(new Error(message), { status, code });
+/** Exposes the project catalog or one explicitly selected source revision. */
 export async function projectContext(store, id, { sourceId, revision } = {}) {
   try {
     let record; try { record = store.get(id); } catch { throw failure(404, 'NOT_FOUND', 'The selected website project does not exist.'); }
@@ -9,6 +12,7 @@ export async function projectContext(store, id, { sourceId, revision } = {}) {
     const commit = record.lastValidatedRevision;
     if (!/^[a-f0-9]{40,64}$/.test(commit)) throw failure(503, 'UNAVAILABLE', 'The validated revision is unavailable.');
     const project = { application: 'seaxneat', id, title: record.title, reference: store.reference(record), revision: commit };
+    /** Shapes an engine source descriptor for the context contract. */
     async function describe(sourceId, content = false) {
       const file = files[sourceId]; if (!file) throw failure(404, 'NOT_FOUND', 'Unknown website source.');
       // Read the validated Git object, not an unvalidated working-tree file.

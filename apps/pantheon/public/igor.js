@@ -1,3 +1,4 @@
+/** Pantheon browser source that hands off a local composer message and displays handoff failures. */
 // The home Igor box is the entry composer for Igor (stex.igor.conversations.v1,
 // protocol/igor). A submission creates a conversation and navigates to it at
 // once; Igor's own page shows the pending reply. Without JavaScript the form
@@ -10,6 +11,7 @@ const log = document.querySelector('.igor-log');
 // One key per submission. Retrying the same text after a failure reuses it, so
 // a request that did reach Igor returns the same conversation instead of a second one.
 let submission = null;
+/** Derives the browser storage key for the pending conversation handoff. */
 function keyFor(message) {
   if (submission?.message !== message) {
     const key = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -18,6 +20,7 @@ function keyFor(message) {
   return submission.key;
 }
 
+/** Displays the handoff failure using inert text. */
 function showError(text) {
   const item = document.createElement('li');
   item.className = 'igor-entry igor-entry--status';
