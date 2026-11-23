@@ -7,6 +7,7 @@ import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
 import { EditorialJournal, editorialPath } from './editorial-journal.mjs';
+import { readAttachmentManifest } from './attachment-manifest.mjs';
 import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, changedOnlyWithin, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
@@ -1652,8 +1653,7 @@ export class ProjectStore {
   /** Resolves excerpts whose exact bytes were approved by the author. */
   async approvedSourceExcerpts() {
     try {
-      const documents = JSON.parse(await readFile(path.join(this.stateDirectory, 'documents.json'), 'utf8'));
-      if (!Array.isArray(documents)) return [];
+      const documents = await readAttachmentManifest(this.root);
       const approved = documents.filter((entry) => entry?.contextState === 'approved' && typeof entry.approvalHash === 'string')
         .sort((left, right) => String(right.reviewedAt ?? '').localeCompare(String(left.reviewedAt ?? '')));
       const resolved = [];

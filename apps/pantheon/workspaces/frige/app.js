@@ -263,7 +263,8 @@ function renderAttachments() {
       const preview = element('button', 'quiet-button', 'Review excerpt'); preview.type = 'button';
       preview.addEventListener('click', () => previewAttachment(attachment.id));
       item.append(' ', preview);
-      if (attachment.approvalHash) item.append(element('small', '', ' Approved'));
+      if (attachment.contextState === 'approved' && attachment.approvalHash) item.append(element('small', '', ' Approved'));
+      if (attachment.contextState === 'rejected') item.append(element('small', '', ' Rejected'));
     } else item.append(element('small', '', attachment.contextState === 'unreadable' ? ' Invalid text encoding' : ' Excerpt unavailable'));
     return item;
   }));
@@ -985,7 +986,11 @@ async function refresh() {
 /** Initializes the workspace with its selected source and controls. */
 async function bootstrap() {
   if (!book) { location.replace('/frige/'); return; }
-  const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
+  const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all([
+    request('/api/project/graph'),
+    request('/api/project/attachments').catch((error) => { $('#attachment-state').textContent = error.message; return []; }),
+    ...['/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)),
+  ]);
   Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
   const design = await request('/api/project/design');
   Object.assign(state, { design: design.design, designHash: design.hash, defaultDesignHash: design.defaultHash, trimSizes: design.trimSizes });

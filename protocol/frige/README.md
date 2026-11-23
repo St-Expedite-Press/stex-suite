@@ -161,6 +161,9 @@ approval and the Frige conversation. The excerpt route returns
 when an excerpt cannot be read. Approval accepts its SHA-256 hash and
 returns `409 STALE_SOURCE` if the displayed excerpt changed. A changed
 extraction requires a fresh preview and approval.
+Publishing and legacy attachment changes share one per-book write queue.
+Unavailable or damaged attachment metadata returns `503 ATTACHMENTS_UNAVAILABLE`
+and is preserved.
 
 Frige checks the 32 most recent approvals and offers up to eight matching
 excerpts to Igor. Each excerpt is at most 6,000 UTF-16 units with intact
@@ -450,8 +453,8 @@ The loopback engine admits its own browser origin or configured loopback
 `STEX_PANTHEON_URL`, rejects opaque/foreign origins, cross-site browser requests
 and non-loopback Host values, and retains local Origin-absent CLI access.
 This protects browser requests without introducing platform authentication.
-The API preserves historical last-writer behavior for document manifests; it
-does not claim new transactional upload or concurrent-review guarantees.
+Attachment metadata updates use the same in-process book queue as publishing
+v1. An interrupted multi-file upload can still leave an unlisted file.
 Do not expand it as the publishing API. The separate publishing v1 boundary
 above is the platform workstation's contract.
 

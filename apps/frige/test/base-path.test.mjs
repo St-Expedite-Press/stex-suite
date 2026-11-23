@@ -7,8 +7,42 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { mutateAttachments, readAttachmentManifest } from '../src/attachment-manifest.mjs';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+test('attachment writers queue across APIs and preserve a corrupt manifest', async (context) => {
+  const parent = path.resolve(os.tmpdir());
+  const root = await mkdtemp(path.join(parent, 'stex-attachment-queue-'));
+  assert.equal(path.dirname(root), parent);
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, '.texgraph');
+  const file = path.join(directory, 'documents.json');
+  await mkdir(directory);
+  await writeFile(file, JSON.stringify([{ id: 'approved', contextState: 'approved' }]));
+  const { promise: loaded, resolve: announce } = Promise.withResolvers();
+  const { promise: paused, resolve: resume } = Promise.withResolvers();
+  const upload = mutateAttachments(root, async () => {
+    const manifest = await readAttachmentManifest(root);
+    announce();
+    await paused;
+    manifest.push({ id: 'new' });
+    await writeFile(file, JSON.stringify(manifest));
+  });
+  await loaded;
+  const review = mutateAttachments(path.join(root, '.'), async () => {
+    const manifest = await readAttachmentManifest(root);
+    manifest[0].contextState = 'rejected';
+    await writeFile(file, JSON.stringify(manifest));
+  });
+  resume();
+  await Promise.all([upload, review]);
+  assert.deepEqual(await readAttachmentManifest(root), [{ id: 'approved', contextState: 'rejected' }, { id: 'new' }]);
+  const corrupt = Buffer.from([0xff, 0x5b]);
+  await writeFile(file, corrupt);
+  await assert.rejects(readAttachmentManifest(root), { code: 'ATTACHMENTS_UNAVAILABLE', status: 503 });
+  assert.deepEqual(await readFile(file), corrupt);
+});
 
 /** Starts Frige with disposable publishing state and fake inference. */
 async function startFrige(root, port, context, environment = { STEX_FRIGE_SHELL_URL: '/' }) {

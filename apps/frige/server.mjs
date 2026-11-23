@@ -13,6 +13,7 @@ import { editorialRoute, publishingRoute } from './src/publishing-contract.mjs';
 import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
+import { mutateAttachments, readAttachmentManifest } from './src/attachment-manifest.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
@@ -257,13 +258,11 @@ function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:
 
 const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
-/** Loads attachment metadata for the selected publishing project. */
-async function attachmentManifest(store) { try { const value = JSON.parse(await readFile(path.join(store.stateDirectory, 'documents.json'), 'utf8')); return Array.isArray(value) ? value : []; } catch { return []; } }
 /** Writes validated upload bytes and records their pending review state. */
 async function saveAttachments(store, payload) {
   const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
   if (!uploads.length || uploads.length > 10) throw new Error('Attach between one and ten files.');
-  const manifest = await attachmentManifest(store); const created = [];
+  const manifest = await readAttachmentManifest(store.root); const created = [];
   for (const upload of uploads) {
     const name = path.basename(String(upload?.name || '')); const extension = path.extname(name).toLowerCase();
     if (!name || name !== upload.name || !attachmentExtensions.has(extension)) throw new Error('Unsupported attachment type or filename.');
@@ -290,7 +289,7 @@ async function saveAttachments(store, payload) {
   await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
 }
 async function attachmentPreview(store, id) {
-  const record = (await attachmentManifest(store)).find((entry) => entry.id === id);
+  const record = (await readAttachmentManifest(store.root)).find((entry) => entry.id === id);
   const preview = await store.attachmentExcerpt(record);
   if (!preview) throw Object.assign(new Error('This attachment has no readable excerpt.'), { status: 404, code: 'EXCERPT_UNAVAILABLE' });
   return preview;
@@ -298,9 +297,9 @@ async function attachmentPreview(store, id) {
 
 /** Pins the reviewed excerpt. Earlier callers can still record a legacy approval. */
 async function reviewAttachment(store, id, hash) {
-  const manifest = await attachmentManifest(store);
+  const manifest = await readAttachmentManifest(store.root);
   const record = manifest.find((entry) => entry.id === id);
-  if (!record?.extraction || !['pending-review', 'approved'].includes(record.contextState)) throw new Error('This attachment is not ready for review.');
+  if (!record?.extraction || !['pending-review', 'approved', 'rejected'].includes(record.contextState)) throw new Error('This attachment is not ready for review.');
   if (hash !== undefined) {
     const preview = await store.attachmentExcerpt(record);
     if (!preview || preview.hash !== hash) throw Object.assign(new Error('The excerpt changed. Preview it again.'), { code: 'STALE_SOURCE' });
@@ -415,15 +414,15 @@ async function artifactResponse(response, store, id, content, download) {
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
   const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt)$/);
-  if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await attachmentManifest(store));
+  if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await readAttachmentManifest(store.root));
   if (request.method === 'POST' && url.pathname === '/api/project/attachments') {
     const payload = await body(request);
-    return json(response, 201, await store.exclusive(() => saveAttachments(store, payload)));
+    return json(response, 201, await mutateAttachments(store.root, () => saveAttachments(store, payload)));
   }
   if (request.method === 'GET' && attachment?.[2] === 'excerpt') return json(response, 200, await attachmentPreview(store, attachment[1]));
   if (request.method === 'POST' && attachment?.[2] === 'approve') {
     const payload = await body(request);
-    return json(response, 200, await store.exclusive(() => reviewAttachment(store, attachment[1], payload?.hash)));
+    return json(response, 200, await mutateAttachments(store.root, () => reviewAttachment(store, attachment[1], payload?.hash)));
   }
   if (request.method === 'GET' && url.pathname === '/api/project/graph') return json(response, 200, await store.graph());
   if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
