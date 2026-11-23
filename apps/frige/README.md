@@ -365,6 +365,30 @@ inference calls.
 
 The single-page local book (`book.json`) still uses `page-turn` v1.
 
+## Source revisions and editorial decisions
+
+Saving changed Markdown records a source revision in the project's private
+`.texgraph/editorial/` directory. Include that directory alongside the
+manuscript for a backup that preserves history. A first tracked edit records
+the previous source as a baseline. Restoring older bytes creates a new
+revision linked to the current head and the restored event.
+
+In a piece's **Source** view, open **History** to compare a revision with
+the current text, read its exact source, select **Restore as new revision**,
+or record why you kept a reading. A decision belongs to a piece revision
+and leaves the manuscript bytes intact. The provenance role identifies an
+author operation in the shared project. [Publishing API](../../protocol/frige/README.md#editorial-history-and-decisions)
+
+## Read an attached document with Igor
+
+In a Frige conversation, use **Attach files**, select a UTF-8 Markdown,
+plain-text, TeX, CSV or JSON document, and choose **Review excerpt**.
+Inspect the shown text and select **Use this excerpt in chat**. The exact
+excerpt can then accompany Igor turns for that book. The context limit can
+omit an excerpt on a large turn. Review again if the excerpt changes.
+PDF and DOCX uploads have no readable preview. A password-protected book
+supports this workflow in Frige after unlock.
+
 ## Interface
 
 Pantheon renders the existing publishing library and workstation with the
@@ -398,6 +422,11 @@ compatibility. The platform consumes
   - The editor shows the line and column, or the lines and characters
     selected.
   - Ctrl or Cmd + S saves. No other key is taken from text editing.
+  - Text entered while a save is in progress stays in the editor as an
+    unsaved draft against the newly saved revision.
+  - The editor preserves line endings on matched lines and one-for-one
+    replacements. New breaks use the source's first line ending, or LF
+    when the source has none.
 - **Passages.**
   - Selecting text in a piece shows its actions: **Ask Igor**, **Revise**,
     **Explain**, **Alternatives** and **Compare**.

@@ -7,8 +7,42 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { mutateAttachments, readAttachmentManifest } from '../src/attachment-manifest.mjs';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+test('attachment writers queue across APIs and preserve a corrupt manifest', async (context) => {
+  const parent = path.resolve(os.tmpdir());
+  const root = await mkdtemp(path.join(parent, 'stex-attachment-queue-'));
+  assert.equal(path.dirname(root), parent);
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, '.texgraph');
+  const file = path.join(directory, 'documents.json');
+  await mkdir(directory);
+  await writeFile(file, JSON.stringify([{ id: 'approved', contextState: 'approved' }]));
+  const { promise: loaded, resolve: announce } = Promise.withResolvers();
+  const { promise: paused, resolve: resume } = Promise.withResolvers();
+  const upload = mutateAttachments(root, async () => {
+    const manifest = await readAttachmentManifest(root);
+    announce();
+    await paused;
+    manifest.push({ id: 'new' });
+    await writeFile(file, JSON.stringify(manifest));
+  });
+  await loaded;
+  const review = mutateAttachments(path.join(root, '.'), async () => {
+    const manifest = await readAttachmentManifest(root);
+    manifest[0].contextState = 'rejected';
+    await writeFile(file, JSON.stringify(manifest));
+  });
+  resume();
+  await Promise.all([upload, review]);
+  assert.deepEqual(await readAttachmentManifest(root), [{ id: 'approved', contextState: 'rejected' }, { id: 'new' }]);
+  const corrupt = Buffer.from([0xff, 0x5b]);
+  await writeFile(file, corrupt);
+  await assert.rejects(readAttachmentManifest(root), { code: 'ATTACHMENTS_UNAVAILABLE', status: 503 });
+  assert.deepEqual(await readFile(file), corrupt);
+});
 
 /** Starts Frige with disposable publishing state and fake inference. */
 async function startFrige(root, port, context, environment = { STEX_FRIGE_SHELL_URL: '/' }) {
@@ -194,6 +228,37 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   // A save must name the text it replaces.
   const unguarded = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: 'Overwritten.\n' } });
   assert.equal(unguarded.status, 400); assert.equal(unguarded.body.code, 'BASE_HASH_REQUIRED');
+  const malformed = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: node.source + '\uD800', baseHash: node.hash } });
+  assert.equal(malformed.status, 400); assert.equal(malformed.body.code, 'INVALID_SOURCE');
+  assert.deepEqual(await readFile(file), original, 'an unpaired surrogate must not be silently replaced');
+
+  const unicodeSource = node.source + '\nA café.\n';
+  const unicodeBytes = Buffer.from(JSON.stringify({ source: unicodeSource, baseHash: node.hash }));
+  const split = unicodeBytes.lastIndexOf(Buffer.from('é')) + 1;
+  const endpoint = `${prefix}/nodes/${nodeId}${book}`;
+  const splitSave = await new Promise((resolve, reject) => {
+    const request = http.request(endpoint, { method: 'PUT', headers: { 'content-type': 'application/json' } }, async (response) => {
+      try {
+        const chunks = [];
+        for await (const chunk of response) chunks.push(chunk);
+        resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+      } catch (error) { reject(error); }
+    });
+    request.on('error', reject);
+    request.write(unicodeBytes.subarray(0, split));
+    setTimeout(() => request.end(unicodeBytes.subarray(split)), 50);
+  });
+  assert.equal(splitSave.status, 200);
+  assert.equal(splitSave.body.source, unicodeSource);
+  assert.equal(await readFile(file, 'utf8'), unicodeSource);
+  const wrongEncoding = Buffer.concat([unicodeBytes.subarray(0, split - 1), Buffer.from([0xff]), unicodeBytes.subarray(split + 1)]);
+  const refusedEncoding = await fetch(endpoint, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: wrongEncoding });
+  assert.equal(refusedEncoding.status, 400);
+  assert.match((await refusedEncoding.json()).error, /valid UTF-8/);
+  assert.equal(await readFile(file, 'utf8'), unicodeSource);
+  const restored = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: node.source, baseHash: splitSave.body.hash } });
+  assert.equal(restored.status, 200);
+  assert.deepEqual(await readFile(file), original);
 
   const turn = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate change: A synthetic closing line.' } });
   assert.equal(turn.status, 200); assert.equal(turn.contract, 'stex.frige.publishing.v1');

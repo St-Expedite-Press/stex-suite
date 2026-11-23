@@ -417,6 +417,15 @@ test('diff rows always rebuild both texts with true line numbers, and every chan
   }
 });
 
+test('editor serialization retains line endings without losing stanza breaks or other characters', async () => {
+  const { restoreEditorLineEndings } = await import('../workspaces/frige/line-diff.js');
+  const mixed = '\uFEFFone\r\n  two\rthree\nfour';
+  assert.equal(restoreEditorLineEndings(mixed, '\uFEFFone\n  two\nthree\nfour'), mixed);
+  assert.equal(restoreEditorLineEndings(mixed, '\uFEFFone\n  deuxième\nthree\nfour'), '\uFEFFone\r\n  deuxième\rthree\nfour');
+  assert.equal(restoreEditorLineEndings('one\r\ntwo', 'one\ntwo\n'), 'one\r\ntwo\r\n');
+  assert.equal(restoreEditorLineEndings('one\rtwo\nthree', 'one\n\nthree'), 'one\r\r\nthree');
+});
+
 test('a proposal card says when line endings change, which a line diff cannot show', async () => {
   const { diffRows, lineEndingsDiffer } = await import('../workspaces/frige/line-diff.js');
   /** Produces the changed text used by the diff reconstruction test. */

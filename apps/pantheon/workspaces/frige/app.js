@@ -2,6 +2,8 @@
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
 import { appBase, appUrl } from './base-path.js';
+import { restoreEditorLineEndings } from './line-diff.js';
+import { connectRevisionHistory } from './history.js';
 
 /** Selects the element with the supplied identifier. */
 const $ = (selector) => document.querySelector(selector);
@@ -257,9 +259,13 @@ function renderAttachments() {
   const box = $('#attachments');
   box.replaceChildren(...state.attachments.map((attachment) => {
     const item = element('span', `attachment ${attachment.contextState}`, attachment.name);
-    if (attachment.contextState === 'pending-review') {
-      const approve = element('button', 'quiet-button', 'Use in chat'); approve.type = 'button'; approve.addEventListener('click', () => approveAttachment(attachment.id)); item.append(' ', approve);
-    } else item.append(element('small', '', attachment.contextState === 'approved' ? ' attached' : ' extracting'));
+    if (attachment.extraction) {
+      const preview = element('button', 'quiet-button', 'Review excerpt'); preview.type = 'button';
+      preview.addEventListener('click', () => previewAttachment(attachment.id));
+      item.append(' ', preview);
+      if (attachment.contextState === 'approved' && attachment.approvalHash) item.append(element('small', '', ' Approved'));
+      if (attachment.contextState === 'rejected') item.append(element('small', '', ' Rejected'));
+    } else item.append(element('small', '', attachment.contextState === 'unreadable' ? ' Invalid text encoding' : ' Excerpt unavailable'));
     return item;
   }));
 }
@@ -271,17 +277,17 @@ const buildPlan = (scope) => (scope.kind === 'book'
   : { label: scope.kind === 'node' ? 'Typeset page' : 'Typeset section', mode: 'isolated' });
 
 /** Displays the selected manuscript source and current revision. */
-function renderNode() {
+function renderNode({ replaceSource = true } = {}) {
   const scope = state.scope || scopeFor(state.node.id); const subject = scopeSubject(scope);
   $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'page' : 'section'}`;
   $('#conversation-title').textContent = scope.title;
   $('#composer-scope').textContent = `To ${subject.short}`;
   $('#message').placeholder = `Message ${subject.name}…`;
-  $('#source').value = state.node.source;
+  if (replaceSource) $('#source').value = state.node.source;
   // The scope under discussion and the one file this editor saves are different things for books and sections.
   $('#source-label').textContent = scope.kind === 'node' ? 'Markdown' : `${scope.kind === 'book' ? 'Table of contents' : `First piece of ${scope.title}`} · select a piece to edit it`;
   $('#source-hash').textContent = state.node.hash.slice(0, 12);
-  $('#save-state').textContent = `manuscript/${state.node.relativePath}`;
+  $('#save-state').textContent = state.sourceDirty ? 'Unsaved Markdown changes' : `manuscript/${state.node.relativePath}`;
   const plan = buildPlan(scope);
   if (!$('#build').disabled) $('#build').textContent = plan.label;
   $('#build-book').classList.toggle('hidden', scope.kind === 'book');
@@ -353,7 +359,7 @@ const isStale = (staleness) => Boolean(staleness && (staleness.changed || stalen
 /** Checks source and configuration revision markers for the available proof. */
 function proofIsCurrent() {
   const staleness = proofStaleness();
-  return Boolean(state.build?.ok && scopeFor(state.build.targetScope?.id)?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
+  return Boolean(state.build?.ok && scopeFor(state.build.targetScope?.id)?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && !state.graph.needsRefresh && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
 }
 
 /** Creates one row of the proof status display. */
@@ -381,7 +387,9 @@ function renderStatus() {
   if (state.node) items.push(statusItem('Source', `${state.node.hash.slice(0, 8)}${state.sourceDirty ? ' · unsaved edits' : ''}`, state.sourceDirty ? 'warn' : ''));
   items.push(statusItem('Proof', map ? `${map.targetScope?.title || 'book'}${compiled?.mode === 'isolated' ? ' (alone)' : ''} · ${new Date(map.builtAt).toLocaleString()}` : 'none', map ? '' : 'warn'));
   const staleText = stale && [stale.changed && `${stale.changed} node${stale.changed === 1 ? '' : 's'} changed`, stale.orderChanged && 'contents changed', stale.designChanged && 'design changed'].filter(Boolean).join(' · ');
-  if (map) items.push(statusItem('Currency', staleText ? `stale · ${staleText} since proof` : state.sourceDirty ? 'unsaved edits are not in the proof' : 'matches saved source', staleText || state.sourceDirty ? 'warn' : 'good'));
+  const currency = state.graph.needsRefresh ? 'refresh contents to check the proof'
+    : staleText ? `stale · ${staleText} since proof` : state.sourceDirty ? 'unsaved edits are not in the proof' : 'matches saved source';
+  if (map) items.push(statusItem('Currency', currency, state.graph.needsRefresh || staleText || state.sourceDirty ? 'warn' : 'good'));
   if (map) { const [text, tone] = paginationText(compiled); items.push(statusItem('Pagination', text, tone, compiled?.pagination.warnings.join('\n'))); }
   if (state.build?.ok === false) items.push(statusItem('Last build', 'failed · showing previous proof', 'bad', state.build.error));
   items.push(statusItem('Review flags', String(flags.length), flags.length ? 'warn' : 'good', flags.map((entry) => `${entry.nodePath}: ${entry.message}`).join('\n')));
@@ -716,16 +724,50 @@ function renderPassageChip() {
   chip.replaceChildren(preview, remove);
 }
 
+/** Publishes the engine's saved node and refreshes project-wide proof currency. */
+async function applySourceWrite(previous, saved, { draft } = {}) {
+  const updateEditor = state.node === previous && draft === undefined && !state.sourceDirty;
+  if (state.node === previous && (draft !== undefined || updateEditor)) {
+    state.node = saved;
+    state.sourceDirty = draft !== undefined && $('#source').value !== draft;
+  }
+  if (saved.hash === previous.hash) { renderNode({ replaceSource: updateEditor }); return; }
+  state.build = null;
+  const pendingGraph = { ...state.graph, needsRefresh: true };
+  state.graph = pendingGraph;
+  renderNode({ replaceSource: updateEditor });
+  renderBuild(null);
+  try {
+    const graph = await request('/api/project/graph');
+    if (state.graph !== pendingGraph) return;
+    state.graph = graph;
+    renderNode({ replaceSource: false });
+  } catch {
+    if (state.node === saved) $('#save-state').textContent = state.sourceDirty
+      ? 'Unsaved Markdown changes. The previous save succeeded. Contents could not be refreshed.'
+      : 'Markdown saved. Contents could not be refreshed.';
+  }
+}
+
 /** Sends the source and its base revision for a guarded save. */
 async function saveSource() {
-  const button = $('#save-source'); button.disabled = true;
+  const button = $('#save-source');
+  if (button.disabled || !state.node) return;
+  const editor = $('#source');
+  const node = state.node;
+  const draft = editor.value;
+  button.disabled = true;
   try {
-    state.node = await request(`/api/nodes/${state.node.id}`, { method: 'PUT', body: JSON.stringify({ source: $('#source').value, baseHash: state.node.hash }) }); state.graph = await request('/api/project/graph'); state.sourceDirty = false; state.build = null;
-    // A passage selected before the save no longer describes the saved text.
-    if (state.passage?.nodeId === state.node.id) { state.passage = null; renderPassageChip(); }
-    renderNode(); renderBuild(null);
+    const source = restoreEditorLineEndings(node.source, draft);
+    const saved = await request(`/api/nodes/${node.id}`, { method: 'PUT', body: JSON.stringify({ source, baseHash: node.hash }) });
+    if (saved.source !== source) throw new Error('The saved source changed. Reload it before saving again.');
+    // Keep the current editor buffer and undo stack, including later typing.
+    await applySourceWrite(node, saved, { draft });
+  } catch (error) {
+    if (state.node === node) $('#save-state').textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
-  catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
 }
 
 /** Updates the composer height to fit its current content. */
@@ -863,8 +905,41 @@ async function uploadAttachments(files) {
   } catch (error) { $('#attachment-state').textContent = error.message; } finally { $('#attachment-input').value = ''; }
 }
 
-/** Records the user's approval of an extracted attachment. */
-async function approveAttachment(id) { try { await request(`/api/project/attachments/${id}/approve`, { method: 'POST', body: '{}' }); state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { $('#attachment-state').textContent = error.message; } }
+/** Previews the exact bytes and binds the next approval to their hash. */
+async function previewAttachment(id) {
+  const dialog = $('#attachment-review');
+  const status = $('#attachment-review-status');
+  const approve = $('#approve-excerpt');
+  const text = $('#attachment-excerpt');
+  const ticket = Symbol();
+  dialog.previewTicket = ticket;
+  $('#attachment-title').textContent = 'Review document excerpt';
+  approve.disabled = true;
+  text.textContent = '';
+  status.textContent = 'Loading excerpt…';
+  dialog.showModal();
+  try {
+    const preview = await request(`/api/project/attachments/${id}/excerpt`);
+    if (!dialog.open || dialog.previewTicket !== ticket) return;
+    $('#attachment-title').textContent = preview.name;
+    text.textContent = preview.excerpt;
+    status.textContent = '';
+    approve.disabled = false;
+    approve.onclick = async () => {
+      approve.disabled = true;
+      try {
+        await request(`/api/project/attachments/${id}/approve`, { method: 'POST', body: JSON.stringify({ hash: preview.hash }) });
+        state.attachments = await request('/api/project/attachments');
+        if (dialog.open && dialog.previewTicket === ticket) dialog.close();
+        renderAttachments();
+      } catch (error) {
+        if (dialog.open && dialog.previewTicket === ticket) status.textContent = error.message;
+      }
+    };
+  } catch (error) {
+    if (dialog.open && dialog.previewTicket === ticket) status.textContent = error.message;
+  }
+}
 
 // Typesetting only reads the manuscript, so it needs no confirmation.
 /** Creates or compiles the build used in the current workflow. */
@@ -911,7 +986,11 @@ async function refresh() {
 /** Initializes the workspace with its selected source and controls. */
 async function bootstrap() {
   if (!book) { location.replace('/frige/'); return; }
-  const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
+  const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all([
+    request('/api/project/graph'),
+    request('/api/project/attachments').catch((error) => { $('#attachment-state').textContent = error.message; return []; }),
+    ...['/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)),
+  ]);
   Object.assign(state, { graph, attachments, build: buildState, liveBuild, pageMap, referenceMap });
   const design = await request('/api/project/design');
   Object.assign(state, { design: design.design, designHash: design.hash, defaultDesignHash: design.defaultHash, trimSizes: design.trimSizes });
@@ -950,6 +1029,12 @@ async function bootstrap() {
   $('#message').addEventListener('input', sizeComposer);
   $('#show-thread').addEventListener('click', () => setView('thread')); $('#show-source').addEventListener('click', () => setView('source'));
   $('#save-source').addEventListener('click', saveSource); $('#build').addEventListener('click', () => build()); $('#build-book').addEventListener('click', () => build({ wholeBook: true }));
+  connectRevisionHistory({
+    request,
+    getNode: () => state.node,
+    canChange: (node) => node === state.node && !state.sourceDirty && !$('#save-source').disabled,
+    onRestore: applySourceWrite,
+  });
   $('#send-live-build').addEventListener('click', sendLiveBuild); $('#refresh').addEventListener('click', refresh);
   $('#attach').addEventListener('click', () => $('#attachment-input').click()); $('#attachment-input').addEventListener('change', () => uploadAttachments([...$('#attachment-input').files]));
   $('#source').addEventListener('input', () => {

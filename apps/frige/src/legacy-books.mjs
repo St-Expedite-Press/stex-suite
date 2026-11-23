@@ -1,4 +1,5 @@
 /** Frige publishing engine source that serves the versioned settings, uploads and review compatibility API. */
+import { mutateAttachments, readAttachmentManifest } from './attachment-manifest.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -129,21 +130,13 @@ function documentPath(id, name) {
   return { extension, safeName };
 }
 
-/** Reads attachment records for the selected book. */
-async function documentManifest(root) {
-  try {
-    const value = JSON.parse(await readFile(path.join(root, '.texgraph', 'documents.json'), 'utf8'));
-    return Array.isArray(value) ? value : [];
-  } catch { return []; }
-}
-
 /** Persists allowed attachments and updates their review metadata. */
 async function addDocuments(id, payload) {
   const root = bookRoot(id);
   if (!(await exists(root))) throw new Error('Book not found.');
   const uploads = Array.isArray(payload.documents) ? payload.documents : [];
   if (!uploads.length || uploads.length > 10) throw new Error('Choose between one and ten documents.');
-  const manifest = await documentManifest(root);
+  const manifest = await readAttachmentManifest(root);
   const created = [];
   for (const upload of uploads) {
     const { extension, safeName } = documentPath(id, upload?.name);
@@ -171,9 +164,9 @@ async function addDocuments(id, payload) {
 
 /** Changes a pending document to its approved review state. */
 async function reviewDocument(id, documentId, payload) {
-  const root = bookRoot(id); const manifest = await documentManifest(root); const document = manifest.find((entry) => entry.id === documentId);
+  const root = bookRoot(id); const manifest = await readAttachmentManifest(root); const document = manifest.find((entry) => entry.id === documentId);
   if (!document) throw new Error('Document not found.');
-  if (payload.approved !== true) { document.contextState = 'rejected'; document.reviewedAt = new Date().toISOString(); }
+  if (payload.approved !== true) { document.contextState = 'rejected'; delete document.approvalHash; document.reviewedAt = new Date().toISOString(); }
   else if (document.contextState === 'pending-review' && document.extraction) { document.contextState = 'approved'; document.reviewedAt = new Date().toISOString(); }
   else throw new Error('This document has no reviewed extraction to approve.');
   await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return document;
@@ -187,10 +180,16 @@ return async (request, response, incoming) => {
     if (url.pathname === '/api/books' && request.method === 'GET') return send(response, 200, await books());
     if (url.pathname === '/api/books' && request.method === 'POST') return send(response, 201, await createBook(await body(request)));
     const documentMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents$/.exec(url.pathname);
-    if (documentMatch && request.method === 'GET') return send(response, 200, await documentManifest(bookRoot(documentMatch[1])));
-    if (documentMatch && request.method === 'POST') return send(response, 201, await addDocuments(documentMatch[1], await body(request)));
+    if (documentMatch && request.method === 'GET') return send(response, 200, await readAttachmentManifest(bookRoot(documentMatch[1])));
+    if (documentMatch && request.method === 'POST') {
+      const payload = await body(request);
+      return send(response, 201, await mutateAttachments(bookRoot(documentMatch[1]), () => addDocuments(documentMatch[1], payload)));
+    }
     const reviewMatch = /^\/api\/books\/([a-z0-9][a-z0-9-]{0,62})\/documents\/([a-f0-9]{16})\/review$/.exec(url.pathname);
-    if (reviewMatch && request.method === 'POST') return send(response, 200, await reviewDocument(reviewMatch[1], reviewMatch[2], await body(request)));
+    if (reviewMatch && request.method === 'POST') {
+      const payload = await body(request);
+      return send(response, 200, await mutateAttachments(bookRoot(reviewMatch[1]), () => reviewDocument(reviewMatch[1], reviewMatch[2], payload)));
+    }
   send(response, 404, { error: 'Unknown legacy book route.' });
 };
 }

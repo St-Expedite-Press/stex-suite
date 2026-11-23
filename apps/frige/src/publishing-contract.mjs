@@ -12,6 +12,7 @@ const fixed = {
   '/project/contracts': ['GET'],
 };
 const CONTRACT_ROUTE = /^\/contracts\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(\/revert)?$/;
+export const editorialRoute = /^\/nodes\/(node-[a-f0-9]{20})\/(decisions|revisions)(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(\/restore)?)?$/;
 
 /**
  * Methods the publishing facade allows for a route.
@@ -24,8 +25,14 @@ export function publishingRoute(pathname) {
   // One contract in full, or the rollback of its accepted changes.
   const contract = CONTRACT_ROUTE.exec(pathname);
   if (contract) return contract[1] ? ['POST'] : ['GET'];
+  const editorial = editorialRoute.exec(pathname);
+  if (editorial) {
+    if (editorial[2] === 'decisions') return editorial[3] ? null : ['GET', 'POST'];
+    return editorial[4] ? ['POST'] : ['GET'];
+  }
   if (/^\/nodes\/[a-z0-9-]+$/.test(pathname)) return ['GET', 'PUT'];
   if (/^\/project\/attachments\/[a-f0-9]{16}\/approve$/.test(pathname)) return ['POST'];
+  if (/^\/project\/attachments\/[a-f0-9]{16}\/excerpt$/.test(pathname)) return ['GET'];
   if (/^\/artifacts\/art-[a-f0-9]{16}(?:\/content)?$/.test(pathname)) return ['GET'];
   const scope = /^\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/.exec(pathname);
   if (scope) return ['turn', 'changes/decide'].includes(scope[2]) ? ['POST'] : ['GET'];

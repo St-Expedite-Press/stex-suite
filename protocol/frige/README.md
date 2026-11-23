@@ -16,12 +16,16 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 | GET | `/project/graph`, `/project/artifacts`, `/project/reference-map`, `/project/page-map` | Read the selected book's graph and derived artifacts/maps |
 | POST | `/project/refresh` | Refresh the selected book's derived graph |
 | GET / PUT | `/nodes/<id>` | Read a source node / explicitly save `{source,baseHash}` |
+| GET | `/nodes/<id>/revisions`, `/nodes/<id>/revisions/<revision>` | List revision metadata / read a historical source |
+| POST | `/nodes/<id>/revisions/<revision>/restore` | Restore exact source as a new revision using `{baseHash,baseRevisionId}` |
+| GET / POST | `/nodes/<id>/decisions` | List recorded decisions / record a reason against the current source |
 | GET / PUT | `/project/design` | Read or validate/save the publication profile, including section and piece overrides (below) |
 | GET / POST | `/project/build` | Read build state / compile `{scopeId,mode}` with LuaLaTeX |
 | GET | `/project/preview`, `/project/preflight` | Read the existing PDF / diagnostic preflight |
 | GET / POST | `/project/live-build` | Read staging state / explicitly stage a current verified book-order proof |
 | GET / POST | `/project/attachments` | Read source manifest / upload bounded source documents |
-| POST | `/project/attachments/<id>/approve` | Explicitly approve an available extraction |
+| GET | `/project/attachments/<id>/excerpt` | Preview the exact bounded excerpt and its hash |
+| POST | `/project/attachments/<id>/approve` | Approve the previewed excerpt using `{hash}` |
 | GET | `/artifacts/<id>` or `/artifacts/<id>/content` | Read artifact metadata / inert content, optionally `?download=1` |
 | GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread / current change contract |
 | POST | `/scopes/<id>/turn` | Offer selected sources and a message or validated answer to inference |
@@ -58,8 +62,13 @@ under the current id. An acceptance refuses, as `stale`, a change to a piece
 outside its conversation's scope: for a section, its current pieces; for the
 book, the reading order and the table of contents.
 Frige validates selections and paths, serializes accepted source writes, and
-rejects stale saves/proposals with `409`. A response is not a press-readiness
-claim. Source lineation, stanza/indentation, Unicode, provenance and review
+rejects stale saves/proposals with `409`. A source write containing an
+unpaired UTF-16 surrogate returns `400 INVALID_SOURCE` before replacing bytes.
+A save that detects another edit after writing returns `409 STALE_SOURCE`
+and leaves the later edit in place. JSON bodies are decoded as a UTF-8
+stream, and malformed encodings are refused with `400`.
+A response is not a press-readiness claim.
+Source lineation, stanza/indentation, Unicode, provenance and review
 authority are independent of Pantheon layout or typography.
 
 The facade also exposes the existing local one-page compatibility operations
@@ -84,6 +93,84 @@ engine files. The old unversioned APIs stay available for compatibility, with
 no meaning changed in place. Engine UI entries redirect to the configured
 loopback Pantheon `/frige/`, preserving project queries. A breaking publishing
 API change requires a parallel v2 and consumer migration.
+
+### Editorial history and decisions
+
+The additive `stex.frige.editorial.v1` records belong to the selected
+manuscript book. Use the same publishing v1 prefix and `?book=<id>`. These
+routes share its project-password check and hosted account gate. Historical
+source and decision text are returned only for the selected book and piece.
+
+- **List revisions.** `GET /nodes/<id>/revisions` returns
+  `{schemaVersion,nodeId,currentHash,currentRevisionId,entries,nextBefore}`.
+  Each entry has `id,parentId,hash,kind,at,summary,provenance` and, when
+  restored, `restoredFrom`. IDs are UUIDs and hashes are SHA-256 of exact
+  UTF-8 source. Kinds are `baseline`, `observed`, `save` and `restore`.
+  Baseline and observed entries have `provenance: {role: "unattributed"}`.
+  Saves and restores use `{role: "author"}` for the explicit user operation.
+  An untouched piece has an empty list and null current revision. If the
+  file differs from its last journal entry, the list reports the on-disk
+  hash and null current revision.
+- **Read a revision.** `GET /nodes/<id>/revisions/<revision>` adds
+  `schemaVersion,nodeId,source` to one revision entry. `source` is the
+  exact snapshot, including line endings, BOM and any missing final newline.
+- **Restore.** `POST /nodes/<id>/revisions/<revision>/restore` accepts
+  `{baseHash,baseRevisionId}` from the latest listing. An explicit null
+  revision id is valid when that listing has no current revision. The server
+  checks both values under the source-write queue. A restore returns
+  `{node,revision}`, with the existing node shape and a new revision event
+  linked to both the preceding event and `restoredFrom`. Restoring identical
+  bytes returns `revision: null`. The snapshot's bytes must verify against
+  its hash and decode exactly as UTF-8. A preexisting source above the
+  new-save size limit can still be restored from its verified snapshot.
+- **Record or list decisions.** `POST /nodes/<id>/decisions` accepts
+  `{baseHash,baseRevisionId,reason}`. A nonblank reason of at most 4,000
+  UTF-16 units is saved with `id,at,revisionId,reason,provenance` and returned
+  with `schemaVersion,nodeId` and status `201`. The role is `author`. A
+  decision can establish a baseline for a piece with no edits and never
+  writes manuscript source. Repeating the same trimmed reason on the same
+  current revision returns the existing record. If the original request
+  established an initial revision, reload the list after a stale reply to
+  obtain that revision id. `GET /nodes/<id>/decisions` returns
+  `{schemaVersion,nodeId,entries,nextBefore}`.
+
+Both lists return at most 50 entries newest first. Pass the preceding
+response's non-null `nextBefore` as `?before=<id>` to continue. Unknown
+revision ids or cursors return `404 REVISION_NOT_FOUND`, invalid bodies
+return `400 INVALID_EDITORIAL_REQUEST`, and a moved source hash or event id
+returns `409 STALE_SOURCE`. Inaccessible or damaged journal state returns
+`503 EDITORIAL_UNAVAILABLE`.
+
+The existing guarded `PUT /nodes/<id>` response is preserved and a changed
+save now adds a revision. Canonical Markdown stays in `manuscript/`.
+Frige stores an atomic metadata journal and hash-deduplicated snapshots in
+private project state. For a save or restore, Frige records the prior bytes
+and a pending event before it writes the source. After interruption it
+commits the event only if the file contains the intended bytes. A different
+or missing file is left alone. A subsequent editorial write can record an
+observed revision when it encounters untracked source. Existing proposal
+acceptance and rollback can advance source outside this journal. They
+reconcile a pending save before writing and continue to use the change
+contract for their own provenance.
+
+### Approved document excerpts
+
+The selected book's password boundary applies to upload, excerpt preview,
+approval and the Frige conversation. The excerpt route returns
+`{id,name,excerpt,hash}` for supported UTF-8 text and `404 EXCERPT_UNAVAILABLE`
+when an excerpt cannot be read. Approval accepts its SHA-256 hash and
+returns `409 STALE_SOURCE` if the displayed excerpt changed. A changed
+extraction requires a fresh preview and approval.
+Publishing and legacy attachment changes share one per-book write queue.
+Unavailable or damaged attachment metadata returns `503 ATTACHMENTS_UNAVAILABLE`
+and is preserved.
+
+Frige checks the 32 most recent approvals and offers up to eight matching
+excerpts to Igor. Each excerpt is at most 6,000 UTF-16 units with intact
+Unicode boundaries. The gateway may omit optional excerpts to fit the
+turn budget. An old approval without an excerpt hash remains a legacy
+record until the reader approves the displayed excerpt. Uploads of PDF
+and DOCX have no text excerpt in this workflow.
 
 ### Layout overrides
 
@@ -366,8 +453,8 @@ The loopback engine admits its own browser origin or configured loopback
 `STEX_PANTHEON_URL`, rejects opaque/foreign origins, cross-site browser requests
 and non-loopback Host values, and retains local Origin-absent CLI access.
 This protects browser requests without introducing platform authentication.
-The API preserves historical last-writer behavior for document manifests; it
-does not claim new transactional upload or concurrent-review guarantees.
+Attachment metadata updates use the same in-process book queue as publishing
+v1. An interrupted multi-file upload can still leave an unlisted file.
 Do not expand it as the publishing API. The separate publishing v1 boundary
 above is the platform workstation's contract.
 
