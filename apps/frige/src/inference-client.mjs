@@ -195,8 +195,11 @@ function forwardedFrom(value) {
   const outline = value.outline && typeof value.outline === 'object' && Number.isInteger(value.outline.count) && value.outline.count >= 0
     ? { count: value.outline.count, truncated: value.outline.truncated === true } : null;
   const approvedContracts = Array.isArray(value.approvedContracts) ? value.approvedContracts.filter((id) => typeof id === 'string').slice(0, 20) : null;
+  const excerpts = Array.isArray(value.approvedSourceExcerpts) ? value.approvedSourceExcerpts.slice(0, 8).filter((entry) =>
+    typeof entry?.id === 'string' && /^[a-f0-9]{16}$/.test(entry.id) && typeof entry.hash === 'string' && /^[a-f0-9]{64}$/.test(entry.hash))
+    .map(({ id, hash }) => ({ id, hash })) : null;
   // `selection`: the gateway forwarded the selected passage (D-021). Absent means not confirmed.
-  return { outline, documentSettings: value.documentSettings === true, approvedContracts, selection: value.selection === true };
+  return { outline, documentSettings: value.documentSettings === true, approvedContracts, selection: value.selection === true, ...(excerpts ? { approvedSourceExcerpts: excerpts } : {}) };
 }
 
 /**
@@ -256,7 +259,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         graph,
         // Additive v3 fields: each carries its own category and none holds manuscript text.
         ...(hierarchy ? { outline: hierarchy.outline, documentSettings: hierarchy.settings, approvedContracts: hierarchy.contracts } : {}),
-        approvedSourceExcerpts: approvedSourceExcerpts.map((entry) => ({ id: entry.id, name: entry.name, excerpt: String(entry.excerpt || '').slice(0, 6000) })).slice(0, 8),
+        approvedSourceExcerpts: approvedSourceExcerpts.map(({ id, name, hash, excerpt }) => ({ id, name, hash, excerpt })).slice(0, 8),
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,
         ...(answer ? { answer } : {}),

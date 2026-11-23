@@ -18,12 +18,18 @@ const poemPath = path.join(bookRoot, 'manuscript', '01_Cycle', 'Morning.md');
 await writeFile(poemPath, poem); await writeFile(path.join(bookRoot, 'manuscript', 'Programme.md'), '# Programme\n\n- [Morning](01_Cycle/Morning.md)\n');
 await writeFile(path.join(bookRoot, 'README.md'), '# Fixture Book (verification)\n');
 const base = 'http://127.0.0.1:4438'; const apiPrefix = base + '/frige/api/stex/publishing/v1';
+let documentTurn;
 const stub = http.createServer(async (request, response) => {
   if (request.url.startsWith('/health')) { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"transport":"fake"}'); return; }
   if (request.url !== '/v1/texgraph/scope-turn') { response.writeHead(404); response.end(); return; }
   let raw = ''; for await (const chunk of request) raw += chunk;
   const turn = JSON.parse(raw); const source = turn.scopeSources[0];
   response.writeHead(200, { 'content-type': 'application/json' });
+  if (turn.message === 'Inspect reference fixture.') {
+    documentTurn = turn.approvedSourceExcerpts;
+    response.end(JSON.stringify({ commentary: 'Reference transport checked.', changes: [], parts: [], meta: { usage: { transport: 'stub' } } }));
+    return;
+  }
   // A layout request gets the optional `layout` reply field, through the real gateway path.
   // A selected passage to revise gets one anchored edit inside it, and the gateway confirms forwarding it (D-021).
   if (turn.selection?.action === 'revise') { response.end(JSON.stringify({ commentary: 'Simulated revision of the selected passage.', changes: [{ nodeId: turn.selection.nodeId, edits: [{ find: turn.selection.text, replace: `${turn.selection.text} (revised in its passage)` }], summary: 'Synthetic passage revision' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'stub' }, forwardedContext: { selection: true } } })); return; }
@@ -68,6 +74,18 @@ try {
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   /** Activates the matching page control. */
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  /** Delays the browser's receipt of a real source-save response. */
+  const pauseSaveResponse = () => evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = async (url, options) => {
+      const response = await original(url, options);
+      if (options?.method === 'PUT' && String(url).includes('/nodes/')) {
+        await new Promise(resolve => { window.__finishSave = resolve; });
+      }
+      return response;
+    };
+    window.__restoreFetch = () => { window.fetch = original; };
+  })()`);
   // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
   // `reveal` names an element to scroll into view after the resize, when the layout is final.
   /** Records the evidence requested for the current viewport and step. */
@@ -91,6 +109,32 @@ try {
   await until(() => evaluate(`document.querySelector('#conversation-title').textContent.includes('Morning')`), 'selected piece');
   await click('#show-source'); const changed = poem + '\nSaved through the platform.\n'; await input('#source', changed); await click('#save-source');
   await until(async () => (await readFile(poemPath, 'utf8')) === changed, 'source save'); report.workflow.push('save preserves indentation, stanza breaks and Unicode');
+  await until(() => evaluate(`!document.querySelector('#save-source').disabled`), 'save completes');
+  const beforeDraft = await api(`/nodes/${selected.id}?book=fixture-book`);
+  const mixed = changed.replace('\n', '\r\n').replace('verification,\n', 'verification,\r');
+  await api(`/nodes/${selected.id}?book=fixture-book`, { source: mixed, baseHash: beforeDraft.hash }, 'PUT');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  // Delay only the response from a real write. The second input arrives while the first save is pending.
+  await pauseSaveResponse();
+  const submitted = changed.replace('verification,', 'checking,');
+  await input('#source', submitted); await click('#save-source');
+  await until(() => evaluate(`typeof window.__finishSave === 'function'`), 'the fixture has paused the save response');
+  const unsaved = submitted + 'A later draft line.';
+  await input('#source', unsaved);
+  await evaluate('window.__restoreFetch(); window.__finishSave()');
+  await until(() => evaluate(`!document.querySelector('#save-source').disabled`), 'delayed save completes');
+  assert.equal(await evaluate(`document.querySelector('#source').value`), unsaved);
+  assert.match(await evaluate(`document.querySelector('#save-state').textContent`), /Unsaved/);
+  const savedMixed = mixed.replace('verification,', 'checking,');
+  assert.equal(await readFile(poemPath, 'utf8'), savedMixed);
+  await click('#save-source');
+  await until(() => evaluate(`!document.querySelector('#save-source').disabled`), 'later draft saves against the new hash');
+  assert.equal(await readFile(poemPath, 'utf8'), savedMixed + 'A later draft line.');
+  report.workflow.push('manual save keeps mixed line endings and later in-flight input, which saves against the returned revision');
+  // Return the disposable fixture to the source expected by the proposal exercises below.
+  const afterDraft = await api(`/nodes/${selected.id}?book=fixture-book`);
+  await api(`/nodes/${selected.id}?book=fixture-book`, { source: changed, baseHash: afterDraft.hash }, 'PUT');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
   const current = await api(`/nodes/${selected.id}?book=fixture-book`);
   await api(`/nodes/${selected.id}?book=fixture-book`, { source: changed + '\nConcurrent synthetic edit.\n', baseHash: current.hash }, 'PUT');
   await input('#source', changed + '\nStale browser edit.\n'); await click('#save-source');
@@ -311,6 +355,77 @@ try {
   report.keyboard = await evaluate(`({ label: document.activeElement.textContent.trim(), outline: getComputedStyle(document.activeElement).outlineStyle, width: getComputedStyle(document.activeElement).outlineWidth })`);
   assert.equal(report.keyboard.outline, 'solid'); assert.equal(report.keyboard.width, '2px');
   report.workflow.push('platform keyboard focus and tablet drawer Escape/inert behavior');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  await until(() => evaluate(`document.querySelector('#production-status').textContent.includes('Currency')`), 'proof has a currency status');
+  const latest = await api(`/nodes/${selected.id}?book=fixture-book`);
+  const revised = latest.source + '\nSource changed after the proof.';
+  await evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = (url, options) => String(url).includes('/project/graph')
+      ? Promise.resolve(new Response('{}', { status: 500 }))
+      : original(url, options);
+  })()`);
+  await input('#source', revised); await click('#save-source');
+  await until(() => evaluate(`document.querySelector('#save-state').textContent.includes('Markdown saved. Contents could not be refreshed.')`), 'save succeeds while graph refresh fails');
+  assert.equal(await readFile(poemPath, 'utf8'), revised);
+  assert.match(await evaluate(`document.querySelector('#production-status').textContent`), /refresh contents to check the proof/);
+  report.workflow.push('a saved edit with a failed contents refresh leaves proof currency unverified');
+  const revisionsUrl = `/nodes/${selected.id}/revisions`;
+  const history = await api(`${revisionsUrl}?book=fixture-book`);
+  const savedAfterFailure = history.entries[0];
+  const earlier = await api(`${revisionsUrl}/${savedAfterFailure.parentId}?book=fixture-book`);
+  assert.equal(earlier.source, latest.source);
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  await click('#show-history');
+  await until(() => evaluate(`!!document.querySelector('[data-revision-id="${earlier.id}"]')`), 'history ready');
+  await input('#history-reason', 'Keep the synthetic reading for the proof.');
+  await click('#history-decision button');
+  await until(() => evaluate(`document.querySelector('#history-decisions').textContent.includes('Keep the synthetic reading')`), 'decision recorded in the dialog');
+  await click(`[data-revision-id="${earlier.id}"]`);
+  await until(() => evaluate(`document.querySelector('#history-diff .diff-del')?.textContent.includes('Source changed after the proof')`), 'comparison shows the later line');
+  await click('#history-restore');
+  await until(() => evaluate(`!document.querySelector('#source-history').open`), 'author applied the restore');
+  const restored = (await api(`${revisionsUrl}?book=fixture-book`)).entries[0];
+  assert.equal(restored.restoredFrom, earlier.id);
+  assert.notEqual(restored.id, earlier.id);
+  assert.equal(await readFile(poemPath, 'utf8'), latest.source);
+  const restoredProof = await api('/project/build?book=fixture-book', { scopeId: 'book', mode: 'prefix' }, 'POST');
+  assert.equal(restoredProof.pageMap.pagination.verified, true);
+  assert.equal(restoredProof.pageMap.sourceHashes[selected.id], restored.hash);
+  report.workflow.push('Frige History records a decision, compares a revision and restores exact source that matches a compiler-verified proof');
+  const referenceBefore = 'Café synthetic reference\n  Preserve this exact indentation.';
+  const [reference, unapproved, stale] = await api('/project/attachments?book=fixture-book', { attachments: [
+    { name: 'reference.md', contentBase64: Buffer.from(referenceBefore).toString('base64') },
+    { name: 'unapproved.md', contentBase64: Buffer.from('Never approved.').toString('base64') },
+    { name: 'stale.md', contentBase64: Buffer.from('A reviewed reference.').toString('base64') },
+  ] }, 'POST');
+  const stalePreview = await api(`/project/attachments/${stale.id}/excerpt?book=fixture-book`);
+  await api(`/project/attachments/${stale.id}/approve?book=fixture-book`, { hash: stalePreview.hash }, 'POST');
+  await writeFile(path.join(bookRoot, '.texgraph', stale.extraction), 'The changed extraction awaits approval.');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  await click('#show-thread');
+  await evaluate(`[...document.querySelectorAll('#attachments .attachment')].find(item => item.textContent.startsWith('reference.md')).querySelector('button').click()`);
+  await until(() => evaluate(`!document.querySelector('#approve-excerpt').disabled`), 'document excerpt ready');
+  assert.equal(await evaluate(`document.querySelector('#attachment-excerpt').textContent`), referenceBefore);
+  await click('#approve-excerpt');
+  await until(() => evaluate(`!document.querySelector('#attachment-review').open`), 'exemplar approved');
+  await input('#message', 'Inspect reference fixture.'); await click('#turn-form [type="submit"]');
+  await until(() => Boolean(documentTurn), 'the stub has the document turn');
+  assert.deepEqual(documentTurn.map(({ id, excerpt }) => ({ id, excerpt })), [{ id: reference.id, excerpt: referenceBefore }]);
+  assert.notEqual(reference.id, unapproved.id);
+  report.workflow.push('Frige sends an exact preview-approved excerpt to the gateway and withholds unapproved and changed extracts');
+  await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+  await until(() => evaluate(`document.querySelector('#production-status').textContent.includes('matches saved source')`), 'the proof matches the restored fixture');
+  await pauseSaveResponse();
+  await input('#source', revised); await click('#save-source');
+  await until(() => evaluate(`typeof window.__finishSave === 'function'`), 'save response paused before navigation');
+  await evaluate('window.confirm = () => true');
+  await click('.tree-book'); await until(async () => (await scopeParam()) === null, 'navigated to the book during the save');
+  await evaluate('window.__restoreFetch(); window.__finishSave()');
+  await until(() => evaluate(`document.querySelector('#production-status').textContent.includes('1 node changed since proof')`), 'the book reflects the saved piece');
+  assert.match(await evaluate(`document.querySelector('#source').value`), /^# Programme/);
+  assert.equal(await readFile(poemPath, 'utf8'), revised);
+  report.workflow.push('a delayed save refreshes proof currency after navigation and leaves the new scope buffer intact');
   assert.equal((await fetch('http://127.0.0.1:4437/frige/?book=fixture-book', { redirect: 'manual' })).headers.get('location'), base + '/frige/?book=fixture-book');
   assert.deepEqual(unexpectedDialogs, [], 'no native dialog opened that the workflow did not expect');
   report.result = 'PASS'; report.browser = browser.browserPath; console.log('PASS: platform publishing workflow, real proof, five viewports');

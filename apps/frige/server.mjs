@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { legacyBooksApi } from './src/legacy-books.mjs';
 import { openProjectAccess } from './src/project-access.mjs';
-import { publishingRoute } from './src/publishing-contract.mjs';
+import { editorialRoute, publishingRoute } from './src/publishing-contract.mjs';
 import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
-import { BookStore } from './src/project-store.mjs';
+import { BookStore, writeAtomic } from './src/project-store.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
@@ -92,11 +92,17 @@ function json(response, status, value) {
 
 /** Reads and validates a bounded JSON request body. */
 async function body(request) {
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+  const decode = (chunk, stream) => {
+    try { return decoder.decode(chunk, { stream }); }
+    catch { throw new Error('Request body must be valid UTF-8.'); }
+  };
   let raw = '';
   for await (const chunk of request) {
-    raw += chunk;
+    raw += decode(chunk, true);
     if (raw.length > 12_000_000) throw new Error('Request is too large.');
   }
+  raw += decode(undefined, false);
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); }
 }
 
@@ -266,13 +272,45 @@ async function saveAttachments(store, payload) {
     const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16); const safeName = name.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160); const storedAs = `${Date.now()}-${id}-${safeName}`;
     const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
     const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
-    if (readableAttachmentExtensions.has(extension)) { const extraction = `extractions/${id}.txt`; await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true }); await writeFile(path.join(store.stateDirectory, extraction), bytes.toString('utf8').slice(0, 200_000), 'utf8'); record.extraction = extraction; record.contextState = 'pending-review'; }
+    if (readableAttachmentExtensions.has(extension)) {
+      let source;
+      try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes).slice(0, 200_000); }
+      catch { record.contextState = 'unreadable'; }
+      if (source) {
+        if (!source.isWellFormed()) source = source.slice(0, -1);
+        const extraction = `extractions/${id}.txt`;
+        await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true });
+        await writeFile(path.join(store.stateDirectory, extraction), source, 'utf8');
+        record.extraction = extraction;
+        record.contextState = 'pending-review';
+      }
+    }
     manifest.push(record); created.push(record);
   }
-  await mkdir(store.stateDirectory, { recursive: true }); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return created;
+  await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
 }
-/** Approves a successfully extracted attachment and records its review time. */
-async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
+async function attachmentPreview(store, id) {
+  const record = (await attachmentManifest(store)).find((entry) => entry.id === id);
+  const preview = await store.attachmentExcerpt(record);
+  if (!preview) throw Object.assign(new Error('This attachment has no readable excerpt.'), { status: 404, code: 'EXCERPT_UNAVAILABLE' });
+  return preview;
+}
+
+/** Pins the reviewed excerpt. Earlier callers can still record a legacy approval. */
+async function reviewAttachment(store, id, hash) {
+  const manifest = await attachmentManifest(store);
+  const record = manifest.find((entry) => entry.id === id);
+  if (!record?.extraction || !['pending-review', 'approved'].includes(record.contextState)) throw new Error('This attachment is not ready for review.');
+  if (hash !== undefined) {
+    const preview = await store.attachmentExcerpt(record);
+    if (!preview || preview.hash !== hash) throw Object.assign(new Error('The excerpt changed. Preview it again.'), { code: 'STALE_SOURCE' });
+    record.approvalHash = preview.hash;
+  } else if (record.contextState !== 'pending-review') throw new Error('Preview the excerpt before approving it again.');
+  record.contextState = 'approved';
+  record.reviewedAt = new Date().toISOString();
+  await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  return record;
+}
 
 /**
  * Checks a selected passage against the piece as this turn offers it, before
@@ -334,7 +372,9 @@ async function scopeTurn(store, scopeId, payload) {
     const provenance = {
       request: (reservation || userTurn).message, userTurnId: userTurn?.id || null,
       model: result.meta?.model || null, transport: result.meta?.usage?.transport || null,
-      withheld: context.withheld, references: approvedSourceExcerpts.map(({ id, name }) => ({ id, name })),
+      withheld: context.withheld, references: approvedSourceExcerpts
+        .filter(({ id, hash }) => result.meta?.forwardedContext?.approvedSourceExcerpts?.some((entry) => entry.id === id && entry.hash === hash))
+        .map(({ id, name }) => ({ id, name })),
       designHash: designHash(await store.design()),
       // What the director was given: the gateway's report after trimming when it sends one, else what Frige sent, marked unconfirmed.
       hierarchy: result.meta?.forwardedContext
@@ -374,10 +414,17 @@ async function artifactResponse(response, store, id, content, download) {
 /** Handles graph, source and proof routes for the selected manuscript store. */
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
-  const attachmentId = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/approve$/)?.[1];
+  const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt)$/);
   if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await attachmentManifest(store));
-  if (request.method === 'POST' && url.pathname === '/api/project/attachments') return json(response, 201, await saveAttachments(store, await body(request)));
-  if (request.method === 'POST' && attachmentId) return json(response, 200, await reviewAttachment(store, attachmentId));
+  if (request.method === 'POST' && url.pathname === '/api/project/attachments') {
+    const payload = await body(request);
+    return json(response, 201, await store.exclusive(() => saveAttachments(store, payload)));
+  }
+  if (request.method === 'GET' && attachment?.[2] === 'excerpt') return json(response, 200, await attachmentPreview(store, attachment[1]));
+  if (request.method === 'POST' && attachment?.[2] === 'approve') {
+    const payload = await body(request);
+    return json(response, 200, await store.exclusive(() => reviewAttachment(store, attachment[1], payload?.hash)));
+  }
   if (request.method === 'GET' && url.pathname === '/api/project/graph') return json(response, 200, await store.graph());
   if (request.method === 'POST' && url.pathname === '/api/project/refresh') return json(response, 200, await store.refreshGraph());
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
@@ -423,6 +470,18 @@ async function vaultApi(request, response, url, store) {
     if (request.method === 'GET' && action === 'changes') return json(response, 200, await store.changeSet(scopeId));
     if (request.method === 'POST' && action === 'changes/decide') { const payload = await body(request); return json(response, 200, await store.decideChanges(scopeId, payload.changeSetId, { nodeId: payload.nodeId || null, decision: payload.decision })); }
     if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request)));
+  }
+  const editorial = response.getHeader('x-stex-contract') && editorialRoute.exec(url.pathname.slice('/api'.length));
+  if (editorial) {
+    const [, node, resource, revision, restore] = editorial;
+    const before = url.searchParams.get('before');
+    if (resource === 'decisions') {
+      if (request.method === 'POST') return json(response, 201, await store.recordEditorialDecision(node, await body(request)));
+      return json(response, 200, await store.listEditorialDecisions(node, before));
+    }
+    if (restore) return json(response, 200, await store.restoreRevision(node, revision, await body(request)));
+    if (revision) return json(response, 200, await store.readRevision(node, revision));
+    return json(response, 200, await store.listRevisions(node, before));
   }
   if (!id) return false;
   if (request.method === 'GET' && url.pathname === `/api/nodes/${id}`) return json(response, 200, await store.node(id));

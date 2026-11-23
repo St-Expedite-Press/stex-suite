@@ -431,6 +431,37 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   stex-igor `deploy/pantheon` (env template).
   [Evidence](../verification/hosted-pantheon.md#project-passwords).
 
+## D-025 — Establish source save safety before persistent editorial history
+
+- **Basis.** The Frige editorial systems directive puts passage review and
+  reversible revision history ahead of specialized literary workspaces.
+- **Decision.** Frige applies the same Unicode validity rule to source writes
+  that already applies to proposals. Pantheon keeps edits typed during an
+  explicit save and uses the returned source hash for their next save.
+  Matched lines and one-for-one replacements keep their source line-ending
+  conventions. Newly introduced breaks use the first existing convention,
+  defaulting to LF.
+- **Follow-on.** Source hashes continue to identify bytes. Persistent revision
+  events need a separate id, predecessor and provenance. Before linking
+  proposals to those events, specify how the revision record and existing
+  acceptance intent recover together after an interrupted write.
+  [Implementation matrix](frige-editorial-systems.md)
+
+## D-026 — Keep single-piece revision events and decisions with Frige
+
+- **Basis.** The approved next editorial increment requires exact restore,
+  recoverable writes and author rationale for a piece.
+- **Decision.** Frige keeps the canonical Markdown file, a project-local
+  metadata journal and immutable snapshots keyed by exact byte hash. Save
+  and restore events carry unique ids. A restore records the preceding
+  event and the source event. Recovery settles a pending event from the
+  source bytes and preserves an intervening outside edit.
+- **Authority.** Publishing v1 remains the access boundary. The journal
+  records the operation role and applies D-023 and D-024. Proposal changes
+  retain their separate transaction and their existing contract provenance
+  until a later milestone coordinates both.
+  [Contract](../../protocol/frige/README.md#editorial-history-and-decisions)
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#current-work).

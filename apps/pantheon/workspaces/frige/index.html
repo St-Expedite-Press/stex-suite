@@ -16,7 +16,32 @@
       <section id="conversation" class="conversation" aria-label="Conversation and Markdown editor">
         <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Igor</span></header>
         <div class="view-switch" role="tablist" aria-label="Conversation or source"><button id="show-thread" type="button" role="tab" aria-selected="true">Conversation</button><button id="show-source" type="button" role="tab" aria-selected="false">Source</button></div>
-        <section id="source-panel" class="source-panel hidden" aria-label="Markdown source"><div class="source-meta"><span id="source-label">Canonical Markdown</span><span class="source-where"><span id="source-position" aria-live="polite"></span><span id="source-hash"></span></span></div><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source" aria-describedby="passage-hint"></textarea><div id="passage-bar" class="passage-bar" role="toolbar" aria-label="Selected passage" hidden><span id="passage-label" class="passage-label"></span><span class="passage-actions"><button type="button" class="quiet-button" data-action="ask">Ask Igor</button><button type="button" class="quiet-button" data-action="revise">Revise</button><button type="button" class="quiet-button" data-action="explain">Explain</button><button type="button" class="quiet-button" data-action="alternatives">Alternatives</button><button type="button" class="quiet-button" data-action="compare">Compare</button></span></div><p id="passage-hint" class="stex-visually-hidden">Select text to ask Igor about that exact passage. Ctrl+S saves.</p><div class="source-actions"><span id="save-state"></span><span class="source-buttons"><button id="node-pages" type="button" class="quiet-button hidden"></button><button id="save-source" type="button" class="quiet-button">Save Markdown</button></span></div></section>
+        <section id="source-panel" class="source-panel hidden" aria-label="Markdown source"><div class="source-meta"><span id="source-label">Canonical Markdown</span><span class="source-where"><span id="source-position" aria-live="polite"></span><span id="source-hash"></span></span></div><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source" aria-describedby="passage-hint"></textarea><div id="passage-bar" class="passage-bar" role="toolbar" aria-label="Selected passage" hidden><span id="passage-label" class="passage-label"></span><span class="passage-actions"><button type="button" class="quiet-button" data-action="ask">Ask Igor</button><button type="button" class="quiet-button" data-action="revise">Revise</button><button type="button" class="quiet-button" data-action="explain">Explain</button><button type="button" class="quiet-button" data-action="alternatives">Alternatives</button><button type="button" class="quiet-button" data-action="compare">Compare</button></span></div><p id="passage-hint" class="stex-visually-hidden">Select text to ask Igor about that exact passage. Ctrl+S saves.</p><div class="source-actions"><span id="save-state"></span><span class="source-buttons"><button id="node-pages" type="button" class="quiet-button hidden"></button><button id="show-history" type="button" class="quiet-button" aria-haspopup="dialog">History</button><button id="save-source" type="button" class="quiet-button">Save Markdown</button></span></div></section>
+        <dialog id="source-history" aria-labelledby="source-history-title">
+          <form method="dialog" class="history-heading"><h2 id="source-history-title">Revision history</h2><button class="quiet-button" autofocus>Close</button></form>
+          <p id="history-status" role="status"></p>
+          <ol id="history-revisions" class="history-list" aria-label="Source revisions"></ol>
+          <button id="history-older" type="button" class="quiet-button" hidden>Older revisions</button>
+          <section id="history-review" aria-labelledby="history-review-title" hidden>
+            <h3 id="history-review-title">Compared with the source open in this editor</h3>
+            <div id="history-diff"></div>
+            <button id="history-restore" type="button" class="quiet-button">Restore as new revision</button>
+          </section>
+          <form id="history-decision">
+            <label for="history-reason">Why keep or choose this reading?</label>
+            <textarea id="history-reason" rows="2" maxlength="4000" required></textarea>
+            <button type="submit" class="quiet-button">Record decision</button>
+          </form>
+          <h3>Editorial decisions</h3>
+          <ol id="history-decisions" class="history-list" aria-label="Recent editorial decisions"></ol>
+        </dialog>
+        <dialog id="attachment-review" aria-labelledby="attachment-title">
+          <form method="dialog" class="history-heading"><h2 id="attachment-title">Review document excerpt</h2><button class="quiet-button" autofocus>Close</button></form>
+          <p>Approve this excerpt to include it in Igor’s Frige conversations for this book, subject to the turn’s context limit.</p>
+          <pre id="attachment-excerpt"></pre>
+          <p id="attachment-review-status" role="status"></p>
+          <button id="approve-excerpt" type="button" class="quiet-button">Use this excerpt in chat</button>
+        </dialog>
         <div id="turns" class="thread" aria-live="polite"></div>
         <form id="turn-form" class="composer"><div class="composer-box"><div id="passage-chip" class="passage-chip" hidden></div><textarea id="message" rows="1" aria-label="Message" placeholder="Message…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><span id="composer-scope" class="composer-scope"></span><span class="composer-actions"><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><span id="attachment-state"></span><button id="attach" type="button" class="icon-button" title="Attach files" aria-label="Attach files">+</button><button type="submit" class="send-button" aria-label="Send">Send</button></span></div></div></form>
       </section>

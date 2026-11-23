@@ -118,6 +118,48 @@ export function diffRows(before, after) {
 }
 
 /**
+ * Serializes a textarea draft, whose line endings are all LF. Preserve
+ * separators on matched lines and one-for-one replacements. New separators
+ * use the source's first convention, or LF for a file with no line breaks.
+ */
+export function restoreEditorLineEndings(source, draft) {
+  const endings = source.match(/\r\n|\r|\n/g) || [];
+  const defaultEnding = endings[0] ?? '\n';
+  if (endings.every((ending) => ending === defaultEnding)) return draft.replaceAll('\n', defaultEnding);
+
+  const preserved = new Map();
+  let removed = [];
+  let added = [];
+  const preserveReplacements = () => {
+    if (removed.length === added.length) {
+      added.forEach((line, index) => preserved.set(line, endings[removed[index] - 1]));
+    }
+    removed = [];
+    added = [];
+  };
+  for (const row of diffRows(source, draft)) {
+    if (row.type === 'del') removed.push(row.left);
+    if (row.type === 'add') added.push(row.right);
+    if (row.type === 'same') {
+      preserveReplacements();
+      preserved.set(row.right, endings[row.left - 1]);
+    }
+  }
+  preserveReplacements();
+  let line = 0;
+  let previousEnding;
+  let previousOffset = -2;
+  return draft.replaceAll('\n', (_match, offset) => {
+    let ending = preserved.get(++line) ?? defaultEnding;
+    // Two adjacent breaks must not collapse into a single CRLF.
+    if (offset === previousOffset + 1 && previousEnding === '\r' && ending === '\n') ending = '\r\n';
+    previousEnding = ending;
+    previousOffset = offset;
+    return ending;
+  });
+}
+
+/**
  * Keeps every changed row and `context` unchanged rows around it, and counts
  * the rest as skips.
  *

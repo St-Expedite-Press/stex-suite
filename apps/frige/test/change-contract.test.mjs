@@ -224,6 +224,21 @@ test('a save without a base hash is refused', async (context) => {
   assert.equal(await readFile(firstFile, 'utf8'), FIRST);
 });
 
+test('a save does not return an outside edit as the revision of the submitted source', async (context) => {
+  const { store, first, firstFile } = await syntheticBook(context);
+  const original = await store.node(first);
+  const external = `${FIRST}\nOutside edit.\n`;
+  const refresh = store.refreshGraph.bind(store);
+  store.refreshGraph = async () => {
+    await writeFile(firstFile, external);
+    return refresh();
+  };
+  await assert.rejects(store.updateNode(first, `${FIRST}\nSubmitted edit.\n`, original.hash), { code: 'STALE_SOURCE' });
+  assert.equal((await store.node(first)).source, external);
+  await assert.rejects(store.updateNode(first, `${FIRST}\nAnother draft.\n`, original.hash), { code: 'STALE_SOURCE' });
+  assert.equal(await readFile(firstFile, 'utf8'), external);
+});
+
 test('a contract records undecided changes to the same piece from another conversation', async (context) => {
   const { store, first } = await syntheticBook(context);
   const graph = await store.graph();

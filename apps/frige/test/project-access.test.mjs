@@ -121,7 +121,24 @@ test('a protected book is closed on every Frige route until this browser unlocks
   assert.equal((await fetch(`${base}/api/stex/context/v1/projects/${id}`)).status, 503);
   assert.deepEqual((await (await fetch(`${base}/api/stex/legacy-books/v1`)).json()).map((entry) => entry.id), []);
   await openProjectAccess({ file: accessFile }).initialize();
-  assert.equal((await fetch(`${base}/api/stex/publishing/v1/project/graph?book=${id}`)).status, 200, 'unprotected before a password is set');
+  const graph = await fetch(`${base}/api/stex/publishing/v1/project/graph?book=${id}`);
+  assert.equal(graph.status, 200, 'unprotected before a password is set');
+  const [nodeId] = (await graph.json()).readingOrder;
+  const editorial = `/api/stex/publishing/v1/nodes/${nodeId}`;
+  const piece = await (await fetch(`${base}${editorial}?book=${id}`)).json();
+  const replacement = piece.source + '\nA synthetic revision.\n';
+  const saved = await fetch(`${base}${editorial}?book=${id}`, { method: 'PUT', headers: json, body: JSON.stringify({ source: replacement, baseHash: piece.hash }) });
+  assert.equal(saved.status, 200);
+  const { currentHash, currentRevisionId, entries } = await (await fetch(`${base}${editorial}/revisions?book=${id}`)).json();
+  const originalId = entries[1].id;
+  assert.equal(entries[0].kind, 'save');
+  const currentBase = { baseHash: currentHash, baseRevisionId: currentRevisionId };
+  const upload = await fetch(`${base}/api/stex/publishing/v1/project/attachments?book=${id}`, {
+    method: 'POST', headers: json, body: JSON.stringify({ attachments: [{ name: 'notes.md', contentBase64: Buffer.from('Synthetic café.\r\n  A note.').toString('base64') }] }),
+  });
+  assert.equal(upload.status, 201);
+  const [document] = await upload.json();
+  const attachment = `/api/stex/publishing/v1/project/attachments/${document.id}`;
 
   await openProjectAccess({ file: accessFile }).setPassword('book', id, 'fixture-passphrase');
   const closed = [
@@ -135,6 +152,23 @@ test('a protected book is closed on every Frige route until this browser unlocks
     const response = await fetch(`${base}${route}`);
     assert.equal(response.status, 403, route); assert.equal((await response.json()).code, 'PROJECT_LOCKED', route);
   }
+  const editorialRoutes = [
+    [`${editorial}/revisions`, 'GET'],
+    [`${editorial}/revisions/${originalId}`, 'GET'],
+    [`${editorial}/revisions/${originalId}/restore`, 'POST'],
+    [`${editorial}/decisions`, 'GET'],
+    [`${editorial}/decisions`, 'POST'],
+    [`${attachment}/excerpt`, 'GET'],
+    [`${attachment}/approve`, 'POST'],
+  ];
+  for (const [route, method] of editorialRoutes) {
+    const options = method === 'POST' ? { method, headers: json, body: '{}' } : { method };
+    const response = await fetch(`${base}${route}?book=${id}`, options);
+    assert.equal(response.status, 403, route);
+    assert.equal((await response.json()).code, 'PROJECT_LOCKED', route);
+  }
+  const other = await fetch(`${base}${editorial}/revisions/${originalId}?book=${open.id}`);
+  assert.equal(other.status, 404, 'another book cannot resolve the protected book’s revision');
   const write = await fetch(`${base}/api/stex/publishing/v1/project/build?book=${id}`, { method: 'POST', headers: json, body: '{}' });
   assert.equal(write.status, 403, 'writes are closed too'); await write.arrayBuffer();
   assert.equal((await fetch(`${base}/api/stex/publishing/v1/project/graph?book=${open.id}`)).status, 200, 'other books stay open');
@@ -166,6 +200,29 @@ test('a protected book is closed on every Frige route until this browser unlocks
   assert.match(setCookie, /Path=\/frige\/; Max-Age=43200; HttpOnly; SameSite=Strict; Secure$/);
   const unlocked = { cookie: cookieOf(setCookie) };
   for (const route of closed.slice(0, 4)) assert.equal((await fetch(`${base}${route}`, { headers: unlocked })).status, 200, route);
+  const original = await (await fetch(`${base}${editorial}/revisions/${originalId}?book=${id}`, { headers: unlocked })).json();
+  assert.equal(original.source, piece.source);
+  const allowedWrite = { method: 'POST', headers: { ...json, ...unlocked } };
+  const preview = await (await fetch(`${base}${attachment}/excerpt?book=${id}`, { headers: unlocked })).json();
+  assert.equal(preview.excerpt, 'Synthetic café.\r\n  A note.');
+  const foreignExcerpt = await fetch(`${base}${attachment}/excerpt?book=${open.id}`, { headers: unlocked });
+  assert.equal(foreignExcerpt.status, 404);
+  const staleExcerpt = await fetch(`${base}${attachment}/approve?book=${id}`, { ...allowedWrite, body: JSON.stringify({ hash: '0'.repeat(64) }) });
+  assert.equal(staleExcerpt.status, 409);
+  const approvedExcerpt = await fetch(`${base}${attachment}/approve?book=${id}`, { ...allowedWrite, body: JSON.stringify({ hash: preview.hash }) });
+  assert.equal(approvedExcerpt.status, 200);
+  assert.equal((await approvedExcerpt.json()).approvalHash, preview.hash);
+  const decision = await fetch(`${base}${editorial}/decisions?book=${id}`, { ...allowedWrite, body: JSON.stringify({ ...currentBase, reason: 'Retain the synthetic reading.' }) });
+  assert.equal(decision.status, 201);
+  assert.equal((await decision.json()).revisionId, currentRevisionId);
+  const decisions = await (await fetch(`${base}${editorial}/decisions?book=${id}`, { headers: unlocked })).json();
+  assert.equal(decisions.entries.length, 1);
+  assert.equal((await fetch(`${base}${editorial}/decisions?book=${id}`)).status, 403, 'another client stays locked');
+  const restore = await fetch(`${base}${editorial}/revisions/${originalId}/restore?book=${id}`, { ...allowedWrite, body: JSON.stringify(currentBase) });
+  assert.equal(restore.status, 200);
+  const restored = await restore.json();
+  assert.equal(restored.revision.restoredFrom, originalId);
+  assert.equal(restored.node.source, piece.source);
 
   const locked = await fetch(`${base}/api/stex/access/v1/lock`, { method: 'POST', headers: json, body: JSON.stringify({ kind: 'book', id }) });
   assert.match(locked.headers.get('set-cookie'), /Max-Age=0/);

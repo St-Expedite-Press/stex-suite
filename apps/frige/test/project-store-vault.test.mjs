@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promise
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { ProjectStore } from '../src/project-store-vault.mjs';
+import { ProjectStore, sourceHash } from '../src/project-store-vault.mjs';
 import { assembleBook, buildBook, inlineTeX, paginationFromCompiler } from '../src/book-assembler.mjs';
 import { parseManuscript } from '../src/document/parser.mjs';
 
@@ -30,6 +30,24 @@ test('coalesces simultaneous graph refreshes so a vault sidecar is written once'
   assert.equal(graphs[0].readingOrder.length, 2);
   assert.equal(graphs[1].readingOrder.length, 2);
   assert.equal((await store.node(graphs[0].readingOrder[1])).relativePath, '01/First.md');
+});
+test('only the newest verified excerpts consume the attachment allowance', async (context) => {
+  const { root, store } = await vault();
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(store.stateDirectory, 'extractions'));
+  const documents = [];
+  for (let i = 0; i < 11; i += 1) {
+    const id = i.toString(16).padStart(16, '0');
+    const extraction = `extractions/${id}.txt`;
+    const source = i === 9 ? `${'漢'.repeat(5999)}😀 trailing` : `Synthetic excerpt ${i}`;
+    const preview = i === 9 ? '漢'.repeat(5999) : source;
+    await writeFile(path.join(store.stateDirectory, extraction), source);
+    documents.push({ id, name: `${i}.md`, extraction, contextState: 'approved', reviewedAt: new Date(1e12 + i).toISOString(), approvalHash: sourceHash(i === 10 ? 'stale' : preview) });
+  }
+  await writeFile(path.join(store.stateDirectory, 'documents.json'), JSON.stringify(documents));
+  const excerpts = await store.approvedSourceExcerpts();
+  assert.deepEqual(excerpts.map((entry) => entry.name), ['9.md', '8.md', '7.md', '6.md', '5.md', '4.md', '3.md', '2.md']);
+  assert.equal(excerpts[0].excerpt, '漢'.repeat(5999), 'a surrogate pair at the excerpt boundary is left whole by omission');
 });
 test('keeps book, section and page conversations as separate threads, including legacy anchor turns', async (context) => {
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true })); const graph = await store.graph();

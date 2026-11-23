@@ -84,6 +84,11 @@ book, in dependency order:
 Waves 5 and 6 do not block Waves 2–4. Wave 4's local work (fake transport,
 contract design) can proceed before authorization; its deployment cannot.
 
+The [Frige editorial systems directive](frige-editorial-systems.md) builds on
+these increments. Its implementation matrix and dependency order put the
+passage-to-revision workflow and author decision records in the first
+editorial release.
+
 ## Wave 2 acceptance criteria
 
 The first end-to-end workflow, using synthetic manuscripts only:

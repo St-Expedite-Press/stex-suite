@@ -25,6 +25,15 @@ credentials, or write canonical state. It may make structured proposals and
 suggestions. TexGraph validates them; the author accepts any canonical source
 change and explicitly triggers builds.
 
+For Frige scope turns, `approvedSourceExcerpts` carries up to eight
+`{id,name,hash,excerpt}` records. `hash` is the SHA-256 digest of the exact
+UTF-8 excerpt the author approved. The gateway verifies the shape and
+digest before putting any of these records in its untrusted context.
+It trims whole records within the existing turn budget and returns
+`meta.forwardedContext.approvedSourceExcerpts` with the admitted ids and
+digests. A record with no digest is omitted. This is conversational context
+and grants no runtime tool authorization.
+
 ## Scope turn v2 (`stex.texgraph.scope-turn.v2`)
 
 An author conversation with a selected scope: the whole book, a section, or a

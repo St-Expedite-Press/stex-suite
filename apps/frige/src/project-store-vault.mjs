@@ -1,11 +1,12 @@
 /** Frige publishing engine source that owns book source, graph, editorial transactions and proof metadata. */
 import { createHash, randomUUID } from 'node:crypto';
-import { access, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
+import { EditorialJournal, editorialPath } from './editorial-journal.mjs';
 import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, changedOnlyWithin, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
@@ -73,6 +74,12 @@ async function readJsonIfUsable(file) {
  * @returns {Error & { code: string }}
  */
 const codedError = (message, code) => Object.assign(new Error(message), { code });
+
+function validateSourceWrite(source, baseHash) {
+  if (typeof source !== 'string' || source.length > MAX_SOURCE) throw new Error('Source must be Markdown under 400 KB.');
+  if (!source.isWellFormed()) throw codedError('Markdown source must be valid Unicode text.', 'INVALID_SOURCE');
+  if (typeof baseHash !== 'string' || !baseHash) throw codedError('A save must carry the base hash of the text it replaces. Reload this piece and save again.', 'BASE_HASH_REQUIRED');
+}
 
 /**
  * The line a thread shows for one decided, superseded or rolled-back change.
@@ -411,11 +418,14 @@ function scopeFromGraph(graph, id = 'book') {
 }
 
 export class ProjectStore {
+  #legacyRecoveryNeeded = true;
+
   /** Binds the store to one project and its local derived state. */
   constructor(root) {
     this.root = path.resolve(root);
     this.manuscriptDirectory = path.join(this.root, 'manuscript');
     this.stateDirectory = path.join(this.root, '.texgraph');
+    this.editorial = new EditorialJournal(this.root, this.stateDirectory);
     this.graphPath = path.join(this.stateDirectory, 'graph.json');
     this.conversationsDirectory = path.join(this.stateDirectory, 'conversations');
     this.proposalsDirectory = path.join(this.stateDirectory, 'proposals');
@@ -460,7 +470,7 @@ export class ProjectStore {
     // Once per store: undo any acceptance a stopped process left half applied.
     // The server initializes a store on every request, so this must not repeat.
     // A recovery that fails (a passing file lock) is tried again on the next call, not cached as failed.
-    if (!this.recovery) this.recovery = this.exclusive(() => this.#recoverInterrupted()).catch((error) => { this.recovery = null; throw error; });
+    if (!this.recovery) this.recovery = this.exclusive(() => this.#settleLegacyWrites()).catch((error) => { this.recovery = null; throw error; });
     await this.recovery;
     return ready;
   }
@@ -483,6 +493,13 @@ export class ProjectStore {
       recovered.push(record.id);
     }
     return recovered;
+  }
+
+  /** Checks again after a legacy acceptance that could not prove it settled. */
+  async #settleLegacyWrites() {
+    if (!this.#legacyRecoveryNeeded) return;
+    await this.#recoverInterrupted();
+    this.#legacyRecoveryNeeded = false;
   }
 
   /**
@@ -658,32 +675,136 @@ export class ProjectStore {
   }
   /** Returns the publishing setup ticket for the selected project. */
   async settingsTicket() { try { return JSON.parse(await readFile(path.join(this.root, 'texgraph', 'settings.json'), 'utf8')); } catch { return {}; } }
-  /** Reads the current source and metadata for a selected graph node. */
-  async node(id) {
+  /** Looks up the engine-owned source address in the graph. */
+  async #nodeSummary(id) {
     const graph = await this.graph();
     const summary = graph.nodes.find((entry) => entry.id === this.nodePath(id));
     if (!summary) throw codedError('Graph node not found.', 'NODE_NOT_FOUND');
+    return summary;
+  }
+  /** Reads the current source and metadata for a selected graph node. */
+  async node(id) {
+    const summary = await this.#nodeSummary(id);
     const source = await readFile(this.sourcePath(summary.relativePath), 'utf8');
     return { ...summary, source, hash: sourceHash(source) };
   }
   /** Validates the expected source revision before saving an edit. */
-  updateNode(id, source, baseHash) { return this.exclusive(() => this.#writeNode(id, source, baseHash)); }
-  /** Writes a validated node revision and refreshes its derived state. */
-  async #writeNode(id, source, baseHash) {
-    if (typeof source !== 'string' || source.length > MAX_SOURCE) throw new Error('Source must be Markdown under 400 KB.');
-    // Every write names the text it replaces. A save without a base hash could
-    // overwrite an edit its author never saw, so it is refused, not trusted.
-    if (typeof baseHash !== 'string' || !baseHash) throw codedError('A save must carry the base hash of the text it replaces. Reload this piece and save again.', 'BASE_HASH_REQUIRED');
-    const node = await this.node(id);
-    if (baseHash !== node.hash) { const error = new Error('This manuscript node changed on disk. Reload it before saving.'); error.code = 'STALE_SOURCE'; throw error; }
+  updateNode(id, source, baseHash) {
+    return this.exclusive(async () => {
+      validateSourceWrite(source, baseHash);
+      const journal = await this.#editorialState();
+      const current = await this.#readWritableSource(id, { baseHash, editorial: true });
+      const result = await this.#commitRevision(journal, current, source);
+      return result.node;
+    });
+  }
+
+  /** Uses exact bytes for the base check and the source that can be restored. */
+  async #readWritableSource(id, { baseHash, editorial = false } = {}) {
+    const node = await this.#nodeSummary(id);
+    const file = this.sourcePath(node.relativePath);
+    if (editorial) await editorialPath(this.root, file);
+    const bytes = await readFile(file);
+    const source = bytes.toString('utf8');
+    const hash = sourceHash(source);
+    if (baseHash !== undefined && baseHash !== hash) throw codedError('This manuscript node changed on disk. Reload it before saving.', 'STALE_SOURCE');
     // Hashes are taken over decoded text, so they cannot see bytes that are not
     // valid UTF-8: those decode to a replacement character and would be lost on
     // the first write, beyond any rollback. Refuse rather than destroy them.
-    const bytes = await readFile(this.sourcePath(node.relativePath));
-    if (!Buffer.from(bytes.toString('utf8'), 'utf8').equals(bytes)) throw codedError(`“${node.title}” is not valid UTF-8 text, so Frige will not overwrite it: its original bytes could not be restored. Convert the file to UTF-8 first.`, 'SOURCE_NOT_UTF8');
-    await writeAtomic(this.sourcePath(node.relativePath), source);
+    if (!Buffer.from(source, 'utf8').equals(bytes)) throw codedError(`“${node.title}” is not valid UTF-8 text, so Frige will not overwrite it: its original bytes could not be restored. Convert the file to UTF-8 first.`, 'SOURCE_NOT_UTF8');
+    return { ...node, source, hash };
+  }
+
+  /** Writes a validated node revision and refreshes its derived state. */
+  async #writeNode(id, source, baseHash, { prepared = false } = {}) {
+    // Legacy acceptance and rollback use the same queue. Resolve any earlier
+    // editorial write before they can move a piece past its recoverable hash.
+    if (!prepared) {
+      validateSourceWrite(source, baseHash);
+      await this.#loadEditorial();
+    }
+    const current = await this.#readWritableSource(id, { baseHash, editorial: prepared });
+    await writeAtomic(this.sourcePath(current.relativePath), source);
     await this.refreshGraph();
-    return this.node(id);
+    const saved = await this.node(id);
+    if (saved.source !== source) throw codedError('This manuscript node changed while saving. Reload it before saving again.', 'STALE_SOURCE');
+    return saved;
+  }
+
+  /** Reconciles a stopped source write before another writer uses its base. */
+  async #loadEditorial() {
+    const journal = await this.editorial.load();
+    if (journal.pending) {
+      let current = null;
+      try { current = await this.#readWritableSource(journal.pending.nodeId, { editorial: true }); }
+      catch (error) { if (!['ENOENT', 'NODE_NOT_FOUND'].includes(error.code)) throw error; }
+      await this.editorial.settle(journal, current?.hash);
+    }
+    return journal;
+  }
+
+  async #editorialState() {
+    // Legacy recovery can undo matching proposal bytes. Finish it before a
+    // new author operation can intentionally write those same bytes later.
+    await this.#settleLegacyWrites();
+    return this.#loadEditorial();
+  }
+
+  async #commitRevision(journal, current, source, restoredFrom) {
+    // The caller supplied a validated save or a byte-verified snapshot. A
+    // legacy source can exceed the new-save limit and still be restorable.
+    if (source === current.source) return { node: current, revision: null };
+    const revision = await this.editorial.prepare(journal, current, source, restoredFrom);
+    // A failed source write leaves its intent for the next operation to settle
+    // against the actual bytes, including a write that reached disk before a
+    // derived graph refresh failed.
+    const node = await this.#writeNode(current.id, source, current.hash, { prepared: true });
+    await this.editorial.settle(journal, node.hash);
+    return { node, revision };
+  }
+
+  /** Reads metadata for the current piece and its historical revisions. */
+  listRevisions(id, before) {
+    return this.exclusive(async () => {
+      const journal = await this.#editorialState();
+      const node = await this.#readWritableSource(id, { editorial: true });
+      return this.editorial.listing(journal, node, before);
+    });
+  }
+
+  /** Reads one exact historical source from this piece's journal. */
+  readRevision(id, revisionId) {
+    return this.exclusive(async () => {
+      await this.#nodeSummary(id);
+      return this.editorial.revision(await this.#editorialState(), id, revisionId);
+    });
+  }
+
+  /** Restores the requested bytes as a new author-approved revision. */
+  restoreRevision(id, revisionId, payload) {
+    return this.exclusive(async () => {
+      const journal = await this.#editorialState();
+      const current = await this.#readWritableSource(id, { editorial: true });
+      this.editorial.checkBase(journal, current, payload);
+      const target = await this.editorial.revision(journal, id, revisionId);
+      return this.#commitRevision(journal, current, target.source, revisionId);
+    });
+  }
+
+  listEditorialDecisions(id, before) {
+    return this.exclusive(async () => {
+      await this.#nodeSummary(id);
+      return this.editorial.decisions(await this.#editorialState(), id, before);
+    });
+  }
+
+  /** Records a reason against the current piece without changing its source. */
+  recordEditorialDecision(id, payload) {
+    return this.exclusive(async () => {
+      const journal = await this.#editorialState();
+      const current = await this.#readWritableSource(id, { editorial: true });
+      return this.editorial.decision(journal, current, payload);
+    });
   }
   /**
    * The ids a scope is known by: its current id, and for a section every id it
@@ -1254,6 +1375,7 @@ export class ProjectStore {
   /** Applies approved changes under the serialized revision transaction. */
   async #decideChanges(scopeId, changeSetId, { nodeId = null, decision }) {
     if (!['accept', 'reject'].includes(decision)) throw new Error('Decision must be accept or reject.');
+    await this.#settleLegacyWrites();
     const record = await this.changeSet(scopeId);
     if (!record || record.id !== changeSetId) throw new Error('This change set is no longer current.');
     // A half-applied earlier acceptance is settled before anything is decided on top of it.
@@ -1269,7 +1391,10 @@ export class ProjectStore {
         const [change] = targets; change.decidedAt = at;
         try { await this.#writeLayout(change, change.after, change.baseHash, { requireTarget: true }); change.status = 'accepted'; }
         catch (error) { change.status = error.code === 'STALE_SOURCE' ? 'stale' : 'failed'; change.error = error.message; }
-      } else decided = await this.#acceptText(record, targets, at);
+      } else {
+        await this.#loadEditorial();
+        decided = await this.#acceptText(record, targets, at);
+      }
     } finally {
       // A proof recorded before this decision did not typeset a piece accepted now.
       if (targets.some((change) => change.status === 'accepted')) record.proof = null;
@@ -1277,6 +1402,7 @@ export class ProjectStore {
       // `applying` is still set only when a piece could not be read, for recovery to settle.
       record.status = hasPending(record) ? 'pending' : 'resolved';
       await this.#saveContract(record, { current: true });
+      if (!record.applying) this.#legacyRecoveryNeeded = false;
     }
     await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: decided.map(decisionOf) });
     return record;
@@ -1327,6 +1453,7 @@ export class ProjectStore {
     }
 
     // 2. Record the intent before the first write, so a stop part-way can be undone on restart.
+    this.#legacyRecoveryNeeded = true;
     record.applying = { startedAt: at, nodeIds: targets.map((change) => change.nodeId) };
     try {
       await this.#saveContract(record, { current: true });
@@ -1418,6 +1545,7 @@ export class ProjectStore {
 
   /** Restores exact prior content when the current revision still permits rollback. */
   async #revertChanges(contractId, { nodeId = null } = {}) {
+    await this.#settleLegacyWrites();
     const record = await this.contract(contractId);
     if (!record) throw codedError('Change contract not found.', 'CONTRACT_NOT_FOUND');
     if (record.applying) await this.#settleInterrupted(record);
@@ -1500,12 +1628,42 @@ export class ProjectStore {
     }
   }
 
-  /** Resolves the explicitly approved source excerpts for the turn. */
+  /** Reads the same bounded excerpt for preview, approval and forwarding. */
+  async attachmentExcerpt(entry) {
+    if (typeof entry?.id !== 'string' || !/^[a-f0-9]{16}$/.test(entry.id) || entry.extraction !== `extractions/${entry.id}.txt`) return null;
+    const file = path.join(this.stateDirectory, entry.extraction);
+    try {
+      if (!(await editorialPath(this.root, file, { optional: true }))) return null;
+      const input = await open(file, 'r');
+      try {
+        const size = (await input.stat()).size;
+        if (!size || size > 600_000) return null;
+        const buffer = Buffer.alloc(Math.min(size, 18_003));
+        const { bytesRead } = await input.read(buffer);
+        if (bytesRead !== buffer.length) return null;
+        let excerpt = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer, { stream: bytesRead < size }).slice(0, 6000);
+        if (!excerpt.isWellFormed()) excerpt = excerpt.slice(0, -1);
+        if (!excerpt.trim()) return null;
+        return { id: entry.id, name: entry.name, excerpt, hash: sourceHash(excerpt) };
+      } finally { await input.close(); }
+    } catch { return null; }
+  }
+
+  /** Resolves excerpts whose exact bytes were approved by the author. */
   async approvedSourceExcerpts() {
     try {
       const documents = JSON.parse(await readFile(path.join(this.stateDirectory, 'documents.json'), 'utf8'));
-      const approved = Array.isArray(documents) ? documents.filter((entry) => entry.contextState === 'approved' && typeof entry.extraction === 'string').slice(0, 8) : [];
-      return Promise.all(approved.map(async (entry) => ({ id: entry.id, name: entry.name, excerpt: (await readFile(contained(this.stateDirectory, entry.extraction), 'utf8')).slice(0, 6000) })));
+      if (!Array.isArray(documents)) return [];
+      const approved = documents.filter((entry) => entry?.contextState === 'approved' && typeof entry.approvalHash === 'string')
+        .sort((left, right) => String(right.reviewedAt ?? '').localeCompare(String(left.reviewedAt ?? '')));
+      const resolved = [];
+      for (const entry of approved.slice(0, 32)) {
+        const excerpt = await this.attachmentExcerpt(entry);
+        if (excerpt?.hash !== entry.approvalHash) continue;
+        resolved.push(excerpt);
+        if (resolved.length === 8) break;
+      }
+      return resolved;
     } catch { return []; }
   }
   /** Resolves the build artifact directory for the selected project or page. */

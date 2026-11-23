@@ -194,6 +194,37 @@ test('publishing v1 carries a change contract from proposal through acceptance, 
   // A save must name the text it replaces.
   const unguarded = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: 'Overwritten.\n' } });
   assert.equal(unguarded.status, 400); assert.equal(unguarded.body.code, 'BASE_HASH_REQUIRED');
+  const malformed = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: node.source + '\uD800', baseHash: node.hash } });
+  assert.equal(malformed.status, 400); assert.equal(malformed.body.code, 'INVALID_SOURCE');
+  assert.deepEqual(await readFile(file), original, 'an unpaired surrogate must not be silently replaced');
+
+  const unicodeSource = node.source + '\nA café.\n';
+  const unicodeBytes = Buffer.from(JSON.stringify({ source: unicodeSource, baseHash: node.hash }));
+  const split = unicodeBytes.lastIndexOf(Buffer.from('é')) + 1;
+  const endpoint = `${prefix}/nodes/${nodeId}${book}`;
+  const splitSave = await new Promise((resolve, reject) => {
+    const request = http.request(endpoint, { method: 'PUT', headers: { 'content-type': 'application/json' } }, async (response) => {
+      try {
+        const chunks = [];
+        for await (const chunk of response) chunks.push(chunk);
+        resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+      } catch (error) { reject(error); }
+    });
+    request.on('error', reject);
+    request.write(unicodeBytes.subarray(0, split));
+    setTimeout(() => request.end(unicodeBytes.subarray(split)), 50);
+  });
+  assert.equal(splitSave.status, 200);
+  assert.equal(splitSave.body.source, unicodeSource);
+  assert.equal(await readFile(file, 'utf8'), unicodeSource);
+  const wrongEncoding = Buffer.concat([unicodeBytes.subarray(0, split - 1), Buffer.from([0xff]), unicodeBytes.subarray(split + 1)]);
+  const refusedEncoding = await fetch(endpoint, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: wrongEncoding });
+  assert.equal(refusedEncoding.status, 400);
+  assert.match((await refusedEncoding.json()).error, /valid UTF-8/);
+  assert.equal(await readFile(file, 'utf8'), unicodeSource);
+  const restored = await call(`/nodes/${nodeId}${book}`, { method: 'PUT', payload: { source: node.source, baseHash: splitSave.body.hash } });
+  assert.equal(restored.status, 200);
+  assert.deepEqual(await readFile(file), original);
 
   const turn = await call(`/scopes/${nodeId}/turn${book}`, { method: 'POST', payload: { message: 'Simulate change: A synthetic closing line.' } });
   assert.equal(turn.status, 200); assert.equal(turn.contract, 'stex.frige.publishing.v1');
