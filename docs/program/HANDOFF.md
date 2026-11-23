@@ -24,9 +24,9 @@ runbook. Each live check needs explicit authorization.
 
 Igor's approved-document tools have been active since Igor generation 20
 ([activation evidence](../verification/igor-document-runtime-activation.md)).
-stex-igor PR 11, which restarts the document units on release and logs turn
-outcomes, awaits deployment. Binary (PDF and DOCX) approval is the next
-document increment.
+Generation 21 (stex-igor PR 11) restarts the document units on each release
+and logs one outcome code per turn. Binary (PDF and DOCX) approval is the
+next document increment.
 
 If review was interrupted, resume from the original diff, verification
 outputs and a self-contained review brief. For an older checkout, read the
