@@ -22,10 +22,11 @@ context. See the [master plan](MASTER-PLAN.md#waves) and the
 credential renewal are tracked in the [risk register](RISKS.md) and private
 runbook. Each live check needs explicit authorization.
 
-Igor's approved-document tools shipped switched off in Igor generation 18
-([staging evidence](../verification/igor-document-tools-stage.md)). Turning
-them on needs the isolated serving worker, a bounded model relay, VM
-acceptance and owner authorization.
+Igor's approved-document tools have been active since Igor generation 20
+([activation evidence](../verification/igor-document-runtime-activation.md)).
+stex-igor PR 11, which restarts the document units on release and logs turn
+outcomes, awaits deployment. Binary (PDF and DOCX) approval is the next
+document increment.
 
 If review was interrupted, resume from the original diff, verification
 outputs and a self-contained review brief. For an older checkout, read the
