@@ -8,7 +8,7 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
-| Hosted Pantheon and Frige behind Igor sign-in | [Hosted Pantheon evidence](hosted-pantheon.md) | Not merged; dirty local release build; Seaxneat and the platform API not hosted; no live model turn |
+| Hosted Pantheon and Frige behind Igor sign-in | [Hosted Pantheon evidence](hosted-pantheon.md) | Suite PR 13, stex-igor PR 6; dirty local release build; Seaxneat and the platform API not hosted; no live model turn |
 | Frige and Igor shared gateway launch | [Gateway verification](frige-igor-gateway.md) | Disposable local services, simulated transport and no live model calls |
 | Public source release | [Preparation and approval gates](public-source-release.md) | Local candidate for source reading |
 | Igor free mode, model prices and descriptions | [Free mode evidence](igor-free-mode-pricing.md) | Generation 15 read-back and profile verification; feature checks use stub catalog and fake transport |

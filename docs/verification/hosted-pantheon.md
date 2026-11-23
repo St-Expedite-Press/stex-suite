@@ -1,7 +1,8 @@
 # Hosted Pantheon verification
 
-2026-11-22/23. Suite base `545fd93` (branch `feat/hosted-pantheon`, not yet
-merged), private Igor pin `5db7e51` (active Igor release unchanged). Owner
+2026-11-22/23. Suite base `545fd93`, delivered by suite PR 13 (branch
+`feat/hosted-pantheon`). Private Igor pin `e9c0d85` (stex-igor PR 6: the
+deploy bundle and runbook; Igor's own code unchanged from `5db7e51`). Owner
 authorization: hosted Pantheon on the existing VM with Seaxneat deferred and
 the VM copy of the manuscripts canonical (2026-11-22). The owner then chose
 "make the login real across the board" with Igor's password accounts
