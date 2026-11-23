@@ -1,7 +1,7 @@
 /** Pantheon publishing workspace source that coordinates editorial navigation, proposals, design and proof views. */
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
-import { appUrl } from './base-path.js';
+import { appBase, appUrl } from './base-path.js';
 
 /** Selects the element with the supplied identifier. */
 const $ = (selector) => document.querySelector(selector);
@@ -961,7 +961,41 @@ async function bootstrap() {
   $('#node-pages').addEventListener('click', () => { const mapped = nodePages(state.node.id); if (mapped) showPdfPage(mapped.firstPage); });
 }
 
+/**
+ * Replaces the workstation with a password prompt for a protected project.
+ * Frige checks the password and sets an unlock cookie; the page then reloads
+ * and opens normally. Nothing of the project is loaded before that.
+ */
+function renderUnlock() {
+  const form = document.createElement('form');
+  form.className = 'unlock-panel';
+  form.innerHTML = `<p class="eyebrow">Password protected</p><h1></h1>
+    <p>This project has its own password. Enter it to open the manuscript, proofs and editorial threads.</p>
+    <label for="project-password">Project password</label>
+    <input id="project-password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+    <div class="unlock-actions"><button class="quiet-button" type="submit">Open project</button><a class="quiet-button" href="${appBase()}/">Book projects</a></div>
+    <p class="unlock-state" role="status" aria-live="polite"></p>`;
+  form.querySelector('h1').textContent = (book || 'Project').replaceAll('-', ' ');
+  const input = form.querySelector('input'); const button = form.querySelector('button'); const status = form.querySelector('.unlock-state');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    button.disabled = true; status.textContent = 'Checking…'; status.classList.remove('failed');
+    try {
+      const response = await fetch(`${appBase()}/api/stex/access/v1/unlock`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'book', id: book, password: input.value }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'The project could not be unlocked.');
+      status.textContent = 'Opening…'; location.reload();
+    } catch (error) {
+      status.textContent = error.message; status.classList.add('failed');
+      button.disabled = false; input.select();
+    }
+  });
+  document.querySelector('main').replaceChildren(form);
+  input.focus();
+}
+
 bootstrap().catch((error) => {
+  if (error.code === 'PROJECT_LOCKED') { renderUnlock(); return; }
   // The server reads these files fresh from disk, so a server started before an update serves a page it cannot answer.
   const stale = error.message === 'Unknown API route.';
   document.querySelector('main').textContent = stale ? `Frige could not start: this page is newer than the Frige server at ${location.host}. Stop that server and start it again (corepack pnpm dev:frige), then reload.` : `Frige could not start: ${error.message}`;

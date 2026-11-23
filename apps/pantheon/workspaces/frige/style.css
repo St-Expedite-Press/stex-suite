@@ -382,3 +382,13 @@ h1, h2, h3, p { margin-top: 0; }
 
 .publishing-toolbar { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: var(--stex-space-3); padding: var(--stex-space-2) var(--stex-space-4); border-bottom: var(--frige-rule); }
 .publishing-toolbar p { margin: 0 auto 0 0; color: var(--stex-accent); }
+
+/* Password-protected project: the prompt shown before anything of the project loads. */
+.unlock-panel { display: grid; gap: var(--stex-space-2); width: min(420px, calc(100% - 2 * var(--stex-space-4))); margin: var(--stex-space-6, 48px) auto; padding: var(--stex-space-4); border: var(--frige-rule); }
+.unlock-panel h1 { margin: 0; font-family: var(--stex-font-serif, inherit); text-transform: capitalize; }
+.unlock-panel p { margin: 0; color: var(--stex-text-secondary); }
+.unlock-panel label { margin-top: var(--stex-space-2); color: var(--stex-text-secondary); font: 600 12px/1.2 var(--stex-font-sans); }
+.unlock-panel input { min-height: 40px; padding: 0 var(--stex-space-2); border: var(--stex-hairline) solid var(--stex-border-control); border-radius: var(--stex-radius-control); background: var(--stex-bg); color: var(--stex-text); font: 400 14px/1.3 var(--stex-font-sans); }
+.unlock-actions { display: flex; flex-wrap: wrap; gap: var(--stex-space-2); }
+.unlock-state:empty { display: none; }
+.unlock-state.failed { color: var(--stex-error); }

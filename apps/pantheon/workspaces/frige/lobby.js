@@ -12,7 +12,7 @@ function card(project) {
   link.href = `./?book=${encodeURIComponent(project.id)}`;
   link.innerHTML = `<span class="mark" aria-hidden="true"></span><span class="project-copy"><strong></strong><small></small></span><span class="go" aria-hidden="true">→</span>`;
   link.querySelector('strong').textContent = project.title;
-  link.querySelector('small').textContent = project.reference;
+  link.querySelector('small').textContent = project.locked ? `${project.reference} · Password protected` : project.reference;
   item.append(link);
   return item;
 }

@@ -45,6 +45,7 @@
     "dev:texgraph": "corepack pnpm run dev:frige",
     "test:texgraph": "corepack pnpm run test:frige",
     "build:pantheon": "corepack pnpm --dir apps/pantheon build",
+    "release:pantheon": "node scripts/release/build-pantheon-release.mjs",
     "verify:platform": "node scripts/verify/verify-platform.mjs",
     "verify:knowledge": "node scripts/verify/verify-knowledge.mjs"
   }

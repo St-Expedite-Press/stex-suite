@@ -14,6 +14,8 @@ export function knowledgeApi({ knowledge, targets, fetchImpl = fetch }) {
   /** Fetches owner-verified data from the selected studio. */
   async function engine(project, suffix = '', payload, signal) {
     const target = targets[project.application];
+    // A studio the host defers has no target: its references are unavailable, never fetched.
+    if (!target) throw fail(503, 'The source engine is unavailable.');
     const url = new URL(`/${project.application}/api/stex/context/v1/projects/${project.id}${suffix}`, target);
     let response;
     try { response = await fetchImpl(url, { method: payload ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]), headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) }); }

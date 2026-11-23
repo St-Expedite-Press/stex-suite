@@ -30,3 +30,6 @@ apps/seaxneat/.preview-state/
 .playwright-mcp/
 vault/.obsidian/
 vault/attachments/
+
+# Hosted release archives (scripts/release)
+release/

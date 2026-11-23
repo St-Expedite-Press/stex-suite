@@ -146,6 +146,8 @@ and `report.json` to the system temp folder, or to `--out <dir>`.
 | `STEX_FRIGE_URL`, `STEX_SEAXNEAT_URL`, `STEX_IGOR_URL` | Application origins to proxy (loopback HTTP only; Igor defaults to `http://127.0.0.1:4330`) |
 | `STEX_PLATFORM_URL` | Python platform API origin for `/api/platform/v1/projects` (loopback HTTP only; default `http://127.0.0.1:4340`). Only listed read-only paths are forwarded, with no browser headers. Only a `200` JSON answer is relayed; any other status, redirect, compressed or over-4 MB body, timeout (5 s) or connection failure answers `502` |
 | `STEX_KNOWLEDGE_DATA_DIR` | Opt-in knowledge metadata journal directory; unset means disabled. Use an ignored path such as `services/knowledge/.local-data` resolved from the repository root |
+| `STEX_PANTHEON_PUBLIC_ORIGIN` | Hosted mode (see below); unset means local only |
+| `STEX_PANTHEON_DEFERRED` | Comma-separated studio ids this host shows as deferred and never proxies (for example `seaxneat`); Igor cannot be deferred |
 
 Use `STEX_PANTHEON_PORT` to select the local shell port. Books-directory configuration
 belongs to Frige, including its `STEX_BOOKS_DIR` compatibility fallback;
@@ -155,6 +157,32 @@ stack and inherits an explicitly selected knowledge directory.
 
 Knowledge remains disabled unless `STEX_KNOWLEDGE_DATA_DIR` is explicitly set.
 For a portable PowerShell example, see the [developer guide](../../docs/DEVELOPER-GUIDE.md).
+
+### Hosted mode
+
+With `STEX_PANTHEON_PUBLIC_ORIGIN` set to an https origin, Pantheon also
+answers requests for that host (it still listens on loopback, behind a
+tunnel). Pantheon holds no accounts: Igor's password sign-in is the only
+sign-in ([D-023](../../docs/program/DECISIONS.md#d-023--hosted-pantheon-uses-igors-accounts-as-its-sign-in)).
+
+- A public request is admitted only when Igor, asked over loopback at
+  `STEX_IGOR_URL`, confirms a password-mode session for its cookie
+  (`src/hosted.mjs`). Pages without one redirect to Igor's sign-in; other
+  requests get `401`. If Igor cannot answer, or is not in password mode,
+  the answer is `503`.
+- Only sign-in requests pass without a session: `/igor/login`,
+  `/igor/api/session`, and the files the sign-in page loads.
+- Requests from another site or naming another `Origin` are refused.
+  Admitted requests are rewritten to Pantheon's loopback address, so Igor
+  and the engines keep their loopback-only checks. Igor's session cookie is
+  removed before any request reaches a non-Igor application.
+- Loopback requests without proxy headers (health checks) keep local
+  behaviour.
+
+`corepack pnpm release:pantheon` builds the self-contained release (Pantheon
+and Frige, no manuscripts or local state). The private stex-igor repository
+holds the VM installer, units and runbook. See the
+[hosted evidence](../../docs/verification/hosted-pantheon.md).
 
 ## Composed Igor and project knowledge
 

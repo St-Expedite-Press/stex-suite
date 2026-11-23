@@ -4,8 +4,12 @@ import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs
 import path from 'node:path';
 
 // Frige owns the historical interview/document workflow. Pantheon only proxies.
-/** Constructs the compatibility handler around Frige-owned book storage. */
-export function legacyBooksApi(booksDirectory) {
+/**
+ * Constructs the compatibility handler around Frige-owned book storage.
+ * `isProtected(id)` names password-protected books; their listing entry keeps
+ * only the title, so no author, description or manuscript size is shown.
+ */
+export function legacyBooksApi(booksDirectory, { isProtected = async () => false } = {}) {
 /** Normalizes an input to an allowed compatibility identifier. */
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
 /** Refuses an invalid book identifier before resolving storage. */
@@ -60,6 +64,7 @@ async function bookSummary(id) {
   const manuscript = path.join(root, 'manuscript');
   const programme = await exists(path.join(manuscript, 'Programme.md'));
   const fallbackTitle = /^#\s+(.+)$/m.exec(readme)?.[1]?.trim() || id.replace(/-/g, ' ');
+  if (await isProtected(id)) return { id, title: settings?.identity?.title || fallbackTitle, author: '', description: 'Password protected', state: settings ? 'configured' : programme ? 'manuscript-detected' : 'folder-detected', manuscriptNodes: 0, programme, settingsTicket: Boolean(settings), locked: true };
   const fallbackDescription = readme.split(/\r?\n/).find((line) => line.trim() && !line.startsWith('#') && !line.startsWith('-'))?.trim().replaceAll('*', '') || 'Manuscript project';
   return { id, title: settings?.identity?.title || fallbackTitle, author: settings?.identity?.author || '', description: settings?.editorial?.intent || fallbackDescription, state: settings ? 'configured' : programme ? 'manuscript-detected' : 'folder-detected', manuscriptNodes: await markdownCount(manuscript), programme, settingsTicket: Boolean(settings) };
 }

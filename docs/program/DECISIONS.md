@@ -382,6 +382,55 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   `apps/igor` (the Company screen) and `deploy/hermes`, on branch
   `feat/free-mode`; `protocol/hermes`.
 
+## D-023 — Hosted Pantheon uses Igor's accounts as its sign-in
+
+- **Decided by:** the owner, 2026-11-22:
+  - asked to host "a whole copy of pantheon etc everything we are doing on
+    the vm", then approved the plan: the same VM, Seaxneat deferred, the VM
+    copy of the manuscripts canonical;
+  - offered a Cloudflare Access gate, chose instead: "make the login across
+    the board real", with a further account for a second person.
+- **Decision:** hosted Pantheon has no account store of its own. Igor's
+  password accounts are the one sign-in. Pantheon composes Igor at `/igor/`
+  on its own origin, so Igor's sign-in page and host-only session cookie
+  work there, and Pantheon asks Igor over loopback whether each request is
+  signed in. This resolves the hosted part of M2b. The local splash entry
+  stays credential-free, and accounts remain Igor's.
+- **Accepted by the owner's choice:**
+  - every Igor account (owner or member) has full use of Pantheon and
+    Frige, which keep single-user state;
+  - Igor's session cookie also lives on the Pantheon origin, so a script
+    injection in Pantheon or Frige pages could act as the signed-in user
+    in Igor.
+- **Fail-closed rules:** only sign-in requests pass without a session.
+  Igor in any mode other than password sign-in makes Pantheon refuse
+  (503). The installer checks the gate on every install.
+- **Affects:** `apps/pantheon` (hosted mode), `apps/frige` (relative
+  redirect through Pantheon), `scripts/release`, and stex-igor
+  `deploy/pantheon` with its runbook.
+  [Evidence](../verification/hosted-pantheon.md).
+
+## D-024 — Frige projects can have their own password
+
+- **Decided by:** the owner, 2026-11-23: "make projects password protected",
+  with a password for the hosted Lift Wind book.
+- **Decision:** Frige enforces per-project passwords itself, as the owner
+  of the books. Pantheon does not, because Igor's context reads and the
+  legacy routes reach Frige without passing through Pantheon's pages. The
+  record is a Frige-owned file outside the books (scrypt hashes, a signing
+  secret). Unlocking sets a per-project, versioned, signed cookie under
+  Frige's mount for twelve hours. This is a second layer: the account
+  sign-in (D-023) still applies.
+- **Consequences:** a protected project's title stays visible in listings.
+  Igor's project context and the knowledge journal cannot read a protected
+  project. Contract shapes are unchanged: the summary keeps state `ready`,
+  with the label "Password protected", and the book listing gains an
+  additive `locked` field.
+- **Affects:** `apps/frige` (`src/project-access.mjs`, the CLI and the
+  routes), the Pantheon Frige workspace (prompt and library label), and
+  stex-igor `deploy/pantheon` (env template).
+  [Evidence](../verification/hosted-pantheon.md#project-passwords).
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#current-work).

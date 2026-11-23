@@ -68,7 +68,8 @@ flowchart LR
 ## Trust, consent and knowledge
 
 The local Pantheon entrance opens a single-user workspace. Hosted Igor owns
-its account and password boundary. When a user attaches project context,
+its account and password boundary, and hosted Pantheon uses those same
+accounts as its only sign-in. When a user attaches project context,
 they preview and approve exact engine revisions. Changing the selection
 starts a fresh reasoning context. Earlier conversation records remain
 available according to the conversation's retention behavior.

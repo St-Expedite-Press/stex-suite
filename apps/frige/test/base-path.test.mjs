@@ -153,6 +153,9 @@ test('redirects presentation to Pantheon and creates an isolated book through pu
   await startFrige(root, 4411, context);
   const lobby = await fetch('http://127.0.0.1:4411/frige/', { redirect: 'manual' });
   assert.equal(lobby.status, 308); assert.equal(lobby.headers.get('location'), 'http://127.0.0.1:4300/frige/');
+  // Through Pantheon's proxy (possibly on a public origin) the redirect stays on the browser's origin.
+  const proxiedLobby = await fetch('http://127.0.0.1:4411/frige/lobby.html?book=x', { redirect: 'manual', headers: { 'x-forwarded-prefix': '/frige' } });
+  assert.equal(proxiedLobby.status, 308); assert.equal(proxiedLobby.headers.get('location'), '/frige/?book=x');
   const created = await fetch('http://127.0.0.1:4411/frige/api/stex/publishing/v1/books', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'New Fixture', author: 'A. Author' }) });
   assert.equal(created.status, 201); const project = await created.json(); assert.match(project.id, /^new-fixture-/);
   assert.equal(created.headers.get('x-stex-contract'), 'stex.frige.publishing.v1');

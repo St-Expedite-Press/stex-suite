@@ -10,6 +10,7 @@ import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltP
 import { isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
 import { openKnowledge } from '../../services/knowledge/src/projections.mjs';
 import { knowledgeApi } from './src/knowledge-api.mjs';
+import { createHostedGate, createIgorSessionCheck, hostedConfig, HostedRefusal, withoutIgorSession } from './src/hosted.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
@@ -24,18 +25,30 @@ const registryFile = path.join(directory, '..', '..', 'protocol', 'applications'
 let applications = shellApplications;
 try { applications = validateRegistry(JSON.parse(await readFile(registryFile, 'utf8'))); }
 catch (error) { console.warn(`Pantheon is using its built-in registry fallback: ${error.message}`); }
+// A host may defer an otherwise active application (for example Seaxneat until its
+// generated-code processes have an OS boundary): it then renders the honest deferred
+// page and is never proxied. Only known application ids are accepted.
+const deferredHere = new Set(String(process.env.STEX_PANTHEON_DEFERRED || '').split(',').map((id) => id.trim()).filter(Boolean));
+for (const id of deferredHere) if (!applications.some((entry) => entry.id === id) || id === 'igor') throw new Error(`STEX_PANTHEON_DEFERRED names an unknown or required application: ${id}`);
+if (deferredHere.size) applications = Object.freeze(applications.map((entry) => (deferredHere.has(entry.id) ? Object.freeze({ ...entry, state: 'deferred' }) : entry)));
 const proxyTargets = {
   frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310'),
   seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
   igor: localProxyTarget(process.env.STEX_IGOR_URL, 'http://127.0.0.1:4330'),
 };
 const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://127.0.0.1:4340');
+// Hosted mode (STEX_PANTHEON_PUBLIC_ORIGIN): Igor's password accounts are the
+// one sign-in; every public request outside Igor's own sign-in route needs a
+// session Igor confirms. An invalid public origin stops startup.
+const hosted = hostedConfig(process.env);
+const admitHosted = hosted ? createHostedGate(hosted, { port, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
 const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
 };
 const knowledge = await openKnowledge({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '' });
-const knowledgeRoute = knowledgeApi({ knowledge, targets: proxyTargets });
+// Deferred studios get no target, so the knowledge API never contacts them.
+const knowledgeRoute = knowledgeApi({ knowledge, targets: Object.fromEntries(Object.entries(proxyTargets).filter(([id]) => !deferredHere.has(id))) });
 // The shared design system is served from its own package; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
@@ -93,7 +106,13 @@ function designSystemFile(pathname) {
 
 http.createServer(async (request, response) => {
   // Refused before routing: the proxy would otherwise lend a rebound page a loopback Host.
-  if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
+  if (admitHosted) {
+    try { await admitHosted(request); }
+    catch (error) {
+      if (error instanceof HostedRefusal && error.location) { response.writeHead(error.status, { location: error.location, 'cache-control': 'no-store' }); response.end(); return; }
+      send(response, error instanceof HostedRefusal ? error.status : 403, { error: error instanceof HostedRefusal ? error.message : 'Request refused.' }); return;
+    }
+  } else if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
   const url = new URL(request.url, `http://${request.headers.host}`);
   try {
     if (url.pathname === '/api/knowledge/v1' || url.pathname.startsWith('/api/knowledge/v1/')) return await knowledgeRoute(request, response, url);
@@ -125,6 +144,10 @@ http.createServer(async (request, response) => {
     if (url.pathname.startsWith('/frige/') && publishingAssets.has(url.pathname.slice('/frige/'.length))) {
       return await staticFile(request, response, path.join(publishingDirectory, url.pathname.slice('/frige/'.length)));
     }
+    if (deferredHere.has('seaxneat') && (url.pathname.startsWith('/workspaces/seaxneat') || url.pathname.startsWith('/workspace-assets/seaxneat'))) {
+      const seaxneat = applications.find((entry) => entry.id === 'seaxneat');
+      return sendPage(response, deferredStudioPage(seaxneat, shellApplications.find((entry) => entry.id === 'seaxneat')?.description || ''));
+    }
     if (url.pathname === '/seaxneat' || url.pathname === '/seaxneat/' || url.pathname === '/workspaces/seaxneat') {
       response.writeHead(308, { location: `/workspaces/seaxneat/${url.search}` }); response.end(); return;
     }
@@ -146,6 +169,11 @@ http.createServer(async (request, response) => {
     if (application?.state === 'deferred') {
       const description = shellApplications.find((entry) => entry.id === application.id)?.description || '';
       sendPage(response, deferredStudioPage(application, description)); return;
+    }
+    // Igor's session cookie goes to Igor alone, never to an engine or generated code.
+    if (application?.id !== 'igor') {
+      const cookie = withoutIgorSession(request.headers.cookie);
+      if (cookie === undefined) delete request.headers.cookie; else request.headers.cookie = cookie;
     }
     if (application) {
       try { await proxyApplication(request, response, proxyTargets[application.id], url, application.route); }
@@ -173,4 +201,4 @@ http.createServer(async (request, response) => {
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);
   } catch (error) { send(response, 400, { error: error.message || 'Request failed.' }); }
-}).listen(port, '127.0.0.1', () => console.log(`Pantheon is ready at http://127.0.0.1:${port}`));
+}).listen(port, '127.0.0.1', () => console.log(`Pantheon is ready at http://127.0.0.1:${port}${hosted ? ` (hosted at ${hosted.publicOrigin}; Igor sign-in required)` : ''}`));
