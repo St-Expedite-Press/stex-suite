@@ -1,3 +1,4 @@
+/** Pantheon server source that implements shell navigation and validates server-side integration routes. */
 import http from 'node:http';
 
 // Mirrors protocol/applications/registry.v2.json; used only when it cannot be read.
@@ -11,6 +12,7 @@ export const shellApplications = Object.freeze([
 
 const registryIds = ['frige', 'seaxneat', 'eostre', 'woden', 'igor'];
 
+/** Validates the route identities and runtime-safe application registry values. */
 export function validateRegistry(value) {
   const applications = value?.schemaVersion === 'stex.applications.registry.v2' && Array.isArray(value.applications) ? value.applications : null;
   if (!applications || applications.length !== registryIds.length) throw new Error('The STEX application registry is invalid.');
@@ -24,8 +26,10 @@ export function validateRegistry(value) {
 
 // Pantheon listens on 127.0.0.1 only, so any other Host is a DNS-rebound page.
 const loopbackHost = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
+/** Checks whether a request targets a permitted local host. */
 export const isLoopbackHost = (value) => loopbackHost.test(String(value || ''));
 
+/** Accepts only an eligible loopback URL for a configured target. */
 export function localProxyTarget(value, fallback) {
   let target;
   try { target = new URL(value || fallback); } catch { throw new Error('The application proxy target is invalid.'); }
@@ -35,10 +39,12 @@ export function localProxyTarget(value, fallback) {
   return target;
 }
 
+/** Maps an eligible shell URL to its mounted application. */
 export function mountedApplication(pathname, applications = shellApplications) {
   return applications.find((application) => pathname === application.route.slice(0, -1) || pathname.startsWith(application.route)) || null;
 }
 
+/** Validates a mounted path before it is forwarded upstream. */
 function safeProxyPath(url, prefix) {
   if (!url.pathname.startsWith(prefix)) throw new Error('Invalid application path.');
   const suffix = url.pathname;
@@ -48,6 +54,7 @@ function safeProxyPath(url, prefix) {
   return `${suffix}${url.search}`;
 }
 
+/** Streams a bounded request to its configured same-origin target. */
 export function proxyApplication(request, response, target, url, prefix) {
   const requestPath = safeProxyPath(url, prefix);
   // x-forwarded-host lets an application match the browser's Origin to the shell's address.
@@ -67,18 +74,21 @@ export function proxyApplication(request, response, target, url, prefix) {
 // Only these exact paths are forwarded; nothing from the browser request except
 // the method is passed on, so cookies and other headers never reach it.
 const platformRoutes = new Map([['/api/platform/v1/projects', '/api/v1/projects']]);
+/** Allows only the read-only project aggregation routes. */
 export const platformPath = (pathname) => platformRoutes.get(pathname) || null;
 
 export class PlatformUnavailable extends Error {}
 
 // Only a 200 JSON answer is relayed; anything else (unreachable, timeout,
 // redirect, other status, compressed or oversized body) is PlatformUnavailable.
+/** Requests the platform API without inheriting browser authority. */
 export async function requestPlatform(target, upstreamPath, { timeoutMs = 5_000, maxBytes = 4_000_000 } = {}) {
   const signal = AbortSignal.timeout(timeoutMs);
   let reply;
   try {
     reply = await fetch(new URL(upstreamPath, target), { headers: { accept: 'application/json', 'accept-encoding': 'identity' }, redirect: 'manual', signal });
   } catch { throw new PlatformUnavailable('The platform API is not reachable.'); }
+  /** Sends the bounded failure response when the platform request cannot continue. */
   const refuse = async (reason) => { await reply.body?.cancel().catch(() => {}); throw new PlatformUnavailable(reason); };
   if (reply.status !== 200) return refuse(`The platform API answered ${reply.status}.`);
   if (!/^application\/json\b/i.test(reply.headers.get('content-type') || '')) return refuse('The platform API did not answer with JSON.');

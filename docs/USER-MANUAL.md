@@ -1,146 +1,88 @@
 # STEX user manual
 
-Run `corepack pnpm install --frozen-lockfile`, then `corepack pnpm dev:alpha`. Open `http://127.0.0.1:4300/`.
+## Enter Pantheon
 
-## Entering Pantheon
+After an [authorized local setup](DEVELOPER-GUIDE.md#authorized-checkout),
+open http://127.0.0.1:4300/. Choose **Sign in** to enter the local single-user
+command center. Hosted Igor uses its own password sign-in.
 
-The splash shows the Pantheon artwork and an entrance panel. Choose **Sign in** to reach the command center at `/home/`. This is a local, single-user workspace: there is no account, password, or session yet. **Pause motion** stops the background animation on every Pantheon page, and the choice is remembered in this browser. If your system asks for reduced motion, the animation stays still until you choose **Play motion**.
+**Pause motion** stops the background animation and remembers the choice
+in this browser. Reduced-motion preferences are honored by default.
 
-## The command center
+## Find or create a project
 
-The standard local stack uses the deterministic fake transport. A separately
-prepared remote runtime exists for operator verification, but it is not enabled
-by the normal local workflow.
+**Continue working** opens your most recently changed project. **Projects**
+shows project status and which studio owns each project. Open a studio
+from **Studios** to create a book or website. Ēostre and Woden show their
+deferred status.
 
-- **Continue working** opens the project you changed most recently, in whichever studio owns it.
-- **Igor** is the assistant. Type a question on the home page and press the arrow: Igor opens it as a new conversation and answers there. **All conversations** opens Igor directly at `/igor/`, where you can start a conversation, continue one, rename, archive, or delete it, copy a reply, and retry a failed one. Press Enter to send and Shift+Enter for a new line; messages are up to 6,000 characters. Conversations are kept on this computer. In the standard local stack, replies are simulated and marked **Simulated**.
-- **Studios** opens Frige or Seaxneat. Ēostre and Woden are marked **Deferred** because they are not built yet.
-- **Recent projects** lists your latest five; **View all** (or the **Projects** tab) shows every project with its studio and current status, such as "Building" or "Build failed".
-- **Graph** shows optional local source provenance and relationships when enabled; otherwise it explains that knowledge is disabled. **Activity** remains unimplemented.
+## Edit and proof in Frige
 
-If a studio is not running, the command center says so ("Seaxneat is not responding") and still shows the other studio's projects.
+1. Open **Frige** and select an existing book, or create a new scaffold.
+2. Select a source node from **Contents**, edit the text, and save. Use
+   the contents search or a link to a specific passage to return to it.
+3. Use **Typeset proof** to compile. Inspect the PDF and preflight results.
+   Profile or source changes can make a prior proof stale.
+4. Select a passage to discuss it with Igor or request an editorial
+   proposal. Review the proposal and its line-by-line changes before
+   accepting it. Frige checks that the selected passage still matches.
 
-Igor remains the ordinary conversation interface. Its approved specialist
-organization uses seven persistent profiles: Architect for structure,
-Developer for software, Designer for form and production, Artist for imagery,
-Editor for language, Knowledge for research/provenance, and Auditor for
-independent verification. These are configured disciplines, not seven newly
-enabled chat agents. Specialists and runtime tools remain disabled; full
-persistent-session delegation is not an accepted feature. Profile memory
-does not replace your projects or shared knowledge, and changing a model does
-not create another identity. Direct specialist consultation would require an
-explicit choice rather than appearing automatically.
+On phones, switch between Contents, Editor and Proof. On tablets, Contents
+opens a drawer. A proof establishes pagination and compiler output.
+Preflight and printer requirements govern publication readiness.
 
-## Frige
+## Build and preview in Seaxneat
 
-Choose **Frige** on the command center, or open a book from its project lists.
-The library and workstation use Pantheon's common navigation. Select an
-existing local book or create a new scaffold; a book opens only after explicit
-selection. Edit a source node, save it, typeset a proof, inspect the PDF and
-preflight, and review any simulated Igor proposal before accepting it.
-Switch Contents, Editor and Proof on phones; Contents opens a keyboard-safe
-drawer on tablets. A stale source save is refused rather than overwriting a
-concurrent edit. Unsaved source triggers the browser's leave-page protection.
-Publication-profile changes mark an existing proof stale; a mapped proof is
-not a press-readiness claim. Do not use protected manuscripts as test fixtures.
+1. Open **Seaxneat**, create a project and wait for its validated build.
+2. Start the preview. Propose a simulated edit, inspect its diff, and use
+   **Apply and validate** to accept it.
+3. Inspect revision history or restore a revision after confirmation.
+   A restore creates a new revision. A pending proposal survives reload,
+   and **Dismiss proposal** records the decision.
 
-## Seaxneat
+The generated preview runs in a sandbox. A failed edit leaves the previous
+validated revision available. If a preview server is still starting,
+try **Reload preview** after it reports ready.
 
-Choose **Seaxneat** to open the website workspace inside Pantheon's common
-navigation. The old `/seaxneat/` link leads to `/workspaces/seaxneat/`.
-Create a local project and wait for its validated Next.js build, then start
-the preview. Request a bounded simulated heading edit, inspect its proposed
-source, and choose **Apply and validate** explicitly. A pending proposal
-survives reload; **Dismiss proposal** saves that decision. Inspect a revision
-diff or restore a revision after confirmation. A restore creates a new
-revision rather than erasing history.
+## Talk to Igor
 
-If initial setup fails, the workspace shows **None** for the last validated
-revision and displays the failure. A failed edit keeps the previous validated
-revision and restores its pre-edit draft. **Refresh projects** inspects state;
-a timeout does not automatically retry work. **Reload preview** is useful
-while a preview server starts. Previews are sandboxed from the platform.
-State remains local in the Seaxneat engine; the vault is disabled by default.
+Send a question from the command center or open **All conversations**.
+The standard local stack labels simulated replies. Use Enter to send or
+Shift+Enter for a new line. You can rename, archive or delete a conversation,
+copy a reply, and retry eligible failures.
 
-Ēostre and Woden deliberately show deferred views.
+To include project material, use **Discuss with Igor** from a workspace or
+select a project under **Project context**. Preview the exact text and revisions
+of up to four sources, then choose **Use this context**. Choose fewer sources
+if the combined selection exceeds the byte limit. Refresh and approve a new
+selection to change context. Changing or withdrawing the selection starts a
+fresh reasoning context. Earlier records and already-transmitted content
+are subject to their own retention behavior.
 
-## Project context in Igor
+## Use Graph when enabled
 
-Choose **Discuss with Igor** in Frige or **Discuss this project with Igor** in
-Seaxneat, or expand
-**Project context** in Igor and select a project. Select up to four sources,
-choose **Preview selected context**, inspect their exact text and revisions,
-then choose **Use this context**. Sending pauses while the selection is being
-edited. Source limits are measured in UTF-8 bytes; choose fewer sources if
-the combined context is too large.
+An operator enables the [local knowledge journal](DEVELOPER-GUIDE.md#configuration).
+In **Graph**, select a project, inspect its sources and accept the revisions
+you want to reference. Graph keeps source identities and provenance.
+Assertions and inferred relationships can be reviewed and corrected. Use
+**Refresh source access** to recheck availability before relying on a source.
 
-Only approved pinned revisions are offered. Frige exports manuscript text;
-Seaxneat exports its validated source revision, rather than an unfinished
-working draft. Engine edits are not added automatically. Use **Refresh source
-revisions**, preview again, and approve deliberately to change context.
+**Withdraw project knowledge** removes current consent. **Export knowledge**
+provides a copy of the journal, and **Delete all knowledge** erases the local
+journal after confirmation. When offered, **Preview knowledge for Igor**
+shows the exact message to approve and send.
 
-A conversation stays bound to one project; use **New conversation for another
-project** to switch. Changing or withdrawing sources starts a fresh reasoning
-context. Earlier messages remain visible but are excluded from later turns.
-Wait for a pending reply before changing context. An old failed reply cannot
-be retried after its context is withdrawn. Withdrawal does not erase earlier
-conversation records or content already transmitted to a runtime/provider.
+## Recover from stale or unavailable work
 
-## Optional project knowledge
+- **Frige refused a stale save.** Reopen the latest source and reconcile
+  your edit before saving again.
+- **A studio is unavailable.** The project list shows the affected studio.
+  Check its process and refresh. The other available studio remains usable.
+- **A Seaxneat edit failed validation.** Read the build output and inspect the
+  previous validated revision before retrying.
+- **Igor is unavailable or context has changed.** Check the integration and
+  start a fresh request with current approved context if an old retry is
+  refused.
 
-Graph is disabled unless an operator selects `STEX_KNOWLEDGE_DATA_DIR` before
-starting Pantheon. To use ignored local state from PowerShell at the repository
-root:
-
-```powershell
-$env:STEX_KNOWLEDGE_DATA_DIR = Join-Path (Get-Location) 'services/knowledge/.local-data'
-corepack pnpm dev:alpha
-```
-
-Open **Graph**, choose a project from the real studio project list, and choose
-**Inspect project sources**. A project's **Project knowledge** link opens
-Graph with that project selected. Select source revisions, then choose **Accept
-selected revisions**. This stores source identities, revision metadata and
-provenance, not copies of the source text. The source and project views update
-together. Work in Frige and Seaxneat continues normally with Graph disabled.
-
-Choose an accepted project under **Subject project**, then record an explicit
-assertion or propose an inferred relationship with current revision evidence.
-Inferences require confidence, remain hypotheses, and can
-be accepted, corrected, or rejected. Nothing mines conversations or writes
-changes back to an engine automatically. **Refresh source access** checks
-whether recorded revisions are still available. A changed, deleted or
-unreachable source is unavailable until current revisions are accepted.
-Each refresh checks at most 40 sources, four concurrently, within six seconds;
-unchecked references also remain unavailable.
-
-**Withdraw project knowledge** removes its current source consent. You can
-explicitly accept the same unchanged checkpoint again after fresh checks.
-**Export knowledge** downloads the metadata journal and relationships;
-**Delete all knowledge** erases that local journal after confirmation. Neither
-action removes engine sources, conversations, existing exports or backups.
-
-Accepted relationships with current evidence can be reviewed under **Preview
-knowledge for Igor**. Inspect the exact message, approve it, and choose **Send
-approved knowledge to Igor**. Access is checked again; changed evidence
-requires a fresh preview. Sending creates a normal new Igor conversation with
-that message. It does not grant Igor tools or ongoing access to the graph.
-
-## What is still planned
-
-The [platform transition](PLATFORM-TRANSITION.md) concentrates on Frige,
-Seaxneat, and Igor. Their composed workspaces, approved project context, and
-optional metadata knowledge foundation are implemented and tested locally.
-A broader second brain/digital twin, embeddings, multimodal retrieval,
-runtime engine tools and shared identity remain future work. Direct
-integration with an actual Obsidian vault is a required future milestone;
-the current metadata Graph and read-only vault adapter do not provide it.
-Python/FastAPI backend migration is also required future work and does not
-change the current user workflow during this release.
-Activity remains unimplemented. The reviewed release is in progress;
-[the release report](verification/platform-release.md) distinguishes local
-testing, merges and verified deployment. No Obsidian sync is introduced here.
-
-Hosted Igor at `https://igor.stexpedite.press` has its own password sign-in.
-That is separate from the credential-free local Pantheon entrance described
-above. The local development command never enables paid inference.
+See [Status](STATUS.md) for current availability and the evidence behind
+each capability.

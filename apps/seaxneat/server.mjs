@@ -1,3 +1,4 @@
+/** Seaxneat HTTP entry point for workspace operations and isolated preview processes. */
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -19,6 +20,7 @@ const platformOrigin = new URL(process.env.STEX_PANTHEON_URL || 'http://127.0.0.
 if (platformOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(platformOrigin.hostname) || platformOrigin.username || platformOrigin.password || platformOrigin.pathname !== '/' || platformOrigin.search || platformOrigin.hash) throw new Error('STEX_PANTHEON_URL must be a loopback HTTP origin.');
 const previews = new Map();
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
+/** Starts or simulates the selected workspace preview. */
 const previewStarter = async ({ project, workspace }) => {
   const existing = previews.get(project.id); if (existing && !existing.child.killed) return { state: 'running', target: existing.target };
   const port = 4400 + (parseInt(createHash('sha256').update(project.id).digest('hex').slice(0, 4), 16) % 1000);
@@ -33,6 +35,7 @@ const previewStarter = async ({ project, workspace }) => {
   await new Promise((resolve, reject) => {
     let output = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error('Preview server did not become ready.')); }, 15000);
+    /** Captures bounded preview process output for status reporting. */
     const collect = (data) => { output = (output + data).slice(-4000); if (/Ready in/.test(output)) { clearTimeout(timer); resolve(); } };
     child.stdout.on('data', collect); child.stderr.on('data', collect);
     child.once('error', (error) => { clearTimeout(timer); reject(error); });
@@ -40,14 +43,18 @@ const previewStarter = async ({ project, workspace }) => {
   });
   return { state: 'running', target };
 };
+/** Stops the active preview children during engine shutdown. */
 function stopPreviews() {
   for (const { child } of previews.values()) if (child && !child.killed) child.kill();
   previews.clear();
 }
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { stopPreviews(); process.exit(0); });
 const store = await new SeaxneatStore({ root: dataDirectory, previewStarter }).initialize();
+/** Sends the route result with its selected status and response headers. */
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
+/** Reads and validates a bounded JSON request body. */
 async function body(request) { let raw = ''; for await (const chunk of request) { raw += chunk; if (raw.length > 200_000) throw new Error('Request too large.'); } try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); } }
+/** Streams the preview response through the sandboxed mount. */
 function proxyPreview(request, response, target, relative, search, mountPrefix) {
   const upstream = previewTarget(target); upstream.pathname = relative === undefined ? mountPrefix : `${mountPrefix}${previewPath(relative)}`; upstream.search = search || '';
   const relay = http.request(upstream, { method: request.method, headers: { accept: request.headers.accept || '*/*' } }, (upstreamResponse) => {

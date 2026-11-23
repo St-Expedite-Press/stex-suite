@@ -1,7 +1,9 @@
+/** Seaxneat regression tests source that checks project summary behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { projectStatus, projectSummaries } from '../src/project-summary.mjs';
 
+/** Builds a synthetic project summary input for the selected status. */
 const project = (overrides) => ({ id: 'site', title: 'Site', ref: 'stex://seaxneat/project/site', updatedAt: '2026-11-04T00:00:00.000Z', status: 'ready', operation: { state: 'idle' }, ...overrides });
 
 test('maps store summaries to stex.projects.summary.v1', () => {

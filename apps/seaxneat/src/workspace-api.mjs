@@ -1,17 +1,21 @@
+/** Seaxneat website engine source that routes and validates website workspace requests. */
 // stex.seaxneat.workspace.v1; the engine owns validation, state and operations.
 export const workspaceVersion = 'stex.seaxneat.workspace.v1';
 const prefix = '/api/stex/workspace/v1';
 
+/** Constructs the versioned website workspace handler. */
 export function workspaceApi(store, { body, send }) {
   const busy = new Set();
   return async (request, response, url) => {
     const versioned = url.pathname === prefix || url.pathname.startsWith(`${prefix}/`);
     const pathname = versioned ? url.pathname.slice(prefix.length) : url.pathname.replace(/^\/api/, '');
+    /** Removes engine-private fields before returning workspace data. */
     const publicValue = (value) => {
       if (Array.isArray(value)) return value.map(publicValue);
       if (value?.ref && value.preview) return { ...value, preview: { state: value.preview.state, updatedAt: value.preview.updatedAt, path: `/seaxneat/api/projects/${value.id}/preview/` } };
       return value;
     };
+    /** Shapes the response for the current action. */
     const reply = (status, value) => send(response, status, versioned ? { schemaVersion: workspaceVersion, ...(status >= 400 ? value : { result: publicValue(value) }) } : value);
     const match = /^\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/(proposal|apply|dismiss|diff|restore|preview))?$/.exec(pathname);
     if (pathname !== '/projects' && !match) { reply(404, { code: 'NOT_FOUND', error: 'Unknown workspace route.' }); return; }

@@ -1,6 +1,8 @@
+/** Frige regression tests source that checks inference client behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import test from 'node:test';
-import { inferenceHealth, layoutFrom, requestPageRevision, requestScopeTurn } from '../src/inference-client.mjs';
+import { gatewaySettings, inferenceHealth, layoutFrom, requestPageRevision, requestScopeTurn } from '../src/inference-client.mjs';
 
 test('Frige alpha deterministic transport returns a labelled no-change response without a gateway', async () => {
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
@@ -16,9 +18,48 @@ test('Frige alpha deterministic transport returns a labelled no-change response 
   }
 });
 
+test('gateway redirects cannot forward Frige requests, including editorial content or the shared token', async (context) => {
+  let forwarded = 0;
+  const destination = createServer((request, response) => {
+    forwarded += 1;
+    request.resume();
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end('{"noChange":true}');
+  });
+  await new Promise((resolve) => destination.listen(0, '127.0.0.1', resolve));
+  context.after(() => destination.close());
+  const gateway = createServer((request, response) => {
+    request.resume();
+    response.writeHead(307, { location: `http://127.0.0.1:${destination.address().port}/` });
+    response.end();
+  });
+  await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+  context.after(() => gateway.close());
+  const settings = {
+    STEX_FRIGE_INFERENCE_MODE: 'gateway',
+    STEX_INFERENCE_URL: `http://127.0.0.1:${gateway.address().port}`,
+    STEX_INFERENCE_SHARED_SECRET: 'synthetic-test-token',
+  };
+  for (const [name, value] of Object.entries(settings)) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    context.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  const scope = await requestScopeTurn({ book: { id: 'fixture' }, scope: { id: 'book', kind: 'book' }, sources: [], graph: {}, turns: [], message: 'Synthetic request.' });
+  const page = await requestPageRevision({ book: {}, page: { source: 'Synthetic source.' }, turns: [], message: 'Synthetic request.' });
+  const health = await inferenceHealth();
+  const settingsReply = await gatewaySettings('GET', '/v1/agent-config');
+  assert.equal(forwarded, 0);
+  assert.equal(scope.availability, 'unavailable');
+  assert.equal(page.availability, 'unavailable');
+  assert.equal(health.state, 'gateway-unreachable');
+  assert.equal(settingsReply.status, 503);
+});
+
 test('the deterministic simulator proposes one labelled change only when asked, and never to the table of contents', async () => {
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
   process.env.STEX_FRIGE_INFERENCE_MODE = 'fake';
+  /** Encodes a synthetic inference turn for the tested contract. */
   const turn = (message, sources) => requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-fixture', kind: 'node', title: 'Piece', nodeIds: [] }, sources, graph: {}, turns: [], message });
   const programme = { nodeId: 'node-programme', title: 'Programme', kind: 'programme', relativePath: 'Programme.md', hash: 'h0', source: '# Programme\n' };
   const piece = { nodeId: 'node-piece', title: 'Piece', kind: 'poem', relativePath: '01/Piece.md', hash: 'h1', source: '# Piece\n\nA line.' };
@@ -42,6 +83,7 @@ test('the deterministic simulator proposes one labelled change only when asked, 
     const clipped = (await turn(`Simulate change: ${'𝄞'.repeat(300)}`, [piece])).changes[0].source;
     assert.equal(clipped, `# Piece\n\nA line.\n\n${'𝄞'.repeat(240)}\n`);
     // Layout requests shape a proposal; the engine validates every value.
+    /** Extracts the layout values asserted by the test. */
     const layoutOf = async (message) => (await turn(message, [piece])).layout;
     assert.deepEqual((await layoutOf('Simulate layout: 15pt / 18pt')).set, { fontSize: '15pt', leading: '18pt' });
     assert.deepEqual((await layoutOf('simulate layout: Recto OFF')).set, { opensRecto: false });
@@ -63,6 +105,7 @@ test('the deterministic simulator passes one anchored edit, quoted exactly, to t
   const previous = process.env.STEX_FRIGE_INFERENCE_MODE;
   process.env.STEX_FRIGE_INFERENCE_MODE = 'fake';
   context.after(() => { if (previous === undefined) delete process.env.STEX_FRIGE_INFERENCE_MODE; else process.env.STEX_FRIGE_INFERENCE_MODE = previous; });
+  /** Encodes a synthetic inference turn for the tested contract. */
   const turn = (message, sources) => requestScopeTurn({ book: { id: 'fixture', title: 'Fixture' }, scope: { id: 'node-fixture', kind: 'node', title: 'Piece', nodeIds: [] }, sources, graph: {}, turns: [], message });
   const programme = { nodeId: 'node-programme', title: 'Programme', kind: 'programme', relativePath: 'Programme.md', hash: 'h0', source: '# Programme\n' };
   const piece = { nodeId: 'node-piece', title: 'Piece', kind: 'poem', relativePath: '01/Piece.md', hash: 'h1', source: '# Piece\n\nA line.' };
@@ -83,7 +126,6 @@ test('the deterministic simulator passes one anchored edit, quoted exactly, to t
 });
 
 test('a gateway change may carry anchored edits instead of the whole text, and only known fields are kept', async (context) => {
-  const { createServer } = await import('node:http');
   const changes = [
     { nodeId: 'node-a', edits: [{ find: 'x', replace: 'y' }], summary: 'Edit.', extra: 'dropped' },
     { nodeId: 'node-b', source: 'Whole.' },
@@ -115,7 +157,6 @@ test('a gateway layout field is shaped and bounded before the engine sees it', (
 });
 
 test('a scope turn sends the outline, settings and approved contracts as separately labelled fields to the gateway', async (context) => {
-  const { createServer } = await import('node:http');
   let received = null;
   const gateway = createServer(async (request, response) => {
     let raw = ''; for await (const chunk of request) raw += chunk;

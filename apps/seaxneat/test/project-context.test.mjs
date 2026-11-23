@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks project context behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -7,10 +8,13 @@ import test from 'node:test';
 import { projectContext } from '../src/project-context.mjs';
 import { SeaxneatStore, defaultRunner } from '../src/project-store.mjs';
 
+/** Computes the content digest used by this contract. */
 const hash = (source) => createHash('sha256').update(source).digest('hex');
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context, buildsPass = true) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-seaxneat-context-'));
   context.after(() => rm(root, { recursive: true, force: true }));
+  /** Simulates a workspace subprocess for the owning test scenario. */
   const runner = async (command, args, cwd, options) => command === 'pnpm' || args.includes('pnpm')
     ? { ok: buildsPass, stdout: '', stderr: buildsPass ? '' : 'Synthetic build failure' }
     : defaultRunner(command, args, cwd, options);

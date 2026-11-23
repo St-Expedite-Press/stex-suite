@@ -55,9 +55,10 @@ file metadata only and never opens a manuscript.
 ## Approved project context and knowledge observations
 
 The workstation's **Discuss with Igor** link opens `/igor/new?project=…` in
-Pantheon. Igor presents source selection and exact text preview; nothing is
-offered until approval. Existing scoped Frige editorial threads and explicit
-proposal acceptance remain independent of that conversation.
+Pantheon. Select the sources, choose **Preview selected context**, then
+choose **Use this context** to enable sending with those approved revisions.
+The composer pauses while the selection is pending. Frige's editorial
+thread and proposal acceptance stay in the workstation.
 **Project knowledge** opens Graph with the current project selected. When
 knowledge is enabled, inspect its source revisions and accept the references
 explicitly; otherwise Graph explains that it is disabled.
@@ -81,6 +82,48 @@ Direct human-facing Obsidian integration is a required future milestone under
 the [Obsidian gate](../../docs/PLATFORM-TRANSITION.md#direct-obsidian-integration).
 The current metadata checkpoint and vault reader do not implement sync or
 authorize changes to a manuscript from a note.
+
+## Project passwords
+
+A host can give individual projects their own password, in addition to the
+platform sign-in. Set `STEX_FRIGE_ACCESS_FILE` to a Frige-owned file outside
+the books directory; unset means no project is protected. The file holds
+scrypt hashes, never passwords, and protecting a project never touches its
+manuscript. Manage passwords as the user Frige runs as, with the password on
+standard input:
+
+```bash
+printf %s "$PASSWORD" | STEX_FRIGE_ACCESS_FILE=<file> node src/project-password-cli.mjs set book <id>
+STEX_FRIGE_ACCESS_FILE=<file> node src/project-password-cli.mjs clear book <id>
+STEX_FRIGE_ACCESS_FILE=<file> node src/project-password-cli.mjs list
+```
+
+A protected project answers `403` with code `PROJECT_LOCKED` on every route
+that reads or changes it: the book API, project context
+(`/api/stex/context/v1`) and the legacy document routes. The workstation
+then shows a password prompt. `POST /api/stex/access/v1/unlock`
+`{kind, id, password}` sets a signed, `HttpOnly`, `SameSite=Strict` cookie
+for that project under Frige's mount, valid for twelve hours (`Secure`
+behind https). `POST /api/stex/access/v1/lock` forgets it. Attempts on a
+project run one at a time and are counted before the check; ten wrong
+passwords in fifteen minutes pause attempts for that project. Changing or
+clearing a password signs every browser out of the project, and setting a
+password again never revives an old unlock. Frige picks changes up without
+a restart. Listings still show the project's title, marked as password
+protected, and nothing else about it.
+
+Once `STEX_FRIGE_ACCESS_FILE` is set, a missing file refuses every project
+(`503`, `ACCESS_UNAVAILABLE`) rather than opening them; create it with
+`project-password-cli.mjs init`. The tool refuses to run as root, because a
+root-owned record would be unreadable to Frige.
+
+Igor's project context and the knowledge journal read Frige from the server
+and carry no browser cookie. A protected project is therefore unavailable to
+them; "Discuss with Igor" cannot attach it (Igor reports the source as
+unavailable). Legacy document routes reached through Pantheon's `/api/books`
+are outside the unlock cookie's path, so for a protected book they always
+refuse. Knowledge records and Igor conversations made before a password was
+set stay as they are.
 
 ## One-page compatibility contract
 
@@ -188,6 +231,8 @@ The conversation is a front end to Hermes through the server-side inference
 gateway (`stex-igor/services/inference`). The browser talks only to Frige; Frige talks
 only to that gateway; browser code receives neither Hermes nor provider
 credentials. A0 defaults to a deterministic no-change transport.
+To use an existing operator-approved gateway from the local workspace,
+follow the [gateway launch instructions](../../docs/DEVELOPER-GUIDE.md#connect-an-existing-inference-gateway).
 
 In a manuscript book, the conversation belongs to the selected scope: the
 whole book, a section, or a page each keep their own thread in

@@ -1,13 +1,24 @@
+/** Frige publishing engine source that serves the versioned settings, uploads and review compatibility API. */
 import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 // Frige owns the historical interview/document workflow. Pantheon only proxies.
-export function legacyBooksApi(booksDirectory) {
+/**
+ * Constructs the compatibility handler around Frige-owned book storage.
+ * `isProtected(id)` names password-protected books; their listing entry keeps
+ * only the title, so no author, description or manuscript size is shown.
+ */
+export function legacyBooksApi(booksDirectory, { isProtected = async () => false } = {}) {
+/** Normalizes an input to an allowed compatibility identifier. */
 function idFor(title) { const stem = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'book'; return `${stem}-${createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 6)}`; }
+/** Refuses an invalid book identifier before resolving storage. */
 function requireBookId(id) { if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id)) throw new Error('Invalid book id.'); return id; }
+/** Resolves the Frige-owned directory for a validated book identifier. */
 function bookRoot(id) { const root = path.resolve(booksDirectory, requireBookId(id)); if (!root.startsWith(`${booksDirectory}${path.sep}`)) throw new Error('Invalid book path.'); return root; }
+/** Validates a submitted compatibility setting. */
 function setting(source, name, fallback, maximum = 4000) { return String(source[name] || fallback).trim().slice(0, maximum); }
+/** Writes the supplied contents through a replacement in the same directory. */
 async function atomic(file, content) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
@@ -22,13 +33,19 @@ async function atomic(file, content) {
     }
   } finally { await rm(temporary, { force: true }).catch(() => {}); }
 }
+/** Checks whether the requested local path is accessible. */
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
+/** Reads optional text without requiring the file to exist. */
 async function textIfPresent(file) { try { return await readFile(file, 'utf8'); } catch { return ''; } }
+/** Sends the route result with its selected status and response headers. */
 function send(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
+/** Reads and validates a bounded JSON request body. */
 async function body(request) { let raw = ''; for await (const part of request) { raw += part; if (raw.length > 12_000_000) throw new Error('Request too large.'); } try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Request body must be JSON.'); } }
 
+/** Counts Markdown sources in the selected book. */
 async function markdownCount(root) {
   let total = 0;
+  /** Walks one directory during the Markdown count. */
   async function visit(current) {
     const entries = await readdir(current, { withFileTypes: true });
     await Promise.all(entries.map(async (entry) => { if (entry.isDirectory()) await visit(path.join(current, entry.name)); else if (entry.isFile() && entry.name.endsWith('.md')) total += 1; }));
@@ -37,6 +54,7 @@ async function markdownCount(root) {
   return total;
 }
 
+/** Reads the approved metadata used by one library entry. */
 async function bookSummary(id) {
   const root = bookRoot(id);
   const readme = await textIfPresent(path.join(root, 'README.md'));
@@ -46,10 +64,12 @@ async function bookSummary(id) {
   const manuscript = path.join(root, 'manuscript');
   const programme = await exists(path.join(manuscript, 'Programme.md'));
   const fallbackTitle = /^#\s+(.+)$/m.exec(readme)?.[1]?.trim() || id.replace(/-/g, ' ');
+  if (await isProtected(id)) return { id, title: settings?.identity?.title || fallbackTitle, author: '', description: 'Password protected', state: settings ? 'configured' : programme ? 'manuscript-detected' : 'folder-detected', manuscriptNodes: 0, programme, settingsTicket: Boolean(settings), locked: true };
   const fallbackDescription = readme.split(/\r?\n/).find((line) => line.trim() && !line.startsWith('#') && !line.startsWith('-'))?.trim().replaceAll('*', '') || 'Manuscript project';
   return { id, title: settings?.identity?.title || fallbackTitle, author: settings?.identity?.author || '', description: settings?.editorial?.intent || fallbackDescription, state: settings ? 'configured' : programme ? 'manuscript-detected' : 'folder-detected', manuscriptNodes: await markdownCount(manuscript), programme, settingsTicket: Boolean(settings) };
 }
 
+/** Lists the books available through the compatibility boundary. */
 async function books() {
   await mkdir(booksDirectory, { recursive: true });
   const entries = await readdir(booksDirectory, { withFileTypes: true });
@@ -57,6 +77,7 @@ async function books() {
   return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
 }
 
+/** Validates the accepted project setup values before creating a book. */
 function acceptedTicket(payload, id) {
   const input = payload.ticket || {};
   const title = setting(input, 'title', '', 140);
@@ -70,11 +91,13 @@ function acceptedTicket(payload, id) {
   };
 }
 
+/** Renders accepted setup values as a manuscript ticket. */
 function markdownTicket(settings) {
   const { identity, editorial, production, structure } = settings;
   return ['---', `title: "${identity.title.replaceAll('"', '\\"')}"`, `author: "${identity.author.replaceAll('"', '\\"')}"`, 'tags:', '  - frige', '  - settings-ticket', 'status: accepted', `accepted: ${settings.acceptedAt}`, '---', '', '# Global Settings Ticket', '', '> [!success] Accepted project brief', '> This ticket came from the Frige interview. It is the readable, editable brief for this book.', '', '## Identity', '', `- **Title:** ${identity.title}`, `- **Author:** ${identity.author}`, `- **Kind:** ${editorial.kind}`, '', '## Editorial intent', '', editorial.intent || '_To be developed in the manuscript conversation._', '', '## Production brief', '', `- **Route:** ${production.podProfile}`, `- **Format:** ${production.format}; ${production.binding}`, `- **Trim:** ${production.trimSize}`, `- **Interior:** ${production.interiorInk}, ${production.paperStock}, ${production.bleed}`, `- **Safe margin:** ${production.margins}`, `- **ISBN:** ${production.isbnPlan}`, `- **Proof:** ${production.proofPlan}`, `- **Cover finish:** ${production.coverFinish}`, '', '## Manuscript graph', '', `- **Source mode:** ${editorial.sourceMode}`, `- **Programme:** [[../${structure.programme.replace('.md', '')}|Programme]]`, `- **Notes:** [[../${structure.notesRoot}|Project notes]]`, `- **Compiled deliverables:** \`${structure.compiledRoot}/\``, '', '> [!note] Assembly boundary', '> Reading order belongs to the Programme, not folder order. Manuscript, notes, and compiled deliverables are reconciled deliberately.', ''].join('\n');
 }
 
+/** Creates a book scaffold from a verified request. */
 async function createBook(payload) {
   const id = idFor(setting(payload.ticket || {}, 'title', 'book', 140));
   const root = bookRoot(id); const settings = acceptedTicket(payload, id);
@@ -96,6 +119,7 @@ async function createBook(payload) {
 const documentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const directlyReadableExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
 
+/** Resolves an attachment location within the selected book. */
 function documentPath(id, name) {
   const supplied = String(name || '');
   const base = path.basename(supplied);
@@ -105,6 +129,7 @@ function documentPath(id, name) {
   return { extension, safeName };
 }
 
+/** Reads attachment records for the selected book. */
 async function documentManifest(root) {
   try {
     const value = JSON.parse(await readFile(path.join(root, '.texgraph', 'documents.json'), 'utf8'));
@@ -112,6 +137,7 @@ async function documentManifest(root) {
   } catch { return []; }
 }
 
+/** Persists allowed attachments and updates their review metadata. */
 async function addDocuments(id, payload) {
   const root = bookRoot(id);
   if (!(await exists(root))) throw new Error('Book not found.');
@@ -143,6 +169,7 @@ async function addDocuments(id, payload) {
   return created;
 }
 
+/** Changes a pending document to its approved review state. */
 async function reviewDocument(id, documentId, payload) {
   const root = bookRoot(id); const manifest = await documentManifest(root); const document = manifest.find((entry) => entry.id === documentId);
   if (!document) throw new Error('Document not found.');

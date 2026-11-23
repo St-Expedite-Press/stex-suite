@@ -1,3 +1,4 @@
+/** Pantheon publishing workspace source that calculates line-preserving changes and context for proposal review. */
 // Line-level difference used to review proposed manuscript changes.
 //
 // Rows are { type: 'same' | 'add' | 'del', text, left?, right? }: `left` is the
@@ -35,8 +36,11 @@ export function diffRows(before, after) {
 
   /** @type {DiffLine[]} */
   const rows = [];
+  /** Records an unchanged line with both source line numbers. */
   const same = (i, j) => rows.push({ type: 'same', text: left[i], left: i + 1, right: j + 1 });
+  /** Records a removed source line. */
   const del = (i) => rows.push({ type: 'del', text: left[i], left: i + 1 });
+  /** Records an inserted source line. */
   const add = (j) => rows.push({ type: 'add', text: right[j], right: j + 1 });
 
   /**
@@ -90,6 +94,7 @@ export function diffRows(before, after) {
   const uniqueAnchors = (lo1, hi1, lo2, hi2) => {
     /** @type {Map<string, { count1: number, count2: number, at1: number, at2: number }>} */
     const seen = new Map();
+    /** Accumulates candidate anchor locations for one line. */
     const entry = (text) => { let found = seen.get(text); if (!found) { found = { count1: 0, count2: 0, at1: -1, at2: -1 }; seen.set(text, found); } return found; };
     for (let i = lo1; i < hi1; i += 1) { const found = entry(left[i]); found.count1 += 1; found.at1 = i; }
     for (let j = lo2; j < hi2; j += 1) { const found = entry(right[j]); found.count2 += 1; found.at2 = j; }
@@ -163,6 +168,7 @@ export function lineDiff(before, after, context = 2) {
  */
 export function lineEndingsDiffer(before, after, rows) {
   // Splitting with a capture keeps each separator at an odd index: line k ends with parts[2k + 1].
+  /** Extracts the sequence of line-ending conventions. */
   const endings = (text) => String(text).split(/(\r\n|\r|\n)/).filter((_, index) => index % 2 === 1);
   const [was, will] = [endings(before), endings(after)];
   return rows.some((row) => row.type === 'same' && (was[row.left - 1] ?? '') !== (will[row.right - 1] ?? ''));
@@ -179,6 +185,7 @@ export function lineEndingsDiffer(before, after, rows) {
  */
 export function hunkLabel(hunk) {
   // Rows are in source order, so each side's numbers ascend: the first and last bound the run.
+  /** Formats the inclusive line span when present. */
   const span = (numbers) => {
     if (!numbers.length) return null;
     const [first, last] = [numbers[0], numbers.at(-1)];
@@ -186,6 +193,7 @@ export function hunkLabel(hunk) {
   };
   const was = span(hunk.filter((row) => row.left !== undefined).map((row) => row.left));
   const will = span(hunk.filter((row) => row.right !== undefined).map((row) => row.right));
+  /** Collects the visible line numbers for the hunk. */
   const lines = (range) => `${range.includes('–') ? 'Lines' : 'Line'} ${range}`;
   if (!was) return `New ${lines(will).toLowerCase()}`;
   if (!will) return `${lines(was)}, removed`;
@@ -203,6 +211,7 @@ export function diffHunks(rows) {
   const result = [];
   /** @type {DiffLine[]} */
   let current = [];
+  /** Saves the current group of changes before starting the next one. */
   const close = () => { if (current.length) result.push({ type: 'hunk', label: hunkLabel(current), rows: current }); current = []; };
   for (const row of rows) {
     if (row.type === 'skip') { close(); result.push(row); } else current.push(row);

@@ -1,9 +1,10 @@
+/** Suite acceptance source that exercises opt-in consent, provenance and lifecycle in the browser. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { repositoryRoot } from './assets/manifest.mjs';
+import { repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 const out = outDirectoryFromArgs('stex-knowledge-verification');
@@ -14,18 +15,23 @@ const source = '# Knowledge fixture\n\n  A synthetic source — exact Unicode.\n
 await writeFile(path.join(manuscript, 'Source.md'), source);
 await writeFile(path.join(manuscript, 'Programme.md'), '# Programme\n\n- [Source](Source.md)\n');
 const base = 'http://127.0.0.1:4442'; const reference = 'stex://frige/project/fixture-book';
+/** Reads the current source and metadata for a selected graph node. */
 const node = (dir, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, dir), windowsHide: true, env: { ...process.env, ...env } });
 const children = [];
+/** Starts Pantheon with disposable roots and waits for readiness. */
 const startPantheon = () => node('apps/pantheon', { STEX_PANTHEON_PORT: '4442', STEX_FRIGE_URL: 'http://127.0.0.1:4441', STEX_KNOWLEDGE_DATA_DIR: path.join(data, 'knowledge') });
 children.push(node('apps/frige', { STEX_FRIGE_PORT: '4441', STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_FRIGE_PROJECT_DIR: path.join(data, 'default'), STEX_PANTHEON_URL: base }));
 children.push(startPantheon());
 const report = { workflow: [], viewports: [], limits: ['Chrome only; synthetic local sources; no inference or provider calls'] };
 let browser;
+/** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api(route = '', body) { const response = await fetch(base + '/api/knowledge/v1' + route, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, value: await response.json() }; }
 try {
   await Promise.all(children.map((child) => started(child, /ready/i, 'Knowledge stack')));
   browser = await launchBrowser(); const tab = await page(browser.devtools);
+  /** Waits for the named UI or HTTP observation before asserting it. */
   const wait = async (expression) => { for (let i = 0; i < 150; i++) { if (await tab.evaluate(`Boolean(${expression})`).catch(() => false)) return; await new Promise((r) => setTimeout(r, 50)); } throw Error('Timed out: ' + expression); };
+  /** Activates a visible control by its label. */
   const clickText = (text) => tab.evaluate(`[...document.querySelectorAll('button')].find(node => node.textContent === ${JSON.stringify(text)}).click()`);
   await tab.go(base + '/graph/'); await wait(`document.querySelector('[name="project"]')`);
   await tab.evaluate(`document.querySelector('[name="project"]').value = ${JSON.stringify(reference)}; document.querySelector('[name="project"]').form.requestSubmit()`);

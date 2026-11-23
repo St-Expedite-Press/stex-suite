@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks project store behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -5,11 +6,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { SeaxneatStore, defaultRunner } from '../src/project-store.mjs';
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-seaxneat-'));
   context.after(async () => rm(root, { recursive: true, force: true }));
+  /** Simulates a workspace subprocess for the owning test scenario. */
   const runner = async (command, args, cwd) => (command === 'pnpm' || args?.includes('pnpm')) ? { ok: true, stdout: `${args.join(' ')} accepted by fixture`, stderr: '' } : defaultRunner(command, args, cwd);
-  return new SeaxneatStore({ root, runner, clock: () => '2026-11-04T00:00:00.000Z' }).initialize();
+  return new SeaxneatStore({ root, runner, /** Returns a deterministic timestamp for the test. */ clock: () => '2026-11-04T00:00:00.000Z' }).initialize();
 }
 
 test('creates an isolated Git-backed Next.js starter and stable reference', async (context) => {

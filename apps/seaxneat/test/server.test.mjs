@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks server behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';

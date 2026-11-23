@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks project store vault behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -10,6 +11,7 @@ import { parseManuscript } from '../src/document/parser.mjs';
 
 const hasLuaLaTeX = spawnSync('lualatex', ['--version'], { windowsHide: true }).status === 0;
 
+/** Creates an isolated project vault containing synthetic manuscript data. */
 async function vault() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-vault-')); await mkdir(path.join(root, 'manuscript', '02'), { recursive: true }); await mkdir(path.join(root, 'manuscript', '01'), { recursive: true });
   await writeFile(path.join(root, 'manuscript', 'Programme.md'), '# Programme\n\n- [Second](02/Second.md)\n- [First](01/First.md)\n- [Missing](03/Missing.md)\n');
@@ -88,6 +90,7 @@ test('stages only a current verified proof for the live-build adapter', async (c
   const { root, store } = await vault(); context.after(() => rm(root, { recursive: true, force: true }));
   const graph = await store.graph(); const scope = await store.scope(graph.readingOrder[0]); const assembled = await assembleBook(store, { scopeId: scope.id });
   await writeFile(store.previewPath(), '%PDF-test');
+  /** Constructs or reads the proof evidence needed by the test. */
   const proof = (verified, includedNodeIds = assembled.includedNodeIds) => store.recordBuild({ ok: true, targetScope: scope, includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap: { schemaVersion: 3, pagination: { verified } }, log: 'proof' });
   await proof(false);
   await assert.rejects(() => store.queueLiveBuild(scope.id), { code: 'PAGINATION_UNVERIFIED' });
@@ -211,7 +214,9 @@ test('isolated proof page maps follow book pages, so a proof that starts on a ve
 });
 test('a section typeset alone reproduces its book pages and footnote numbers', { skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-isolated-')); context.after(() => rm(root, { recursive: true, force: true }));
+  /** Creates a synthetic note for the selected source. */
   const note = (name) => `\n\n### Editorial Includability\n\n**${name} — 5/10**\n\n> A note.\n`;
+  /** Returns the test's stanza source while preserving line breaks. */
   const stanzas = (count, label) => Array.from({ length: count }, (_, stanza) => Array.from({ length: 4 }, (_, line) => `${label} ${stanza + 1}.${line + 1}`).join('\n')).join('\n\n');
   const files = {
     '01_A/00_Section_Note.md': '# A\n',
@@ -234,6 +239,7 @@ test('a section typeset alone reproduces its book pages and footnote numbers', {
   const alone = result.pageMap;
   assert.equal(alone.mode, 'isolated'); assert.equal(alone.pagination.verified, true, alone.pagination.warnings.join('\n'));
   assert.deepEqual(alone.numbering, { startPage: book.nodes.find((entry) => entry.nodeId === sectionB.nodeIds[0]).firstPage, basis: 'book-proof', footnotes: 2 });
+  /** Reads the compiler or fixture page mapping for the selected unit. */
   const pagesOf = (map) => map.nodes.filter((entry) => sectionB.nodeIds.includes(entry.nodeId)).map((entry) => [entry.firstBookPage ?? entry.firstPage, entry.lastBookPage ?? entry.lastPage, entry.firstFolio]);
   assert.deepEqual(pagesOf(alone), pagesOf(book), 'the section alone lands on the same book pages and folios');
   assert.equal(alone.pagination.physicalPageCount, book.nodes.find((entry) => entry.nodeId === sectionB.nodeIds.at(-1)).lastPage - alone.numbering.startPage + 1);
@@ -328,6 +334,7 @@ async function cycleBook(context) {
   await writeFile(path.join(root, 'manuscript', '01_Cycle', 'Alpha.md'), '# Alpha\n\nOne.\n');
   await writeFile(path.join(root, 'manuscript', '01_Cycle', 'Beta.md'), '# Beta\n\nTwo.\n');
   await writeFile(path.join(root, 'manuscript', '02_End', 'End.md'), '# End\n\nThree.\n');
+  /** Builds the link programme used to test cyclic references. */
   const programme = (first) => `- [x](01_Cycle/${first}.md)\n- [x](01_Cycle/Beta.md)\n- [x](02_End/End.md)\n`;
   await writeFile(path.join(root, 'manuscript', 'Programme.md'), programme('Alpha'));
   const store = new ProjectStore(root); await store.initialize();

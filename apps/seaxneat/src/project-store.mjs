@@ -1,3 +1,4 @@
+/** Seaxneat website engine source for workspaces, Git revisions, validated builds and previews. */
 import { createHash, randomUUID } from 'node:crypto';
 import { access, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { execFile as execFileCallback, spawn as spawnProcess } from 'node:child_process';
@@ -11,20 +12,25 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const MAX_COMMAND_OUTPUT = 160_000;
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
+/** Returns the timestamp used to record the selected workspace operation. */
 const now = () => new Date().toISOString();
+/** Computes a stable content digest for the record being verified. */
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 
+/** Converts a project title into a supported identifier segment. */
 function slug(value) {
   const result = String(value || 'website').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 44);
   return result || 'website';
 }
 
+/** Validates the displayed website project title. */
 function cleanTitle(value) {
   const title = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 120);
   if (!title) throw new Error('A project title is required.');
   return title;
 }
 
+/** Derives a distinct workspace identifier from the selected title. */
 function projectId(value) {
   if (!PROJECT_ID.test(String(value || ''))) throw new Error('Invalid project id.');
   return value;
@@ -41,11 +47,13 @@ function projectId(value) {
  */
 const headingText = (value) => String(value).replace(/[<>{}]/g, '');
 
+/** Renders template source with the selected initial website content. */
 function sourceFor(title) {
   const heading = headingText(title);
   return `export default function Home() {\n  return (\n    <main>\n      <p>STEX / Seaxneat draft</p>\n      <h1>${heading}</h1>\n      <p>Nothing here is published. This local preview is a working draft.</p>\n    </main>\n  );\n}\n`;
 }
 
+/** Identifies the files copied into a new website workspace. */
 function templateFiles(title) {
   return {
     'next.config.ts': 'import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = { basePath: process.env.NEXT_BASE_PATH || "" };\nexport default nextConfig;\n',
@@ -57,6 +65,7 @@ function templateFiles(title) {
   };
 }
 
+/** Writes the supplied contents through a replacement in the same directory. */
 async function atomic(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
@@ -64,25 +73,35 @@ async function atomic(file, value) {
   await rename(temporary, file);
 }
 
+/** Checks whether the path needed for an engine operation exists. */
 async function present(file) { try { await access(file); return true; } catch { return false; } }
 
+/** Spawns a bounded workspace command with its allow-listed environment. */
 export function defaultRunner(command, args, cwd, { timeoutMs = 120_000, env } = {}) {
   return execFile(command, args, { cwd, timeout: timeoutMs, windowsHide: true, maxBuffer: MAX_COMMAND_OUTPUT, env: childEnvironment(env) }).then(({ stdout = '', stderr = '' }) => ({ ok: true, stdout: String(stdout).slice(-MAX_COMMAND_OUTPUT), stderr: String(stderr).slice(-MAX_COMMAND_OUTPUT) })).catch((error) => ({ ok: false, code: error.code ?? null, stdout: String(error.stdout || '').slice(-MAX_COMMAND_OUTPUT), stderr: String(error.stderr || error.message || '').slice(-MAX_COMMAND_OUTPUT) }));
 }
 
 export class SeaxneatStore {
+  /** Configures the root, process runner and clock for workspace operations. */
   constructor({ root, runner = defaultRunner, clock = now, previewStarter = null } = {}) {
     if (!root) throw new Error('A Seaxneat state directory is required.');
     this.root = path.resolve(root); this.runner = runner; this.clock = clock; this.previewStarter = previewStarter; this.state = { schemaVersion: 1, projects: [] };
   }
 
+  /** Resolves the state record for a validated website project. */
   stateFile() { return path.join(this.root, 'state.json'); }
+  /** Resolves the engine-owned projects root. */
   projectsDirectory() { return path.join(this.root, 'projects'); }
+  /** Resolves one project directory under the engine root. */
   projectDirectory(id) { return path.join(this.projectsDirectory(), projectId(id)); }
+  /** Resolves the source checkout for the selected website project. */
   workspace(id) { return path.join(this.projectDirectory(id), 'workspace'); }
+  /** Resolves the editable page in the project workspace. */
   pagePath(id) { return path.join(this.workspace(id), 'app', 'page.tsx'); }
+  /** Formats the stable project reference used across applications. */
   reference(project) { return `stex://seaxneat/project/${project.id}`; }
 
+  /** Prepares the store and loads or creates the required derived state. */
   async initialize() {
     await mkdir(this.projectsDirectory(), { recursive: true });
     if (await present(this.stateFile())) this.state = JSON.parse(await readFile(this.stateFile(), 'utf8'));
@@ -95,12 +114,18 @@ export class SeaxneatStore {
     return this;
   }
 
+  /** Persists the validated state for the current project. */
   async save() { await atomic(this.stateFile(), `${JSON.stringify(this.state, null, 2)}\n`); }
+  /** Lists website projects known to this engine. */
   list() { return this.state.projects.map((project) => this.summary(project)); }
+  /** Maps a website state record to the project list contract. */
   summary(project) { const { pendingProposal, revisions, messages, ...publicProject } = project; return { ...publicProject, ref: this.reference(project), revisions: revisions.map(({ id, kind, createdAt, sourceHash }) => ({ id, kind, createdAt, sourceHash })), revisionCount: revisions.length, messageCount: messages.length, hasPendingProposal: Boolean(pendingProposal) }; }
+  /** Loads one validated state record for a known project. */
   get(id) { const validId = projectId(id); const project = this.state.projects.find((entry) => entry.id === validId); if (!project) throw new Error('Project not found.'); return project; }
 
+  /** Invokes the configured runner in the selected project context. */
   async run(command, args, cwd, options) { return this.runner(command, args, cwd, options); }
+  /** Runs the selected package command inside the project workspace. */
   async pnpm(args, cwd, options) {
     // Windows Node installations expose Corepack as a .cmd file, which cannot
     // be launched through execFile. Its JavaScript entry is stable beside the
@@ -109,7 +134,9 @@ export class SeaxneatStore {
       ? this.run(process.execPath, [corepackEntry, 'pnpm', ...args], cwd, options)
       : this.run('corepack', ['pnpm', ...args], cwd, options);
   }
+  /** Runs the selected Git operation in the engine-managed workspace. */
   async git(args, cwd) { const result = await this.run('git', args, cwd, { timeoutMs: 30_000 }); if (!result.ok) throw Object.assign(new Error(result.stderr || `git ${args[0]} failed.`), { result }); return result; }
+  /** Records a successfully validated workspace revision in Git. */
   async commitRevision(project, message, kind) {
     const workspace = this.workspace(project.id);
     await this.git(['add', 'app/page.tsx'], workspace); await this.git(['commit', '-m', message], workspace);
@@ -119,6 +146,7 @@ export class SeaxneatStore {
     return revision;
   }
 
+  /** Creates the project, initializes its workspace and validates the first build. */
   async create(input) {
     const title = cleanTitle(input?.title); const id = `${slug(title)}-${createHash('sha256').update(`${title}:${this.clock()}:${Math.random()}`).digest('hex').slice(0, 6)}`;
     const workspace = this.workspace(id); await mkdir(workspace, { recursive: true });
@@ -136,6 +164,7 @@ export class SeaxneatStore {
     project.updatedAt = this.clock(); await this.save(); return this.summary(project);
   }
 
+  /** Records a bounded proposed source change for explicit review. */
   async proposal(id, input) {
     const project = this.get(id); const request = String(input?.message || '').trim().slice(0, 800);
     if (!request) throw new Error('An edit request is required.');
@@ -148,6 +177,7 @@ export class SeaxneatStore {
     project.pendingProposal = proposal; project.updatedAt = this.clock(); await this.save(); return proposal;
   }
 
+  /** Runs the package build for the selected workspace. */
   async build(project) {
     const workspace = this.workspace(project.id); project.operation = { state: 'running', kind: 'build', startedAt: this.clock(), updatedAt: this.clock() }; await this.save();
     const environment = workspaceEnvironment(project.id);
@@ -156,6 +186,7 @@ export class SeaxneatStore {
     project.operation = result.ok ? { state: 'idle', updatedAt: this.clock() } : { state: 'failed', kind: 'build', detail: (result.stderr || result.stdout || 'Build failed.').slice(-4000), updatedAt: this.clock() }; await this.save(); return result;
   }
 
+  /** Applies a pending proposal and restores the prior draft if build validation fails. */
   async apply(id, proposalId) {
     const project = this.get(id); const proposal = project.pendingProposal;
     if (!proposal || proposal.id !== proposalId) throw new Error('Pending proposal not found.');
@@ -166,9 +197,12 @@ export class SeaxneatStore {
     await this.commitRevision(project, `Apply simulated edit: ${proposal.request.slice(0, 72)}`, 'edit'); project.pendingProposal = null; project.updatedAt = this.clock(); await this.save(); return this.summary(project);
   }
 
+  /** Records the explicit decision to dismiss a pending proposal. */
   async dismiss(id, proposalId) { const project = this.get(id); if (!project.pendingProposal || project.pendingProposal.id !== proposalId) throw new Error('Pending proposal not found.'); project.pendingProposal = null; project.updatedAt = this.clock(); await this.save(); return this.summary(project); }
+  /** Returns the bounded source diff for a known revision. */
   async diff(id, revision) { const project = this.get(id); const target = project.revisions.find((entry) => entry.id === revision || entry.commit === revision); if (!target) throw new Error('Revision not found.'); return (await this.git(['diff', '--no-ext-diff', `${target.commit}..HEAD`, '--', 'app/page.tsx'], this.workspace(project.id))).stdout; }
 
+  /** Validates a prior source state and records it as a new revision. */
   async restore(id, revision) {
     const project = this.get(id); const target = project.revisions.find((entry) => entry.id === revision || entry.commit === revision); if (!target) throw new Error('Revision not found.'); const workspace = this.workspace(project.id);
     project.operation = { state: 'running', kind: 'restore', revision: target.id, startedAt: this.clock(), updatedAt: this.clock() }; await this.save();
@@ -177,6 +211,7 @@ export class SeaxneatStore {
     await this.commitRevision(project, `Restore validated revision ${target.id}`, 'restore'); project.updatedAt = this.clock(); await this.save(); return this.summary(project);
   }
 
+  /** Starts or reports the process serving the selected validated workspace. */
   async startPreview(id) {
     const project = this.get(id); if (!project.lastValidatedRevision) throw new Error('A validated build is required before previewing.');
     if (!this.previewStarter) return { state: 'not_started', target: null };

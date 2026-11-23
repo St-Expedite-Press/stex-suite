@@ -1,3 +1,4 @@
+/** Suite and Igor integration source that checks or refreshes private copies of suite-owned files. */
 // Keeps stex-igor's copies of suite-owned files identical to their sources:
 //   packages/design-system (tracked files)  ->  stex-igor/vendor/design-system
 //   apps/pantheon/public/media/masthead      ->  stex-igor/apps/igor/public/media/masthead
@@ -9,30 +10,32 @@
 // or extra file (part of `corepack pnpm test`); without it, the copies are
 // rewritten and must then be committed in stex-igor.
 //
-//   node scripts/sync-stex-igor.mjs [--check]
+//   node scripts/integration/sync-stex-igor.mjs [--check]
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const check = process.argv.includes('--check');
 const lfsPointer = Buffer.from('version https://git-lfs.github.com/spec/v1');
 const textExtensions = new Set(['.css', '.md', '.json', '.svg', '.txt', '.mjs', '.js', '.html']);
 
 const pairs = [
-  { source: 'packages/design-system', target: 'stex-igor/vendor/design-system', files: () => tracked('packages/design-system') },
-  { source: 'apps/pantheon/public/media/masthead', target: 'stex-igor/apps/igor/public/media/masthead', files: () => tracked('apps/pantheon/public/media/masthead') },
-  { source: 'apps/pantheon/public/media/splash', target: 'stex-igor/apps/igor/public/media/splash', files: () => tracked('apps/pantheon/public/media/splash') },
-  { source: 'apps/pantheon/public', target: 'stex-igor/apps/igor/public/splash', files: () => ['splash.css', 'motion.js'] },
-  { source: 'scripts', target: 'stex-igor/scripts', files: () => ['verify-instructions.mjs'], prune: false },
+  { source: 'packages/design-system', target: 'stex-igor/vendor/design-system', /** Selects the suite-owned inputs for this synchronization rule. */ files: () => tracked('packages/design-system') },
+  { source: 'apps/pantheon/public/media/masthead', target: 'stex-igor/apps/igor/public/media/masthead', /** Selects the suite-owned inputs for this synchronization rule. */ files: () => tracked('apps/pantheon/public/media/masthead') },
+  { source: 'apps/pantheon/public/media/splash', target: 'stex-igor/apps/igor/public/media/splash', /** Selects the suite-owned inputs for this synchronization rule. */ files: () => tracked('apps/pantheon/public/media/splash') },
+  { source: 'apps/pantheon/public', target: 'stex-igor/apps/igor/public/splash', /** Selects the suite-owned inputs for this synchronization rule. */ files: () => ['splash.css', 'motion.js'] },
+  { source: 'scripts', target: 'stex-igor/scripts', /** Selects the suite-owned inputs for this synchronization rule. */ files: () => ['verify-instructions.mjs'], prune: false },
 ];
 
+/** Lists Git-tracked entries relative to the canonical sync directory. */
 function tracked(directory) {
   return execFileSync('git', ['ls-files', '-z', directory], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean).map((file) => file.slice(directory.length + 1));
 }
 
+/** Walks a private destination to find entries that can drift from its source. */
 async function listFiles(directory, prefix = '') {
   let entries;
   try { entries = await readdir(directory, { withFileTypes: true }); } catch { return []; }
@@ -43,6 +46,7 @@ async function listFiles(directory, prefix = '') {
 }
 
 // Text compares without line-ending differences (Windows checkouts); binaries byte for byte.
+/** Normalizes text line endings for comparison while preserving binary bytes. */
 const comparable = (file, bytes) => (textExtensions.has(path.extname(file).toLowerCase()) ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n')) : bytes);
 
 if (!existsSync(path.join(root, 'stex-igor', 'package.json'))) {

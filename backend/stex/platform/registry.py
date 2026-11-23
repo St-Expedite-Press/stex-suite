@@ -30,6 +30,7 @@ class Registry(BaseModel):
     applications: tuple[Application, ...]
 
     def active_studios(self) -> tuple[Application, ...]:
+        """Select active studio entries in registry order."""
         return tuple(app for app in self.applications if app.kind == "studio" and app.state == "active")
 
 

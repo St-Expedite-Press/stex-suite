@@ -1,3 +1,5 @@
+/** Validates the preview destination before a proxy request. */
+/** Seaxneat website engine source that constrains preview destinations and mounted paths. */
 export function previewTarget(value) {
   if (typeof value !== 'string') throw new Error('Preview is not started.');
   let target;
@@ -6,6 +8,7 @@ export function previewTarget(value) {
   return target;
 }
 
+/** Resolves a mounted preview path without allowing traversal. */
 export function previewPath(value) {
   const supplied = String(value || '');
   if (supplied.includes('\\')) throw new Error('Invalid preview path.');

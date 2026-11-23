@@ -1,3 +1,4 @@
+/** Frige publishing engine source that validates and resolves inherited publishing layout. */
 import { createHash } from 'node:crypto';
 import { TRIM_SIZES } from './lualatex.mjs';
 import { escapeTeX } from './book-assembler.mjs';
@@ -20,21 +21,33 @@ export const DESIGN_DEFAULTS = Object.freeze({
 
 const LENGTH = /^(\d+(?:\.\d+)?)\s*(in|mm|cm|pt)$/i;
 const IN_POINTS = { in: 72.27, mm: 72.27 / 25.4, cm: 72.27 / 2.54, pt: 1 };
+/** Converts an accepted length into points. */
 const points = (value) => { const match = LENGTH.exec(String(value).trim()); return match ? Number(match[1]) * IN_POINTS[match[2].toLowerCase()] : NaN; };
+/** Validates a measurement against its allowed unit and range. */
 const length = (value) => { const match = LENGTH.exec(String(value ?? '').trim()); return match ? `${Number(match[1])}${match[2].toLowerCase()}` : null; };
 
 // Each rule returns { value } when valid, or { error }.
-const ok = (value) => ({ value }); const fail = (error) => ({ error });
+/** Wraps an accepted value in the local result shape. */
+const ok = (value) => ({ value }); /** Reports an invalid value using this boundary's failure shape. */ const fail = (error) => ({ error });
 const rules = {
+  /** Resolves the selected supported paper dimensions. */
   trimSize: (value) => (TRIM_SIZES.has(value) ? ok(value) : fail(`Trim size must be one of ${[...TRIM_SIZES.keys()].join(', ')}.`)),
+  /** Validates the requested body font. */
   bodyFont: (value) => (/^[A-Za-z0-9 .-]{1,120}$/.test(String(value ?? '').trim()) ? ok(String(value).trim()) : fail('The body font name may use letters, digits, spaces, dots and hyphens.')),
+  /** Validates the numeric body type size. */
   fontSize: (value) => { const size = length(value); return size?.endsWith('pt') && points(size) >= 8 && points(size) <= 18 ? ok(size) : fail('Body size must be between 8pt and 18pt.'); },
+  /** Validates the requested baseline spacing. */
   leading: (value) => { const lead = length(value); return lead?.endsWith('pt') && points(lead) >= 8 && points(lead) <= 30 ? ok(lead) : fail('Leading must be between 8pt and 30pt.'); },
+  /** Validates the running-head option. */
   runningHeads: (value) => (typeof value === 'boolean' ? ok(value) : fail('Running heads must be on or off.')),
+  /** Validates the page-numbering option. */
   folios: (value) => (typeof value === 'boolean' ? ok(value) : fail('Folios must be on or off.')),
+  /** Validates the section opening option. */
   rectoOpeners: (value) => (typeof value === 'boolean' ? ok(value) : fail('Recto openers must be on or off.')),
+  /** Validates a running-head title or its inherited selection. */
   headTitle: (value) => (typeof value === 'string' && value.trim().length <= 120 ? ok(value.trim()) : fail('The running-head title must be text of at most 120 characters.')),
 };
+/** Validates a margin before it is included in the page layout. */
 const margin = (side, value) => { const size = length(value); const pts = size ? points(size) : NaN; return pts >= 18 && pts <= 144.6 ? ok(size) : fail(`The ${side} margin must be between 0.25in and 2in.`); };
 
 // ---------------------------------------------------------------------------
@@ -90,6 +103,7 @@ function validateOverride(level, input) {
   const errors = []; const override = {};
   for (const key of Object.keys(input)) if (!OVERRIDE_KEYS[level].includes(key)) errors.push(`${key} cannot be set for a ${level === 'node' ? 'piece' : 'section'}.`);
   // An empty field counts as not set, so filling in only one of the pair says so plainly.
+  /** Copies a field after validating a supplied override. */
   const given = (key) => Object.hasOwn(input, key) && input[key] !== '' && input[key] !== null && input[key] !== undefined;
   if (given('fontSize') !== given('leading')) errors.push('Body size and leading are set together.');
   else if (given('fontSize')) {
@@ -137,6 +151,7 @@ function validateOverrides(level, input, { lenient }) {
  */
 function validateBook(input) {
   const errors = []; const design = { margins: {} };
+  /** Validates and collects a field from the submitted book settings. */
   const take = (result, assign) => (result.error ? errors.push(result.error) : assign(result.value));
   for (const [key, rule] of Object.entries(rules)) take(rule(input[key] ?? DESIGN_DEFAULTS[key]), (value) => { design[key] = value; });
   for (const side of ['top', 'bottom', 'inner', 'outer']) take(margin(side, input.margins?.[side] ?? DESIGN_DEFAULTS.margins[side]), (value) => { design.margins[side] = value; });
@@ -199,6 +214,7 @@ export function normalizeDesign(input) {
 export function resolveLayout(design, { sectionKey = null, nodeId = null } = {}) {
   const profile = normalizeDesign(design);
   // Own keys only: a folder named `constructor` must not find an inherited property.
+  /** Checks whether the narrower layout supplies its own override. */
   const own = (map, key) => (key && map && Object.hasOwn(map, key) ? map[key] : undefined);
   const section = own(profile.sections, sectionKey);
   const node = own(profile.nodes, nodeId);
@@ -209,15 +225,18 @@ export function resolveLayout(design, { sectionKey = null, nodeId = null } = {})
     headText: section?.headText ?? null,
   };
 }
+/** Hashes the canonical publishing design configuration. */
 export const designHash = (design) => createHash('sha256').update(JSON.stringify(normalizeDesign(design)), 'utf8').digest('hex').slice(0, 16);
 
 // The book document skeleton for a profile; the body replaces %TEXGRAPH-BODY%.
 // Fonts missing from the system fall back to Latin Modern and say so in the log.
+/** Builds the serializable publishing design and its inheritance records. */
 export function designDocument(design, { title = '' } = {}) {
   const profile = normalizeDesign(design);
   const [width, height] = TRIM_SIZES.get(profile.trimSize);
   const { top, bottom, inner, outer } = profile.margins;
   const classSize = points(profile.fontSize) < 10.5 ? '10pt' : points(profile.fontSize) < 11.5 ? '11pt' : '12pt';
+  /** Resolves the stored head-title choice for this configuration. */
   const head = (content) => (profile.runningHeads ? `\\hfil{\\footnotesize\\scshape ${content}}\\hfil` : '\\hfil');
   const foot = profile.folios ? '\\hfil{\\footnotesize\\thepage}\\hfil' : '\\hfil';
   title = profile.headTitle || title;

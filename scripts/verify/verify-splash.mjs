@@ -1,8 +1,9 @@
+/** Suite acceptance source that checks responsive artwork and entrance controls in the browser. */
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readManifest, repositoryRoot } from './assets/manifest.mjs';
+import { readManifest, repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser verification of the Pantheon splash. Drives an installed Chrome or
@@ -42,11 +43,16 @@ const measure = `(async () => {
   };
 })()`;
 
+/** Checks whether two geometry ranges overlap. */
 const intersects = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+/** Checks whether the outer rectangle includes the inner rectangle. */
 const contains = (rect, [x, y]) => x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3];
+/** Checks whether the tested rectangle touches the specified line segment. */
 const crossesSegment = (rect, [x1, y1, x2, y2]) => Array.from({ length: 201 }, (_, i) => [x1 + (x2 - x1) * i / 200, y1 + (y2 - y1) * i / 200]).some((point) => contains(rect, point));
+/** Measures what fraction of the target area overlaps the comparison rectangle. */
 const overlapShare = (rect, zone) => { const w = Math.max(0, Math.min(rect[2], zone[2]) - Math.max(rect[0], zone[0])); const h = Math.max(0, Math.min(rect[3], zone[3]) - Math.max(rect[1], zone[1])); return (w * h) / ((rect[2] - rect[0]) * (rect[3] - rect[1])); };
 
+/** Verifies its approved entrance layout and behavior at multiple viewports. */
 async function main() {
   const focal = (await readManifest()).assets.find((asset) => asset.id === 'P10').focal;
   const heads = { seatedHead: focal.gaze.slice(0, 2), celestialFace: focal.gaze.slice(2), reachingHand: focal.reachingHand };
@@ -55,6 +61,7 @@ async function main() {
   const server = spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, 'apps', 'pantheon'), env: { ...process.env, STEX_PANTHEON_PORT: String(port), STEX_FRIGE_BOOKS_DIR: books } });
   const failures = []; const report = { viewports: [], motion: {} };
   let browser;
+  /** Records a named acceptance assertion and fails the run if it fails. */
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   try {
     await started(server, /ready/, 'Pantheon');

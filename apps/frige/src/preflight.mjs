@@ -1,3 +1,4 @@
+/** Frige publishing engine source that checks proof currency, compiler findings and embedded fonts. */
 import { spawn } from 'node:child_process';
 import { TRIM_SIZES } from './lualatex.mjs';
 import { designHash } from './design-settings.mjs';
@@ -5,9 +6,11 @@ import { designHash } from './design-settings.mjs';
 // Findings from the complete compiler log, taken at build time because the stored
 // log is truncated. Overfull lines are attributed to pieces through the
 // "% texgraph-node:" markers in the generated document.
+/** Maps compiler messages to publishing preflight findings. */
 export function compilerFindings({ log, document, units = [] }) {
   const text = String(log || '');
   const starts = []; String(document || '').split('\n').forEach((line, index) => { const match = /^% texgraph-node:(\S+)/.exec(line); if (match) starts.push({ line: index + 1, nodeId: match[1] }); });
+  /** Resolves the manuscript node associated with a compiler page. */
   const nodeAt = (line) => [...starts].reverse().find((entry) => entry.line <= line)?.nodeId || null;
   const paths = new Map(units.map((unit) => [unit.nodeId, unit.sourcePath]));
   // Every overfull box counts. One in the output routine is a running head or folio;
@@ -28,6 +31,7 @@ export function compilerFindings({ log, document, units = [] }) {
 }
 
 // pdffonts (Poppler, also shipped with MiKTeX) when available; otherwise the check is unavailable.
+/** Reads embedded font information when the tool is available. */
 function pdffonts(file) {
   return new Promise((resolve) => {
     let output = ''; const child = spawn('pdffonts', [file], { windowsHide: true });
@@ -37,12 +41,14 @@ function pdffonts(file) {
   });
 }
 
+/** Checks an individual file or assertion and records its result. */
 const check = (id, title, status, detail, items = []) => ({ id, title, status, detail, items });
 
 // Deterministic checks of the proof on screen. They describe the proof; none of
 // them, alone or together, makes a book press-ready.
 // The reading-order pieces the proof's scope covers today: everything through the scope's
 // last piece for a book-order proof, only the scope's own pieces for an isolated one.
+/** Checks whether the currently selected source is included in the available proof. */
 function currentIncluded(graph, manifest) {
   const order = graph.readingOrder; const id = manifest.targetScope?.id;
   // A proof made under a section's earlier id still describes that section.
@@ -54,6 +60,7 @@ function currentIncluded(graph, manifest) {
   return manifest.mode === 'isolated' ? order.slice(order.indexOf(scope.nodeIds[0]), end) : order.slice(0, end);
 }
 
+/** Reports proof, source and font readiness findings. */
 export async function runPreflight({ manifest, pdfPath, pdfData, graph, currentDesign, currentHeadTitle }) {
   if (!manifest || manifest.schemaVersion < 3) return { checkedAt: new Date().toISOString(), proof: null, checks: [check('proof', 'Compiler-mapped proof', 'fail', 'There is no compiler-mapped proof. Typeset the book first.')] };
   const checks = [];

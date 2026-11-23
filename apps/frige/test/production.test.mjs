@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks production behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -51,7 +52,9 @@ test('preflight reports what a real proof gets wrong and never declares it press
   const manifest = JSON.parse(await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8'));
   assert.equal(manifest.designHash, designHash(await store.design()));
   assert.deepEqual(manifest.nodes.map((entry) => entry.firstFolio), ['1', '2'], 'folios come from the compiler');
+  /** Runs the preflight workflow for the selected test inputs. */
   const preflight = async () => runPreflight({ manifest, pdfPath: store.previewPath(), pdfData: await readFile(store.previewPath()), graph: await store.graph(), currentDesign: await store.design() });
+  /** Extracts the relevant status from the fixture response. */
   const status = (report) => Object.fromEntries(report.checks.map((entry) => [entry.id, entry.status]));
   const first = await preflight();
   assert.deepEqual({ ...status(first), embedding: undefined }, { 'source-map': 'pass', 'page-count': 'pass', geometry: 'pass', embedding: undefined, fonts: 'fail', glyphs: 'fail', overfull: 'warn', freshness: 'pass' });
@@ -75,6 +78,7 @@ test('preflight catches an overflowing running head and a table of contents chan
   const store = new ProjectStore(root); await store.initialize();
   await store.saveDesign({ runningHeads: true, headTitle: 'W'.repeat(120) });
   const result = await buildBook(store); assert.equal(result.ok, true, result.error);
+  /** Reads or constructs the report inspected in this scenario. */
   const report = async () => runPreflight({ manifest: result.pageMap, pdfPath: store.previewPath(), pdfData: await readFile(store.previewPath()), graph: await store.graph({ refresh: true }), currentDesign: await store.design(), currentHeadTitle: 'W'.repeat(120) });
   const overfull = (await report()).checks.find((entry) => entry.id === 'overfull');
   assert.equal(overfull.status, 'warn'); assert.match(overfull.items.join('|'), /running head or folio: \d+/);
@@ -117,6 +121,7 @@ test('the recto running head uses the section opener heading', async (context) =
 async function sectionedBook(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'frige-layout-')); context.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'manuscript', '01_A'), { recursive: true }); await mkdir(path.join(root, 'manuscript', '02_B'), { recursive: true });
+  /** Constructs a verse sample with controlled lines for the test. */
   const verse = (title) => `# ${title}\n\n${Array.from({ length: 30 }, (_, line) => `Line ${line + 1} of a synthetic piece called ${title}.`).join('\n')}\n`;
   for (const [folder, title] of [['01_A', 'Alpha'], ['01_A', 'Beta'], ['02_B', 'Gamma']]) await writeFile(path.join(root, 'manuscript', folder, `${title}.md`), verse(title));
   await writeFile(path.join(root, 'manuscript', 'Programme.md'), '- [Alpha](01_A/Alpha.md)\n- [Beta](01_A/Beta.md)\n- [Gamma](02_B/Gamma.md)\n');
@@ -166,10 +171,12 @@ test('the assembled document applies an override to its own pieces only and reco
   const { store, ids } = await sectionedBook(context);
   await store.saveDesign({ sections: { '01_A': { fontSize: '14pt', leading: '17pt', headText: 'Override & Head' } }, nodes: { [ids.Beta]: { fontSize: '9pt', leading: '11pt', opensRecto: true } } });
   const { document, units } = await assembleBook(store);
+  /** Selects the parsed unit associated with the expected source. */
   const unitOf = (title) => units.find((unit) => unit.nodeId === ids[title]);
   assert.deepEqual(unitOf('Alpha').layout, { fontSize: '14pt', leading: '17pt', sizeFrom: 'section', opensRecto: false });
   assert.deepEqual(unitOf('Beta').layout, { fontSize: '9pt', leading: '11pt', sizeFrom: 'element', opensRecto: true });
   assert.deepEqual(unitOf('Gamma').layout, { fontSize: '11pt', leading: '13.6pt', sizeFrom: 'book', opensRecto: false });
+  /** Builds an isolated source segment for the compiler fixture. */
   const chunk = (title) => { const start = document.indexOf(`% texgraph-node:${ids[title]}`); return document.slice(start, document.indexOf('\\clearpage', start)); };
   assert.match(chunk('Alpha'), /\\fontsize\{14pt\}\{17pt\}\\selectfont/); assert.match(chunk('Alpha'), /\\markright\{Override \\& Head\}/, 'the head text is escaped');
   assert.match(chunk('Beta'), /\\tgrecto/); assert.match(chunk('Beta'), /\\fontsize\{9pt\}\{11pt\}\\selectfont/);
@@ -209,6 +216,7 @@ test('a section setting reaches the first piece that prints, once for each run o
   const { store, ids } = await irregularBook(context);
   await store.saveDesign({ sections: { '01_A': { opensRecto: true, headText: 'HEAD' }, '02_B': { opensRecto: true } } });
   const { document, units } = await assembleBook(store);
+  /** Selects the parsed unit associated with the expected source. */
   const unitOf = (title) => units.find((unit) => unit.nodeId === ids[title]);
   assert.equal(unitOf('Real').layout.opensRecto, true, 'the note-only anchor does not swallow the section setting');
   assert.equal(unitOf('Empty').layout, undefined, 'a piece that prints nothing has no layout');
@@ -229,6 +237,7 @@ test('an unchanged override whose piece left the table of contents does not bloc
 
 test('a real proof follows the overrides: a larger section size spans more pages, and clearing it restores the book',{ skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
   const { store, ids } = await sectionedBook(context);
+  /** Reads the compiler or fixture page mapping for the selected unit. */
   const pagesOf = async () => {
     const build = await store.recordBuild(await buildBook(store));
     assert.equal(build.ok, true, build.error || build.log); assert.equal(build.pageMap.pagination.verified, true, build.pageMap.pagination.warnings.join(' '));

@@ -1,9 +1,10 @@
+/** Suite acceptance source that exercises website revisions and a running Next preview through Pantheon. */
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { repositoryRoot } from './assets/manifest.mjs';
+import { repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page } from './browser/devtools.mjs';
 
 // Real dev:alpha, disposable state, real Next builds, deterministic proposals.
@@ -11,27 +12,32 @@ const out = outDirectoryFromArgs('stex-platform-verification');
 const root = await mkdtemp(path.join(os.tmpdir(), 'stex-platform-'));
 await mkdir(path.join(root, 'books')); await mkdir(out, { recursive: true });
 const base = 'http://127.0.0.1:4540';
-const stack = spawn(process.execPath, ['scripts/dev-alpha.mjs'], { cwd: repositoryRoot, windowsHide: true, env: { ...process.env,
-  STEX_PANTHEON_PORT: '4540', STEX_FRIGE_PORT: '4541', SEAXNEAT_PORT: '4542', STEX_IGOR_PORT: '4543', STEX_INFERENCE_PORT: '8540',
-  STEX_FRIGE_PROJECT_DIR: path.join(root, 'local-book'), STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_SEAXNEAT_DATA_DIR: path.join(root, 'websites'), STEX_IGOR_DATA_DIR: path.join(root, 'conversations'),
-  NEXT_TELEMETRY_DISABLED: '1', STEX_IGOR_AUTH_MODE: 'local',
+const stack = spawn(process.execPath, ['scripts/dev/dev-alpha.mjs'], { cwd: repositoryRoot, windowsHide: true, env: { ...process.env,
+  STEX_PANTHEON_PORT: '4540', STEX_FRIGE_PORT: '4541', SEAXNEAT_PORT: '4542', STEX_IGOR_PORT: '4543', STEX_PLATFORM_PORT: '4544', STEX_INFERENCE_PORT: '8540',
+  STEX_FRIGE_PROJECT_DIR: path.join(root, 'local-book'), STEX_FRIGE_PROJECTS_DIR: path.join(root, 'projects'), STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_SEAXNEAT_DATA_DIR: path.join(root, 'websites'), STEX_IGOR_DATA_DIR: path.join(root, 'conversations'),
+  NEXT_TELEMETRY_DISABLED: '1', STEX_IGOR_AUTH_MODE: 'local', STEX_KNOWLEDGE_DATA_DIR: '',
 } });
 let output = ''; stack.stdout.on('data', (data) => { output = (output + data).slice(-16000); }); stack.stderr.on('data', (data) => { output = (output + data).slice(-16000); });
+/** Waits for the next polling interval. */
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Polls for an observable condition until its deadline. */
 async function until(check, label, timeout = 240_000) {
   const start = Date.now();
   while (Date.now() - start < timeout) { if (await check()) return; await delay(250); }
   throw new Error('Timed out: ' + label);
 }
 let browser;
-const report = { workflow: [], viewports: [], limits: ['Chrome/Edge only; no provider calls or production operations', 'Knowledge projections and Frige/Igor presentation migration remain planned'] };
+const report = { workflow: [], viewports: [], limits: ['Chrome/Edge only; no provider calls or production operations', 'Browser workflow covers the Seaxneat workspace and project discovery'] };
 try {
   await until(async () => fetch(base + '/seaxneat/api/stex/workspace/v1/projects').then((r) => r.ok).catch(() => false), 'dev:alpha startup', 60000);
   console.log('dev:alpha ready with disposable data');
   browser = await launchBrowser();
   const tab = await page(browser.devtools);
+  /** Waits for the website workspace to display the expected state. */
   const settle = (text) => until(() => tab.evaluate(`document.querySelector('.workspace-notice')?.textContent.includes(${JSON.stringify(text)})`), text);
+  /** Activates the matching page control. */
   const click = (text) => tab.evaluate(`(() => { const button = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)}); if (!button) throw new Error('Missing button'); button.click(); })()`);
+  /** Focuses a workspace input and enters text through DevTools. */
   const fill = async (selector, value) => { await tab.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`); await tab.send('Input.insertText', { text: value }); };
   await tab.go(base + '/workspaces/seaxneat/');
   await settle('');

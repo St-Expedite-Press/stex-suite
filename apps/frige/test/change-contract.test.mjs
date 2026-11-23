@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks change contract behavior with disposable fixtures. */
 /**
  * Change contracts (`stex.frige.change-contract.v1`): the record a proposal is
  * stored as, its history, and the rollback of an accepted change.
@@ -58,6 +59,7 @@ async function propose(store, nodeId, source, provenance = {}) {
   return changeSet;
 }
 
+/** Yields to the event loop between asynchronous test observations. */
 const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 test('line statistics count added and removed lines and ignore a trailing newline', () => {
@@ -86,6 +88,7 @@ test('a build proves a contract only when it typeset every accepted change at it
 
 test('a layout proof needs every affected piece still in the book, typeset under the resulting profile', () => {
   const record = { changes: [{ kind: 'set-layout', status: 'accepted', afterHash: 'profile-after', pieces: ['node-a', 'node-b'] }] };
+  /** Creates or compiles the build used in the current workflow. */
   const build = (sourceHashes, designHash = 'profile-after') => ({ ok: true, completedAt: '2026-01-01T00:00:00.000Z', targetScope: { id: 'book' }, sourceHashes, pageMap: { mode: 'prefix', designHash, pagination: { verified: true } } });
   assert.equal(proofFor(record, build({ 'node-a': 'x' })), null, 'one of the two pieces is not enough');
   assert.equal(proofFor(record, build({ 'node-a': 'x', 'node-b': 'y' }, 'profile-before')), null, 'the right pieces under another profile prove nothing');
@@ -177,6 +180,7 @@ test('rolling back an accepted change restores the exact prior bytes, hash and i
   const original = await readFile(firstFile); const before = await store.node(first);
   const contract = await propose(store, first, `${FIRST}\nAccepted.\n`);
   const scope = await store.scope(first);
+  /** Constructs the proof record for the specified test state. */
   const buildOf = (hash) => ({ ok: true, targetScope: scope, sourceHashes: { [first]: hash }, pageMap: { schemaVersion: 3, mode: 'prefix', pagination: { verified: true } }, log: '' });
 
   assert.deepEqual((await store.recordBuild(buildOf(contract.changes[0].afterHash))).provedContracts, [], 'a pending contract has nothing to prove');
@@ -295,6 +299,7 @@ async function twoPieceContract(context) {
   return { root, store, first, second, section, contract: changeSet };
 }
 
+/** Builds a synthetic proof record with the requested revision evidence. */
 const buildRecord = (scope, sourceHashes, pageMap = { schemaVersion: 3, mode: 'prefix', pagination: { verified: true } }) => ({ ok: true, targetScope: scope, sourceHashes, pageMap, log: '' });
 
 test('a proof recorded before a further piece is accepted is cleared, not kept for the new piece', async (context) => {
@@ -506,6 +511,7 @@ const SCHEMA_KEYWORDS = new Set(['$schema', '$id', 'title', 'description', 'type
  */
 function violations(schema, value, at = '$') {
   for (const keyword of Object.keys(schema)) assert.ok(SCHEMA_KEYWORDS.has(keyword), `the schema uses an unchecked keyword: ${keyword}`);
+  /** Classifies the fixture value for schema-check diagnostics. */
   const typeOf = (entry) => (entry === null ? 'null' : Array.isArray(entry) ? 'array' : Number.isInteger(entry) ? 'integer' : typeof entry);
   const found = [];
   // Exactly one alternative must hold; when none does, each alternative's first violation is reported.
@@ -538,6 +544,7 @@ function violations(schema, value, at = '$') {
 test('every state of a stored contract conforms to the published schema, and the schema rejects malformed records', async (context) => {
   const schema = JSON.parse(await readFile(new URL('../../../protocol/frige/change-contract.v1.schema.json', import.meta.url), 'utf8'));
   const { store, first, second, section, contract } = await twoPieceContract(context);
+  /** Asserts that the response follows the test's contract schema. */
   const conforms = async (label) => assert.deepEqual(violations(schema, await store.contract(contract.id)), [], label);
 
   await conforms('pending, with provenance defaults');
@@ -553,6 +560,7 @@ test('every state of a stored contract conforms to the published schema, and the
 
   // The check must be able to fail: each malformed record is refused for the stated reason.
   const record = await store.contract(contract.id);
+  /** Asserts that the operation is rejected and reports the expected cause. */
   const refused = (mutate) => { const copy = structuredClone(record); mutate(copy); return violations(schema, copy).join('\n'); };
   assert.match(refused((copy) => { copy.changes[0].status = 'applied'; }), /changes\[0\]\.status: not one of/);
   assert.match(refused((copy) => { delete copy.rollback; }), /missing rollback/);
@@ -596,6 +604,7 @@ test('a piece conversation proposes its own layout as a contract, accepted and r
   assert.deepEqual(applied.nodes, { [first]: { fontSize: '15pt', leading: '18pt' } }); assert.equal(designHash(applied), change.afterHash);
   const scope = await store.scope(first);
   const pieceHash = (await store.node(first)).hash;
+  /** Creates or compiles the build used in the current workflow. */
   const build = (profileHash, sourceHashes = { [first]: pieceHash }) => store.recordBuild({ ok: true, targetScope: scope, sourceHashes, pageMap: { schemaVersion: 3, mode: 'prefix', designHash: profileHash, pagination: { verified: true } }, log: '' });
   assert.deepEqual(change.pieces, [first], 'the override applies to this piece only');
   assert.deepEqual((await build(change.baseHash)).provedContracts, [], 'a build under the old profile proves nothing');
@@ -671,6 +680,7 @@ test('a section layout change is proved only by a build of all its pieces, and i
   assert.deepEqual([change.inherited.opensRecto, change.inherited.headText], [false, section.title], 'a section shows the recto rule and running head it would otherwise have');
   await store.decideChanges(section.id, contract.id, { decision: 'accept' });
   const scope = await store.scope(section.id);
+  /** Creates or compiles the build used in the current workflow. */
   const build = (sourceHashes) => store.recordBuild({ ok: true, targetScope: scope, sourceHashes, pageMap: { schemaVersion: 3, mode: 'isolated', designHash: change.afterHash, pagination: { verified: true } }, log: '' });
   assert.deepEqual((await build({ [second]: 'other' })).provedContracts, [], 'a build of another section under the same profile proves nothing');
   assert.deepEqual((await build(Object.fromEntries(section.nodeIds.map((id) => [id, 'typeset'])))).provedContracts, [contract.id]);
@@ -898,6 +908,7 @@ test('accepting three pieces with a failure on the second leaves all three uncha
 test('every scope is offered the outline, the settings in force and relevant approved contracts, with no manuscript text', async (context) => {
   const { store, first, second } = await syntheticBook(context);
   const graph = await store.graph({ refresh: true });
+  /** Selects the section data associated with the synthetic source. */
   const sectionOf = (id) => graph.book.sections.find((entry) => entry.nodeIds.includes(id));
   // A section override and three accepted changes at different levels.
   await store.saveDesign({ sections: { [sectionOf(first).folder]: { fontSize: '10pt', leading: '12pt' } } });
@@ -908,6 +919,7 @@ test('every scope is offered the outline, the settings in force and relevant app
   const rejected = await propose(store, first, `${FIRST}\nRejected.\n`);
   await store.decideChanges(first, rejected.id, { decision: 'reject' });
   const current = await store.graph({ refresh: true });
+  /** Resolves the expected scope in the test graph. */
   const scopeOf = async (id) => store.scope(id);
 
   for (const scopeId of ['book', sectionOf(first).id, first]) {
@@ -927,6 +939,7 @@ test('every scope is offered the outline, the settings in force and relevant app
   assert.deepEqual((await store.hierarchy(await scopeOf(sectionOf(first).id), current)).settings.scope, { level: 'section', fontSize: '10pt', leading: '12pt', sizeFrom: 'section', own: { fontSize: '10pt', leading: '12pt' } });
   assert.deepEqual((await store.hierarchy(await scopeOf(first), current)).settings.scope, { level: 'element', fontSize: '10pt', leading: '12pt', sizeFrom: 'section', own: null, section: { fontSize: '10pt', leading: '12pt' } });
   // Which accepted changes each level is shown.
+  /** Lists proposal records associated with a test scope. */
   const contractsFor = async (id) => (await store.hierarchy(await scopeOf(id), current)).contracts.entries.map((entry) => entry.contractId);
   assert.deepEqual(await contractsFor('book'), [], 'piece conversations are not book decisions');
   assert.deepEqual(await contractsFor(first), [inPiece.id], 'a piece sees the changes made to it');
@@ -963,6 +976,7 @@ test('outline pages come only from a proof that still matches the text, the prof
   const hashes = Object.fromEntries(graph.readingOrder.map((id) => [id, graph.nodes.find((node) => node.id === id).hash]));
   const pageMap = { schemaVersion: 3, mode: 'prefix', designHash: designHash(await store.design()), includedNodeIds: graph.readingOrder, sourceHashes: hashes, pagination: { verified: true }, nodes: [{ nodeId: first, firstPage: 1, lastPage: 1 }, { nodeId: second, firstPage: 2, lastPage: 3 }] };
   await store.saveReferenceMap(pageMap);
+  /** Returns the page data selected by the fixture. */
   const pages = async () => Object.fromEntries((await store.hierarchy(await store.scope('book'), await store.graph({ refresh: true }))).outline.entries.map((entry) => [entry.nodeId, entry.pages]));
   assert.deepEqual(await pages(), { [first]: { first: 1, last: 1 }, [second]: { first: 2, last: 3 } });
   await store.updateNode(first, `${FIRST}\nEdited since the proof.\n`, hashes[first]);
@@ -1036,6 +1050,7 @@ test('anchored edits resolve to exactly one span each, and any unusable edit ref
   // Adjacent spans do not overlap.
   assert.equal(applyEdits('ab', [{ find: 'a', replace: 'A' }, { find: 'b', replace: 'B' }]).source, 'AB');
 
+  /** Asserts that the operation is rejected and reports the expected cause. */
   const refused = (edits, pattern, text = base) => {
     const result = applyEdits(text, edits);
     assert.ok('reason' in result, `expected a refusal for ${JSON.stringify(edits)}`);
@@ -1147,6 +1162,7 @@ test('a localized edit to a long piece is proposed without the whole piece, and 
 test('an anchored edit that cannot be placed exactly proposes nothing and writes nothing', async (context) => {
   const { store, first, firstFile } = await syntheticBook(context);
   const { sources } = await store.scopeContext(first);
+  /** Exercises the operation against the selected fixture inputs. */
   const attempt = (change) => store.createChangeSet(first, { commentary: 'r', changes: [{ nodeId: first, ...change }] }, sources);
 
   for (const [change, pattern] of [
@@ -1224,6 +1240,7 @@ test('a selected passage resolves to the canonical bytes it covers, in the edito
   // A lone carriage return is one editor character too.
   assert.equal(resolvePassage('a\rb\nc', { start: 2, end: 3, text: 'b' }).text, 'b');
 
+  /** Asserts that the operation is rejected and reports the expected cause. */
   const refused = (selection, pattern) => { const result = resolvePassage(source, selection); assert.ok('reason' in result, JSON.stringify(selection)); assert.match(result.reason, pattern); };
   refused({ start: 3, end: 3, text: '' }, /no valid range/);
   refused({ start: -1, end: 2, text: 'ab' }, /no valid range/);
@@ -1274,6 +1291,7 @@ test('a turn about a selected passage may propose changes only inside it', async
   const base = sources.find((entry) => entry.nodeId === first).source;
   const passage = 'One line,';
   const bounds = { nodeId: first, start: base.indexOf(passage), end: base.indexOf(passage) + passage.length };
+  /** Submits a synthetic proposal for the test's selected source. */
   const propose = (proposal) => store.createChangeSet(section.id, { commentary: 'r', ...proposal, bounds }, sources);
 
   const inside = await propose({ changes: [{ nodeId: first, edits: [{ find: 'line', replace: 'verse' }] }] });

@@ -1,3 +1,4 @@
+/** Frige publishing engine source that assembles manuscript units for LuaLaTeX and reads compiler pagination. */
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,9 +11,11 @@ import { CONTROL_CHARACTERS, parseManuscript } from './document/parser.mjs';
 // Typographic spaces are authorial spacing; Latin Modern has no glyphs for them, so they become explicit space.
 const TEX_ESCAPES = { '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', $: '\\$', '#': '\\#', _: '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', ' ': '\\hspace{.5em}', ' ': '\\hspace{1em}', ' ': '\\thinspace{}' };
 // One pass, so the braces of an emitted \textbackslash{} are never escaped again.
+/** Escapes text characters that carry TeX syntax. */
 export const escapeTeX = (value) => String(value).replace(CONTROL_CHARACTERS, '').replace(/[\\&%$#_{}~^   ]/g, (character) => TEX_ESCAPES[character]);
 
 const INLINE = /\*\*(?=\S)(.+?)\*\*|\*(?=[^\s*])([^*]+?)\*|(?<![\p{L}\p{N}_])_(?=\S)([^_]+?)_(?![\p{L}\p{N}_])/gu;
+/** Converts supported inline manuscript emphasis to TeX. */
 export function inlineTeX(text) {
   let result = ''; let last = 0;
   for (const match of text.matchAll(INLINE)) {
@@ -25,12 +28,14 @@ export function inlineTeX(text) {
 }
 
 // All notes at one anchor form a single footnote, one paragraph per reviewer.
+/** Normalizes reviewed footnote content for the typesetting pass. */
 function footnoteText(notes) {
   return notes.map((note) => `\\textit{${inlineTeX(note.title)}.} ${note.entries.map((entry) => `${entry.label ? `\\textbf{${inlineTeX(entry.label)}.} ` : ''}${inlineTeX(entry.text)}`).join('\\par ')}`).join('\\par ');
 }
 
 // Each note is a footnote on the end of the text just before it; notes ahead of
 // any text attach to the first heading or line that follows.
+/** Associates a manuscript unit's notes with their source anchors. */
 function anchoredNotes(blocks) {
   const footnotes = new Map(); let pending = []; let anchor = null;
   for (const block of blocks) {
@@ -40,10 +45,13 @@ function anchoredNotes(blocks) {
   return footnotes;
 }
 // How many footnote numbers a node uses: one per anchor that carries notes.
+/** Counts note markers to support compiler pagination. */
 export const footnoteCount = (blocks) => [...anchoredNotes(blocks).values()].filter((notes) => notes.length).length;
 
+/** Renders manuscript text and anchored notes as TeX. */
 function manuscriptBody(blocks, kind) {
   const footnotes = anchoredNotes(blocks);
+  /** Inserts any footnote marks placed at the supplied source position. */
   const marks = (block) => (footnotes.get(block)?.length ? `\\footnote{${footnoteText(footnotes.get(block))}}` : '');
   const chunks = blocks.filter((block) => block.type !== 'note').map((block) => {
     // A heading argument cannot hold paragraphs, so it carries only the mark and the text follows it.
@@ -74,6 +82,7 @@ const COMPOSITION_MACROS = String.raw`\makeatletter
 // Book pagination for a scope typeset alone: where its first printed piece falls in
 // a book-order proof. Exact only if everything before it is unchanged since then.
 // Proofs made before design profiles existed used the default profile.
+/** Determines whether the unit starts a separate layout segment. */
 function isolatedStart(reference, preceding, firstNodeId, currentDesign) {
   const entry = reference?.nodes?.find((node) => node.nodeId === firstNodeId && node.firstPage);
   if (!entry) return { startPage: 1, basis: 'unknown' };
@@ -84,11 +93,13 @@ function isolatedStart(reference, preceding, firstNodeId, currentDesign) {
 }
 
 // The verso running head: the profile's title, else the settings ticket's, else the folder name.
+/** Resolves a running head through the publishing title settings. */
 export async function resolveHeadTitle(store, graph, design) {
   const ticket = await store.settingsTicket();
   return design.headTitle || ticket?.identity?.title || graph.book?.title || '';
 }
 
+/** Assembles selected source units and layout into a compiler document. */
 export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', reference = null } = {}) {
   const graph = await store.graph({ refresh: true });
   const allNodes = graph.readingOrder.map((id) => graph.nodes.find((node) => node.id === id)).filter(Boolean);
@@ -123,6 +134,7 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
     numbering = { ...isolatedStart(reference, preceding, firstPrinted?.id, designId), footnotes };
     sections.push(`\\setcounter{page}{${numbering.startPage}}\\setcounter{footnote}{${numbering.footnotes}}`);
   }
+  /** Resolves the owning section for a manuscript unit. */
   const sectionOf = (nodeId) => graph.book?.sections?.find((section) => section.nodeIds.includes(nodeId));
   let markedSection = null;
   for (const node of nodes) {
@@ -165,6 +177,7 @@ export async function assembleBook(store, { scopeId = 'book', mode = 'prefix', r
 
 // Builds the page map only from compiler output. Anything inconsistent is
 // reported and leaves the map unverified rather than guessed.
+/** Reconstructs verified page mappings from compiler records. */
 export function paginationFromCompiler({ marks, log, units, pageOffset = 0 }) {
   const warnings = []; const seen = new Map(); let shippedPages = null; const blanks = new Set();
   for (const line of String(marks || '').split(/\r?\n/)) {
@@ -223,9 +236,11 @@ export function paginationFromCompiler({ marks, log, units, pageOffset = 0 }) {
   return { pagination: { source: 'lualatex-shipout-markers', verified: !warnings.length && physicalPageCount > 0, physicalPageCount, warnings }, nodes, pages, spreads };
 }
 
+/** Invokes the compiler in the disposable or configured build directory. */
 function runLuaLaTex(directory) {
   return new Promise((resolve) => {
     let output = ''; let settled = false;
+    /** Completes a compiler invocation once and settles its captured output. */
     const finish = (result) => { if (!settled) { settled = true; resolve(result); } };
     const child = spawn('lualatex', ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-output-directory', directory, 'document.tex'], { cwd: directory, windowsHide: true });
     child.stdout.on('data', (chunk) => { output += chunk; }); child.stderr.on('data', (chunk) => { output += chunk; });
@@ -235,6 +250,7 @@ function runLuaLaTex(directory) {
   });
 }
 
+/** Compiles an assembled book and records compiler-derived proof metadata. */
 export async function buildBook(store, { scopeId = 'book', mode = 'prefix' } = {}) {
   const reference = mode === 'isolated' ? await store.referenceMap() : null;
   // The reference may be the current page map, which this proof is about to replace; keep it.

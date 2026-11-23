@@ -1,3 +1,4 @@
+/** Knowledge regression tests source that checks local adapter behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';

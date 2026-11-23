@@ -1,3 +1,5 @@
+"""Synthetic studio and transport fixtures for STEX platform tests."""
+
 from __future__ import annotations
 
 import json
@@ -17,6 +19,7 @@ PROTOCOL = REPOSITORY_ROOT / "protocol"
 
 
 def summary(application: str, *projects: dict[str, Any]) -> dict[str, Any]:
+    """Wrap synthetic project rows in the owning studio summary contract."""
     return {
         "schemaVersion": "stex.projects.summary.v1",
         "application": application,
@@ -27,6 +30,7 @@ def summary(application: str, *projects: dict[str, Any]) -> dict[str, Any]:
 def entry(
     identifier: str, updated_at: str | None = "2026-11-05T17:02:11.000Z", **overrides: Any
 ) -> dict[str, Any]:
+    """Construct a representative source project summary row."""
     value: dict[str, Any] = {
         "reference": f"stex://frige/project/{identifier}",
         "id": identifier,
@@ -44,10 +48,12 @@ class Studios:
     """A fake network keyed by origin; records every request it receives."""
 
     def __init__(self, routes: dict[str, Handler]) -> None:
+        """Record the configured request handlers and initialize their call log."""
         self.routes = routes
         self.requests: list[httpx2.Request] = []
 
     async def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        """Record a request and dispatch it to the selected synthetic studio."""
         self.requests.append(request)
         origin = f"{request.url.scheme}://{request.url.host}:{request.url.port}"
         handler = self.routes.get(origin)
@@ -57,10 +63,12 @@ class Studios:
         return result if isinstance(result, httpx2.Response) else await result
 
     def transport(self) -> httpx2.MockTransport:
+        """Build an HTTP client transport around the in-memory fixtures."""
         return httpx2.MockTransport(self)
 
 
 def json_reply(document: Any, status: int = 200) -> Handler:
+    """Return a fixture handler that responds with the selected JSON and status."""
     body = json.dumps(document).encode()
     return lambda _request: httpx2.Response(
         status, content=body, headers={"content-type": "application/json"}

@@ -76,7 +76,7 @@ book, in dependency order:
 | Increment | Objective | State |
 | --- | --- | --- |
 | F-A | Editorial workstation: navigation, editing, proposal review, usability. Planned as the owner's interface directive's five increments: UI-1 navigation and selection, UI-2 editorial review, UI-3 conversation integration, UI-4 proof and typography, UI-5 consolidation | Done: diff passages headed by line numbers ([evidence](../verification/frige-wave-f-anchored-edits.md)); UI-1 navigation, deep links and exact passage selection with contextual actions ([evidence](../verification/frige-ui-1-navigation-passages.md), [D-021](DECISIONS.md)). Next: UI-2 |
-| F-B | Long-form editing: anchored edits, multi-edit contracts, long-form context, a small vocabulary of editorial operations | Anchored edits done locally, stex-igor adapter on an unreleased branch; long-form context (B3) and operations (B4) not started |
+| F-B | Long-form editing: anchored edits, multi-edit contracts, long-form context, a small vocabulary of editorial operations | Anchored edits merged and the stex-igor adapter released; long-form context (B3) and operations (B4) not started |
 | F-C | Professional typography: profiles, inheritance, diagnostics, profile comparison | Not started |
 | F-D | Proofing and production: proof navigation, annotations, preflight, export | Not started |
 | F-E | Integration and reliability: Pantheon, Igor, data integrity, performance, independent review | Not started |

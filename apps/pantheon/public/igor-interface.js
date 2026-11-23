@@ -1,3 +1,4 @@
+/** Pantheon browser source that validates the composed Igor renderer descriptor in the browser. */
 // stex.igor.interface.v1: load the existing renderer over the owned HTTP boundary.
 // Pantheon imports no Igor modules/files and holds no conversation or secret.
 const root = document.querySelector('#root');
@@ -8,6 +9,7 @@ try {
     location.assign(`/igor/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   } else {
     if (!response.ok) throw new Error(descriptor.error || 'Igor is not available locally.');
+    /** Validates a composed renderer asset before using its URL. */
     const asset = (value, extension) => typeof value === 'string' && value.length <= 210 && new RegExp(`^/igor/assets/[A-Za-z0-9._-]+\\.${extension}$`).test(value);
     if (descriptor.schemaVersion !== 'stex.igor.interface.v1' || descriptor.policy !== 'igor-page.v1' || !asset(descriptor.entrypoint, 'js') || !Array.isArray(descriptor.styles) || !descriptor.styles.length || descriptor.styles.length > 8 || !descriptor.styles.every((file) => asset(file, 'css'))) throw new Error('Igor returned an incompatible interface.');
     await Promise.all(descriptor.styles.map((href) => new Promise((resolve, reject) => {

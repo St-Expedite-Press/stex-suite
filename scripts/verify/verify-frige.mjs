@@ -1,10 +1,11 @@
+/** Suite acceptance source that exercises editing, proposal review and a real compiler proof. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { repositoryRoot } from './assets/manifest.mjs';
+import { repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // P2: the mature publishing workstation rendered by Pantheon. Synthetic data only.
@@ -32,6 +33,7 @@ const stub = http.createServer(async (request, response) => {
   response.end(JSON.stringify({ commentary: 'Simulated editorial proposal for this synthetic fixture.', changes: [{ nodeId: source.nodeId, source: source.source + '\nA proposed synthetic line.\n', summary: 'Synthetic addition' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } }));
 });
 await new Promise((resolve) => stub.listen(4439, '127.0.0.1', resolve));
+/** Reads the current source and metadata for a selected graph node. */
 const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), windowsHide: true, env: { ...process.env, ...env } });
 const children = [
   node('apps/frige', { STEX_FRIGE_PORT: '4437', STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_FRIGE_PROJECT_DIR: path.join(root, 'default'), STEX_PANTHEON_URL: base, STEX_FRIGE_INFERENCE_MODE: 'stub', STEX_INFERENCE_URL: 'http://127.0.0.1:4439', STEX_INFERENCE_SHARED_SECRET: 'verification-only' }),
@@ -41,8 +43,11 @@ const report = { workflow: [], viewports: [], limits: ['Chrome only; synthetic f
 let browser;
 /** The page's evaluate, kept so a failure can record what the page showed. */
 let pageEvaluate = null;
+/** Waits for the next polling interval. */
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Polls for an observable condition until its deadline. */
 async function until(check, label, timeout = 45000) { const start = Date.now(); while (Date.now() - start < timeout) { if (await check()) return; await delay(100); } throw new Error('Timed out: ' + label); }
+/** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api(route, payload, method) {
   const response = await fetch(apiPrefix + route, { method: method || (payload ? 'POST' : 'GET'), headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) });
   const result = await response.json(); if (!response.ok) throw new Error(result.error); return result;
@@ -59,10 +64,13 @@ try {
     unexpectedDialogs.push(`${message.params.type}: ${message.params.message}`);
     tab.send('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
   });
+  /** Sets and dispatches a browser input value in the fixture. */
   const input = (selector, value) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.value = ${JSON.stringify(value)}; node.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  /** Activates the matching page control. */
   const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   // Evidence screenshots are taken at a desktop size, then the window returns to its own size so the steps that follow run as before.
   // `reveal` names an element to scroll into view after the resize, when the layout is final.
+  /** Records the evidence requested for the current viewport and step. */
   const capture = async (name, { reveal = null } = {}) => {
     await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -70,6 +78,7 @@ try {
     const shot = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(out, name), Buffer.from(shot.data, 'base64'));
     await tab.send('Emulation.clearDeviceMetricsOverride');
   };
+  /** Waits for the service to report ready before sending requests. */
   const ready = () => until(() => evaluate(`!!document.querySelector('#book-tree .tree-book') && document.querySelector('#conversation-title').textContent !== 'Choose a node'`), 'publishing workspace');
   await tab.go(base + '/frige/'); await until(() => evaluate(`!!document.querySelector('.project-list')`), 'library');
   assert.equal(await evaluate(`document.querySelectorAll('.masthead').length`), 1);
@@ -140,6 +149,7 @@ try {
   report.workflow.push('an anchored edit through the gateway reply is shown as its headed passage, accepted byte-exact and rolled back');
 
   // Interface increment 1: the open scope is in the address, survives a reload, and follows Back and Forward.
+  /** Reads the selected publishing scope from the browser URL. */
   const scopeParam = () => evaluate(`new URLSearchParams(location.search).get('scope')`);
   assert.equal(await scopeParam(), selected.id, 'opening a piece records it in the address');
   await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
@@ -187,6 +197,7 @@ try {
   await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await evaluate(`document.querySelector('.tree-book').focus()`);
   const treeRows = await evaluate(`[...document.querySelectorAll('#book-tree [data-tree-id]')].map(node => node.dataset.treeId)`);
+  /** Identifies the currently focused node in the publishing tree. */
   const focusedRow = () => evaluate(`document.activeElement.dataset.treeId || document.activeElement.id || document.activeElement.tagName`);
   await tab.key('ArrowDown', 'ArrowDown', 40);
   assert.equal(await focusedRow(), treeRows[1], 'ArrowDown moves to the next row');
@@ -198,6 +209,7 @@ try {
   // A real selection in the editor, revised through the passage bar: the chip shows exactly what is sent,
   // the proposal stays inside the passage, acceptance is byte-exact, and rollback restores the bytes.
   const phrase = 'indented and Unicode — kept as written.';
+  /** Selects the matching phrase for the passage workflow. */
   const selectPhrase = () => evaluate(`(() => { const area = document.querySelector('#source'); const at = area.value.indexOf(${JSON.stringify(phrase)}); area.focus(); area.setSelectionRange(at, at + ${phrase.length}); area.dispatchEvent(new Event('select')); })()`);
   await click('#show-source'); await selectPhrase();
   await until(() => evaluate(`!document.querySelector('#passage-bar').hidden`), 'passage bar for the selection');

@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks project context behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -6,6 +7,7 @@ import test from 'node:test';
 import { projectContext } from '../src/project-context.mjs';
 import { ProjectStore, sourceHash } from '../src/project-store-vault.mjs';
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context, source = '\uFEFF# Source\r\n\r\n  Καλημέρα — a line.\r\n\r\n\tAnother stanza.\r\n') {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-context-'));
   context.after(() => rm(root, { recursive: true, force: true }));

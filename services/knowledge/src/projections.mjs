@@ -1,3 +1,4 @@
+/** Knowledge library source that persists and rebuilds explicitly accepted knowledge metadata. */
 // stex.knowledge.projections.v1: derived provenance, never engine state.
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
@@ -6,21 +7,31 @@ import path from 'node:path';
 const SCHEMA = 'stex.knowledge.projections.v1';
 const MAX_EVENTS = 10000;
 const MAX_BYTES = 8_000_000;
+/** Reports an invalid value using this boundary's failure shape. */
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
+/** Returns detached knowledge data to protect the journal's in-memory state. */
 const copy = (value) => structuredClone(value);
+/** Computes a stable content digest for the record being verified. */
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** Checks whether text is bounded and safe for a metadata record. */
 const safeText = (value, max = 300) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+/** Computes the content digest used by this contract. */
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+/** Validates and normalizes an engine-owned project reference. */
 const projectRef = (value) => typeof value === 'string' && /^stex:\/\/(frige|seaxneat)\/project\/[a-z0-9][a-z0-9-]{0,62}$/.test(value);
+/** Validates a typed graph entity reference. */
 const entityRef = (value) => projectRef(value) || (typeof value === 'string' && /^stex:\/\/knowledge\/(concept|preference|commitment)\/[a-z0-9][a-z0-9-]{0,79}$/.test(value));
+/** Checks the accepted identifier syntax for journal records. */
 const validId = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$/.test(value);
 
+/** Validates the engine-owned source metadata retained in the journal. */
 function sourceMetadata(value, project) {
   if (!value || !/^[a-z][a-z0-9-]{0,80}$/.test(value.id || '') || value.reference !== `${project.reference}#source=${encodeURIComponent(value.id)}` || !hash(value.revision) || !safeText(value.title) || !Number.isSafeInteger(value.bytes) || value.bytes < 0 || !['text/plain', 'text/markdown', 'text/css'].includes(value.mediaType)) throw fail(400, 'INVALID_SOURCE', 'A source requires canonical identity, revision and provenance.');
   if (value.originRevision !== undefined && !/^[a-f0-9]{40,64}$/.test(value.originRevision)) throw fail(400, 'INVALID_SOURCE', 'The owner revision must be a Git object identity.');
   return { id: value.id, reference: value.reference, revision: value.revision, title: value.title, bytes: value.bytes, mediaType: value.mediaType, ...(value.originRevision ? { originRevision: value.originRevision } : {}) };
 }
 
+/** Validates one source revision event before recording it. */
 function revisionEvent(value) {
   if (!value || !validId(value.id) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || !safeText(value.occurredAt, 40) || !Number.isFinite(Date.parse(value.occurredAt)) || !projectRef(value.project?.reference) || !safeText(value.project.title) || !Array.isArray(value.sources) || value.sources.length > 50) throw fail(400, 'INVALID_EVENT', 'A revision event requires an owner identity, sequence, project and sources.');
   const match = /^stex:\/\/(frige|seaxneat)\/project\/(.+)$/.exec(value.project.reference);
@@ -31,6 +42,7 @@ function revisionEvent(value) {
   return { id: value.id, sequence: value.sequence, occurredAt: value.occurredAt, project, sources };
 }
 
+/** Validates a relationship and its source evidence metadata. */
 function relationRecord(value) {
   if (!value || !validId(value.id) || !['assertion', 'inference'].includes(value.kind) || !entityRef(value.subject) || !safeText(value.predicate, 120) || !safeText(value.object, 1000) || !Array.isArray(value.evidence) || value.evidence.length > 10) throw fail(400, 'INVALID_RELATION', 'A relationship requires an identity, kind, subject, predicate, object and evidence list.');
   const evidence = value.evidence.map((entry) => {
@@ -41,13 +53,17 @@ function relationRecord(value) {
   return { id: value.id, kind: value.kind, subject: value.subject, predicate: value.predicate, object: value.object, evidence, ...(value.kind === 'inference' ? { confidence: value.confidence } : {}), status: value.kind === 'assertion' ? 'accepted' : 'proposed' };
 }
 
+/** Creates the empty journal for the specified generation. */
 function initial(generation = randomUUID()) { return { schemaVersion: SCHEMA, generation, events: [] }; }
+/** Formats the journal generation and event count as its concurrency version. */
 function token(document) { return `${document.generation}:${document.events.length}`; }
+/** Determines whether an event can restore consent for the same source revision. */
 function renewsConsent(previous, identity, value) {
   return previous?.consent === false && previous.eventId === value.id && previous.sequence === value.sequence && identity === digest(value);
 }
 
 // Rebuilt from the accepted journal on each mutation; no second persisted database.
+/** Replays journal events into coordinated views. */
 export function rebuildKnowledge(document) {
   if (document?.schemaVersion !== SCHEMA || typeof document.generation !== 'string' || !/^[a-f0-9-]{36}$/.test(document.generation) || !Array.isArray(document.events) || document.events.length > MAX_EVENTS) throw fail(503, 'INVALID_JOURNAL', 'The knowledge journal is unreadable; it has been preserved.');
   const projects = new Map(); const relations = new Map(); const identities = new Map(); const keys = new Map();
@@ -85,6 +101,7 @@ export function rebuildKnowledge(document) {
   return { version: token(document), knowledge: { sources }, graph: { projects: [...projects.values()].map(({ sources, ...project }) => ({ ...project, sourceCount: sources.length })), relations: links }, keys, identities };
 }
 
+/** Persists the next journal revision through an atomic replacement. */
 async function atomicWrite(file, document) {
   const raw = `${JSON.stringify(document)}\n`;
   if (Buffer.byteLength(raw) > MAX_BYTES) throw fail(413, 'KNOWLEDGE_LIMIT', 'Export or delete knowledge before adding more journal data.');
@@ -102,9 +119,11 @@ async function atomicWrite(file, document) {
 /** A single local writer, with an advisory process lock and atomic journal. */
 export async function openKnowledge({ directory = '' } = {}) {
   if (!directory) {
+    /** Reports the disabled journal state or operation failure. */
     const unavailable = async () => { throw fail(503, 'KNOWLEDGE_DISABLED', 'Knowledge integration is disabled.'); };
+    /** Returns a detached view of the current projection or disabled state. */
     const view = () => ({ enabled: false, version: null, knowledge: { sources: [] }, graph: { projects: [], relations: [] } });
-    return { enabled: false, view, export: view, async close() {}, accept: unavailable, revoke: unavailable, relation: unavailable, revise: unavailable, erase: unavailable };
+    return { enabled: false, view, export: view, /** Closes the configured journal and releases any writer lock. */ async close() {}, accept: unavailable, revoke: unavailable, relation: unavailable, revise: unavailable, erase: unavailable };
   }
   const root = path.resolve(directory); await mkdir(root, { recursive: true });
   const file = path.join(root, 'knowledge.v1.json'); const lock = path.join(root, 'knowledge.lock');
@@ -129,6 +148,7 @@ export async function openKnowledge({ directory = '' } = {}) {
   }
   await lockHandle.writeFile(JSON.stringify({ pid: process.pid, nonce })); await lockHandle.close();
   let document; let closed = false; let closing = false; let queue = Promise.resolve();
+  /** Releases the writer lock for the selected journal. */
   const unlock = async () => { const value = JSON.parse(await readFile(lock, 'utf8')); if (value.nonce === nonce) await rm(lock); };
   try {
     let raw;
@@ -141,8 +161,11 @@ export async function openKnowledge({ directory = '' } = {}) {
     rebuildKnowledge(document);
   } catch (error) { await unlock(); throw error; }
 
+  /** Checks the caller's supplied version against the current journal revision. */
   const current = () => rebuildKnowledge(document);
+  /** Returns a detached view of the current projection or disabled state. */
   const view = () => { const { keys, identities, ...value } = current(); return copy({ enabled: true, ...value }); };
+  /** Commits the next journal state before exposing it to readers. */
   function write(body, kind, normalize, check = () => {}) {
     if (closed || closing) return Promise.reject(fail(503, 'KNOWLEDGE_CLOSED', 'The knowledge writer is closed.'));
     const operation = queue.then(async () => {
@@ -164,24 +187,30 @@ export async function openKnowledge({ directory = '' } = {}) {
   }
   return {
     enabled: true, view,
+    /** Records an explicitly approved source revision if the expected version matches. */
     accept(body) { return write(body, 'revision', (input) => revisionEvent(input.event), (value, state) => {
       const previous = state.graph.projects.find((project) => project.reference === value.project.reference);
       const renewal = renewsConsent(previous, state.identities.get(value.id), value);
       if (state.identities.has(value.id) && !renewal) throw fail(409, 'EVENT_CONFLICT', 'That engine event has already been accepted. Replay its original idempotency key.');
       if (previous && value.sequence <= previous.sequence && !renewal) throw fail(409, 'STALE_EVENT', 'An older engine event cannot replace newer context.');
     }); },
+    /** Records withdrawal of consent for the selected project. */
     revoke(body) { return write(body, 'revoke', (input) => { if (!projectRef(input.project)) throw fail(400, 'INVALID_REQUEST', 'Choose a known project reference.'); return input.project; }, (value, state) => { if (!state.graph.projects.some((project) => project.reference === value)) throw fail(404, 'NOT_FOUND', 'That knowledge project does not exist.'); }); },
+    /** Creates an explicit assertion or a reviewable inferred relationship. */
     relation(body) { return write(body, 'relation', (input) => relationRecord(input.relation), (value, state) => {
       if (state.graph.relations.some((relation) => relation.id === value.id)) throw fail(409, 'RELATION_CONFLICT', 'That relationship already exists.');
       const sources = new Map(state.knowledge.sources.map((source) => [source.reference, source.revision]));
       if (value.evidence.some((entry) => sources.get(entry.reference) !== entry.revision)) throw fail(409, 'STALE_EVIDENCE', 'Relationship evidence is no longer in the accepted projection.');
       if (projectRef(value.subject) && !state.graph.projects.some((project) => project.reference === value.subject && project.consent)) throw fail(409, 'STALE_EVIDENCE', 'The relationship project is not accepted.');
     }); },
+    /** Reviews an existing inferred relationship using the submitted decision and evidence. */
     revise(body) { return write(body, 'revise', (input) => {
       if (!validId(input.id) || !['accepted', 'rejected'].includes(input.status) || (input.object !== undefined && !safeText(input.object, 1000))) throw fail(400, 'INVALID_REQUEST', 'Provide the relationship id, status and optional corrected object.');
       return { id: input.id, status: input.status, ...(input.object === undefined ? {} : { object: input.object }) };
     }, (value, state) => { if (!state.graph.relations.some((relation) => relation.id === value.id)) throw fail(404, 'NOT_FOUND', 'That relationship does not exist.'); }); },
+    /** Returns a detached copy of the portable journal and its derived state. */
     export() { return copy({ ...view(), journal: document }); },
+    /** Replaces the journal with a new empty generation after authorization. */
     erase(body) {
       if (closed || closing) return Promise.reject(fail(503, 'KNOWLEDGE_CLOSED', 'The knowledge writer is closed.'));
       const operation = queue.then(async () => {
@@ -190,6 +219,7 @@ export async function openKnowledge({ directory = '' } = {}) {
         const next = initial(); await atomicWrite(file, next); document = next; return view();
       }); queue = operation.catch(() => {}); return operation;
     },
+    /** Closes the configured journal and releases any writer lock. */
     async close() { if (closed || closing) return; closing = true; await queue; closed = true; await unlock(); },
   };
 }

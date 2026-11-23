@@ -1,7 +1,9 @@
+/** Pantheon publishing workspace source that coordinates editorial navigation, proposals, design and proof views. */
 import { createProofViewer } from './proof-viewer.js';
 import { element, renderThread } from './thread.js';
-import { appUrl } from './base-path.js';
+import { appBase, appUrl } from './base-path.js';
 
+/** Selects the element with the supplied identifier. */
 const $ = (selector) => document.querySelector(selector);
 const book = new URLSearchParams(location.search).get('book');
 if (book) { const link = document.createElement('a'); link.className = 'quiet-button'; link.href = '/igor/new?project=' + encodeURIComponent('stex://frige/project/' + book); link.textContent = 'Discuss with Igor'; document.querySelector('.publishing-toolbar').append(link); }
@@ -9,8 +11,10 @@ if (book) { const link = document.createElement('a'); link.className = 'quiet-bu
 // `pending` counts undecided proposals per piece across the book (from the engine's contract history);
 // `passage` is the selected passage attached to the next message; `filter` narrows the book tree.
 const state = { drafts: new Map(), graph: null, node: null, scope: null, turns: [], changeSet: null, contracts: new Map(), thinking: false, notice: '', view: 'thread', sourceDirty: false, pageMap: null, referenceMap: null, design: null, designHash: null, defaultDesignHash: null, trimSizes: [], preflight: null, attachments: [], build: null, liveBuild: null, pending: new Map(), passage: null, filter: '', pendingScope: null };
+/** Resolves the editor endpoint inside the current workspace mount. */
 const apiUrl = (pathname) => `${appUrl(pathname)}${pathname.includes('?') ? '&' : '?'}book=${encodeURIComponent(book || '')}`;
 
+/** Calls the selected publishing endpoint and reports failures to the editor. */
 async function request(url, options = {}) {
   const response = await fetch(apiUrl(url), { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const payload = await response.json().catch(() => ({}));
@@ -18,11 +22,13 @@ async function request(url, options = {}) {
   return payload;
 }
 
+/** Lists the available editorial scopes from the graph. */
 function scopes() {
   const fallback = { id: 'book', kind: 'book', title: book?.replaceAll('-', ' ') || 'Book', nodeIds: state.graph.readingOrder, anchorNodeId: state.graph.readingOrder[0], buildThroughNodeId: state.graph.readingOrder.at(-1), sections: [] };
   const canonical = state.graph.book || fallback;
   return [canonical, ...(canonical.sections || [])];
 }
+/** Selects the requested editorial scope from the current graph. */
 function scopeFor(id) {
   // A section is also found by an earlier id (its `legacyIds`), as the engine resolves it.
   const found = scopes().find((scope) => scope.id === id) || scopes().find((scope) => scope.legacyIds?.includes(id));
@@ -32,17 +38,24 @@ function scopeFor(id) {
 }
 
 // Only a schema 3 page map carries pages reported by the compiler; older proofs are estimates.
+/** Returns the available compiler-derived page map. */
 const compiledMap = () => (state.pageMap?.schemaVersion >= 3 ? state.pageMap : null);
 // Book page numbers: an isolated proof's map carries them; a book-order proof's pages are book pages.
+/** Finds the first mapped book page. */
 const bookFirst = (entry) => entry.firstBookPage ?? entry.firstPage;
+/** Finds the last mapped book page. */
 const bookLast = (entry) => entry.lastBookPage ?? entry.lastPage;
+/** Formats the first and last relevant page as a readable range. */
 const pageRange = (entry) => (bookFirst(entry) === bookLast(entry) ? `p. ${bookFirst(entry)}` : `pp. ${bookFirst(entry)}–${bookLast(entry)}`);
+/** Retrieves the verified pages belonging to a source node. */
 const nodePages = (id) => compiledMap()?.nodes.find((entry) => entry.nodeId === id && entry.firstPage) || null;
 
 // Sections the author has opened in the book tree; the one holding the current selection always opens.
 const expanded = new Set();
+/** Selects the section data associated with the synthetic source. */
 const sectionOf = (nodeId) => state.graph.book?.sections?.find((section) => section.nodeIds.includes(nodeId)) || null;
 
+/** Selects singular or plural wording for a count. */
 const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
 /**
@@ -79,27 +92,33 @@ const matchesFilter = (node, query) => !query || node.title.toLowerCase().includ
 // Page numbers come from the latest verified book-order proof, or else from the proof on screen.
 // The tree is rebuilt from the engine's graph each time, so it never holds a hierarchy of its own;
 // focus is restored to the row that had it, so keyboard navigation survives a rebuild.
+/** Builds the navigable contents tree with revision and proposal markers. */
 function renderNodes() {
   const graph = state.graph; const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const focused = document.activeElement?.closest?.('#book-tree [data-tree-id]')?.dataset.treeId || null;
   const source = state.referenceMap || compiledMap();
   const pages = new Map((source?.nodes || []).filter((entry) => entry.firstPage).map((entry) => [entry.nodeId, entry]));
   const flags = new Map(); for (const entry of graph.diagnostics) flags.set(entry.nodePath, [...(flags.get(entry.nodePath) || []), entry.message]);
+  /** Renders the page range for a tree item. */
   const range = (ids) => {
     const entries = ids.map((id) => pages.get(id)).filter(Boolean); if (!entries.length) return '';
     const first = Math.min(...entries.map(bookFirst)); const last = Math.max(...entries.map(bookLast));
     return first === last ? `${first}` : `${first}–${last}`;
   };
   const query = state.filter.trim().toLowerCase();
+  /** Determines whether a pending proposal maps to the shown scope. */
   const pendingIn = (ids) => ids.reduce((sum, id) => sum + (state.pending.get(id) || 0), 0);
+  /** Determines whether the displayed source has unsaved text. */
   const unsavedHere = (id) => state.sourceDirty && state.node?.id === id;
   const open = state.scope?.kind === 'node' ? sectionOf(state.scope.id) : state.scope?.kind === 'book' ? null : state.scope;
   if (open) expanded.add(open.id);
+  /** Builds the tree item for a single manuscript piece. */
   const piece = (node) => treeButton('tree-piece', node.title, range([node.id]), async () => { if (await loadNode(node.id, node.id) && nodePages(node.id)) showPdfPage(nodePages(node.id).firstPage); }, {
     treeId: node.id, active: state.scope?.id === node.id, detail: `manuscript/${node.relativePath}${node.changedOnDisk ? ' · changed on disk' : ''}`, flagged: (flags.get(node.relativePath) || []).join('\n'),
     pending: state.pending.get(node.id) || 0, unsaved: unsavedHere(node.id),
   });
   let shown = 0;
+  /** Builds the heading and items for a manuscript group. */
   const group = (id, title, nodeIds, selectable) => {
     // While filtering, a section shows the pieces that match, or all of them when its own title matches.
     const titleMatches = Boolean(query) && title.toLowerCase().includes(query);
@@ -154,6 +173,7 @@ function treeKeys(event) {
   const row = event.target.closest?.('[data-tree-id]'); if (!row) return;
   const rows = [...$('#book-tree').querySelectorAll('[data-tree-id]')];
   const index = rows.indexOf(row);
+  /** Moves focus among the available tree rows. */
   const go = (target) => { if (target) { event.preventDefault(); target.focus(); } };
   if (event.key === 'ArrowDown') go(rows[index + 1]);
   else if (event.key === 'ArrowUp') go(rows[index - 1]);
@@ -183,6 +203,7 @@ async function refreshPending() {
 }
 
 // What a conversation with each kind of scope is about, in the author's terms.
+/** Resolves the current scope target for an editorial turn. */
 function scopeSubject(scope) {
   if (scope.kind === 'book') return { name: 'the whole book', short: 'Whole book', reach: 'Igor can suggest changes to the table of contents and discuss any part of the book.' };
   if (scope.kind === 'node') return { name: `“${scope.title}”`, short: scope.title, reach: 'Igor can suggest changes to this page.' };
@@ -190,11 +211,13 @@ function scopeSubject(scope) {
 }
 
 // Keeps the reader at the bottom of the thread unless they have scrolled up to reread.
+/** Renders the current conversation turns and proposal actions. */
 function renderTurns({ follow = false } = {}) {
   const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
     turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, contracts: state.contracts, drafts: state.drafts, onDecide: decide, onRevert: revert, onAnswer: sendAnswer,
+    /** Resolves the mounted URL for a linked conversation artifact. */
     artifactUrl: (id, { download = false } = {}) => apiUrl(`/api/artifacts/${id}/content${download ? '?download=1' : ''}`),
     empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
@@ -204,6 +227,7 @@ function renderTurns({ follow = false } = {}) {
   else if (atBottom) box.scrollTop = box.scrollHeight;
 }
 
+/** Activates the selected workspace pane. */
 function setView(view) {
   state.view = view;
   $('#show-thread').setAttribute('aria-selected', String(view === 'thread')); $('#show-source').setAttribute('aria-selected', String(view === 'source'));
@@ -228,6 +252,7 @@ function scopeUrl(scopeId) {
   return `${location.pathname}?${params}${location.hash}`;
 }
 
+/** Renders the current attachment extraction and review state. */
 function renderAttachments() {
   const box = $('#attachments');
   box.replaceChildren(...state.attachments.map((attachment) => {
@@ -240,10 +265,12 @@ function renderAttachments() {
 }
 
 // A page or section typesets alone with the book's preamble; the book typesets in full.
+/** Determines the compilation target from the selected scope. */
 const buildPlan = (scope) => (scope.kind === 'book'
   ? { label: 'Typeset book', mode: 'prefix' }
   : { label: scope.kind === 'node' ? 'Typeset page' : 'Typeset section', mode: 'isolated' });
 
+/** Displays the selected manuscript source and current revision. */
 function renderNode() {
   const scope = state.scope || scopeFor(state.node.id); const subject = scopeSubject(scope);
   $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'page' : 'section'}`;
@@ -263,6 +290,7 @@ function renderNode() {
   renderNodes(); renderLiveBuild(); renderNodePages(); renderStatus(); renderEditorState();
 }
 
+/** Selects the requested page in the active proof viewer. */
 function showPdfPage(page) {
   if (state.viewer) { state.viewer.showPage(page); return; }
   // A fresh view parameter makes the browser's PDF viewer honour the page fragment.
@@ -270,6 +298,7 @@ function showPdfPage(page) {
   $('#pdf').classList.remove('hidden'); $('#empty-preview').classList.add('hidden');
 }
 
+/** Opens the available proof and its current page mapping. */
 function showProof() {
   state.pdfStamp = Date.now(); const url = apiUrl(`/api/project/preview?at=${state.pdfStamp}`);
   $('#empty-preview').classList.add('hidden');
@@ -279,12 +308,14 @@ function showProof() {
 }
 
 // Captions and click targets for the proof viewer come only from the compiler page map.
+/** Displays the mapped source and compiler page information. */
 function describePage(number) {
   const entry = compiledMap()?.pages[number - 1]; if (!entry) return {};
   const titles = new Map(state.graph.nodes.map((node) => [node.id, node.title]));
   return { bookPage: entry.bookPage ?? number, blank: entry.blank, nodeId: entry.nodeIds[0] || null, label: entry.blank ? 'blank' : entry.nodeIds.map((id) => titles.get(id) || id).join(' / ') };
 }
 
+/** Shows the verified page links for the active manuscript node. */
 function renderNodePages() {
   const mapped = state.node && nodePages(state.node.id); const button = $('#node-pages');
   button.classList.toggle('hidden', !mapped);
@@ -292,6 +323,7 @@ function renderNodePages() {
   state.viewer?.highlight(mapped?.firstPage, mapped?.lastPage);
 }
 
+/** Shows the active proof build metadata and diagnostics. */
 function renderBuild(build) {
   const ready = build?.ok === true;
   const target = build?.targetScope?.title;
@@ -304,6 +336,7 @@ function renderBuild(build) {
 
 // Compares the displayed proof with the graph: changed node sources, and a table of
 // contents that now includes different nodes for the proof's scope. Null when no proof is shown.
+/** Compares the proof markers with current source and profile state. */
 function proofStaleness() {
   const map = state.pageMap; if (!map?.sourceHashes || !state.graph) return null;
   const current = new Map(state.graph.nodes.map((node) => [node.id, node.hash]));
@@ -314,18 +347,22 @@ function proofStaleness() {
   const designChanged = Boolean(state.designHash) && (map.designHash ?? state.defaultDesignHash) !== state.designHash;
   return { changed, orderChanged: JSON.stringify(included) !== JSON.stringify(map.includedNodeIds || []), designChanged };
 }
+/** Checks whether this proof reflects an earlier revision. */
 const isStale = (staleness) => Boolean(staleness && (staleness.changed || staleness.orderChanged || staleness.designChanged));
 
+/** Checks source and configuration revision markers for the available proof. */
 function proofIsCurrent() {
   const staleness = proofStaleness();
   return Boolean(state.build?.ok && scopeFor(state.build.targetScope?.id)?.id === state.scope?.id && compiledMap()?.mode !== 'isolated' && !state.sourceDirty && staleness && !isStale(staleness) && compiledMap()?.pagination.verified);
 }
 
+/** Creates one row of the proof status display. */
 function statusItem(name, value, tone = '', detail = '') {
   const item = element('span', `status-item ${tone}`); if (detail) item.title = detail;
   item.append(element('small', '', name), value); return item;
 }
 
+/** Formats the current page-map status for display. */
 function paginationText(compiled) {
   if (!compiled) return ['estimated · legacy proof', 'warn'];
   if (!compiled.pagination.verified) return [`unverified · ${compiled.pagination.warnings.length} warning(s)`, 'warn'];
@@ -336,6 +373,7 @@ function paginationText(compiled) {
 }
 
 // Production state, not editing state: each item is derived from recorded artifacts.
+/** Updates revision, build and proof indicators. */
 function renderStatus() {
   if (!state.graph) return;
   const map = state.pageMap; const compiled = compiledMap(); const stale = proofStaleness(); const flags = state.graph.diagnostics;
@@ -354,9 +392,11 @@ function renderStatus() {
   $('#production-status').replaceChildren(...items);
 }
 
+/** Totals preflight findings by their displayed severity. */
 const preflightCounts = () => state.preflight && state.preflight.checks.reduce((counts, entry) => ({ ...counts, [entry.status]: (counts[entry.status] || 0) + 1 }), { pass: 0, warn: 0, fail: 0, unavailable: 0 });
 
 // Preflight describes the proof on screen; it is opened automatically when a check fails.
+/** Displays the current preflight status and findings. */
 function renderPreflight() {
   const counts = preflightCounts(); if (!counts) return;
   $('#preflight-state').textContent = `${counts.pass} pass · ${counts.warn} warn · ${counts.fail} fail${counts.unavailable ? ` · ${counts.unavailable} not checked` : ''}`;
@@ -371,9 +411,11 @@ function renderPreflight() {
   if (counts.fail) $('#preflight-section').open = true;
   renderStatus();
 }
+/** Fetches new preflight evidence for the active scope. */
 async function refreshPreflight() { try { state.preflight = await request('/api/project/preflight'); renderPreflight(); } catch { /* the status bar keeps the last report */ } }
 
 // Each control is one saved profile setting; saving makes the current proof stale until it is typeset again.
+/** Finds the form control for a supported publishing option. */
 const designField = (form, name) => form.elements.namedItem(name);
 /**
  * Where the selected scope's own settings are stored in the profile: a section
@@ -416,7 +458,7 @@ function fillOverride() {
  */
 function readOverride() {
   const target = overrideTarget(state.scope); if (!target) return {};
-  const form = $('#design-panel'); const value = (name) => designField(form, `override.${name}`).value.trim();
+  const form = $('#design-panel'); /** Reads the selected override value from its form control. */ const value = (name) => designField(form, `override.${name}`).value.trim();
   const override = {};
   if (value('fontSize') || value('leading')) { override.fontSize = value('fontSize'); override.leading = value('leading'); }
   if (value('opensRecto')) override.opensRecto = value('opensRecto') === 'true';
@@ -424,6 +466,7 @@ function readOverride() {
   return { [target.field]: { [target.key]: Object.keys(override).length ? override : null } };
 }
 
+/** Populates the design controls from the current settings and overrides. */
 function fillDesign() {
   const form = $('#design-panel'); const design = state.design;
   designField(form, 'trimSize').replaceChildren(...state.trimSizes.map((size) => new Option(size, size)));
@@ -436,6 +479,7 @@ function fillDesign() {
   // The profile this form shows; a save names it, so the engine refuses it if the profile has moved on.
   state.panelDesignHash = state.designHash;
 }
+/** Collects the publishing settings from the form. */
 function readDesign() {
   const form = $('#design-panel');
   return {
@@ -445,6 +489,7 @@ function readDesign() {
     ...readOverride(),
   };
 }
+/** Shows or hides the design controls for the selected mode. */
 function toggleDesign(open = $('#design-panel').classList.contains('hidden')) {
   if (open) { fillDesign(); $('#design-state').textContent = ''; }
   $('#design-panel').classList.toggle('hidden', !open); $('#open-design').setAttribute('aria-expanded', String(open));
@@ -465,6 +510,7 @@ async function refreshDesign() {
   } catch (error) { $('#design-state').textContent = `The profile could not be reloaded: ${error.message}`; }
 }
 
+/** Submits the modified publishing profile and refreshes its status. */
 async function saveDesign(event) {
   event.preventDefault();
   try {
@@ -475,6 +521,7 @@ async function saveDesign(event) {
   } catch (error) { $('#design-state').textContent = error.message; }
 }
 
+/** Shows the live proof build progress for the selected project. */
 function renderLiveBuild() {
   const button = $('#send-live-build');
   if (!button) return;
@@ -554,6 +601,7 @@ async function loadNode(id, scopeId = id, { history: record = 'push' } = {}) {
   return true;
 }
 
+/** Opens a scope after handling pending input and navigation state. */
 async function selectScope(scopeId, options = {}) {
   const scope = scopeFor(scopeId);
   if (!scope?.anchorNodeId) return false;
@@ -601,6 +649,7 @@ const PASSAGE_ACTIONS = {
 /** The engine's limit on a passage, in editor characters. */
 const MAX_PASSAGE = 12_000;
 
+/** Formats the exact source lines covered by an editor selection. */
 const linesLabel = ({ startLine, endLine }) => (startLine === endLine ? `line ${startLine}` : `lines ${startLine}–${endLine}`);
 
 /**
@@ -610,6 +659,7 @@ const linesLabel = ({ startLine, endLine }) => (startLine === endLine ? `line ${
  */
 function editorSelection() {
   const area = $('#source'); const { selectionStart: start, selectionEnd: end, value } = area;
+  /** Converts a text offset to the editor's visible line number. */
   const lineAt = (offset) => value.slice(0, offset).split('\n').length;
   return { start, end, text: value.slice(start, end), startLine: lineAt(start), endLine: lineAt(Math.max(start, end - 1)), line: lineAt(end), column: end - value.lastIndexOf('\n', end - 1) };
 }
@@ -666,6 +716,7 @@ function renderPassageChip() {
   chip.replaceChildren(preview, remove);
 }
 
+/** Sends the source and its base revision for a guarded save. */
 async function saveSource() {
   const button = $('#save-source'); button.disabled = true;
   try {
@@ -677,9 +728,11 @@ async function saveSource() {
   catch (error) { $('#save-state').textContent = error.message; } finally { button.disabled = false; }
 }
 
+/** Updates the composer height to fit its current content. */
 function sizeComposer() { const input = $('#message'); input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 220)}px`; }
 
 // The Igor pill reports the gateway's own health: model, key and reachability.
+/** Refreshes the displayed assistant availability. */
 async function refreshIgor() {
   const pill = $('#gateway-state');
   try {
@@ -692,6 +745,7 @@ async function refreshIgor() {
 // Answering a choice or form is a turn: the store validates it against the prompt and
 // Igor replies. Until Igor has the answer it is kept as a draft, so a failure or a
 // re-render leaves the form filled in and sendable again.
+/** Submits the user's approved answer for the selected prompt. */
 async function sendAnswer(promptId, values) {
   const scope = state.scope; if (state.thinking) return;
   state.drafts.set(promptId, values); state.thinking = true; state.notice = ''; renderTurns({ follow: true });
@@ -711,6 +765,7 @@ async function sendAnswer(promptId, values) {
   }
 }
 
+/** Submits the current scoped request and its approved source selection. */
 async function sendTurn(event) {
   event?.preventDefault();
   const input = $('#message'); const button = $('#turn-form [type="submit"]'); const message = input.value.trim();
@@ -742,6 +797,7 @@ async function sendTurn(event) {
 
 // Accepting writes the manuscript, refreshes the workspace from it, and typesets
 // the scope again so the change is visible on the page.
+/** Sends the author's decision on a pending editorial change. */
 async function decide(nodeId, decision) {
   const scope = state.scope; const changeSet = state.changeSet;
   // Only a text change rewrites the open piece; a layout change leaves its source alone.
@@ -785,6 +841,7 @@ async function revert(contractId, nodeId, { layout = false } = {}) {
     if (layout) await refreshDesign();
     // The author may open another conversation while any of these requests runs.
     // Each result is applied only if its conversation is still the one on screen.
+    /** Checks whether the reviewed change still permits a rollback. */
     const stillOpen = () => state.scope?.id === scope.id;
     if (!stillOpen()) { renderNodes(); return; }
     const [node, turns, contracts] = await Promise.all([touchesOpen ? request(`/api/nodes/${nodeId}`) : null, request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]);
@@ -797,6 +854,7 @@ async function revert(contractId, nodeId, { layout = false } = {}) {
   } catch (error) { if (state.scope?.id === scope.id) { state.notice = error.message; renderTurns(); } }
 }
 
+/** Uploads the author-selected files to the current project. */
 async function uploadAttachments(files) {
   if (!files.length) return; $('#attachment-state').textContent = 'Uploading…';
   try {
@@ -805,9 +863,11 @@ async function uploadAttachments(files) {
   } catch (error) { $('#attachment-state').textContent = error.message; } finally { $('#attachment-input').value = ''; }
 }
 
+/** Records the user's approval of an extracted attachment. */
 async function approveAttachment(id) { try { await request(`/api/project/attachments/${id}/approve`, { method: 'POST', body: '{}' }); state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { $('#attachment-state').textContent = error.message; } }
 
 // Typesetting only reads the manuscript, so it needs no confirmation.
+/** Creates or compiles the build used in the current workflow. */
 async function build({ wholeBook = false } = {}) {
   const scope = wholeBook ? scopeFor('book') : state.scope || scopeFor('book'); const plan = buildPlan(scope);
   const buttons = [$('#build'), $('#build-book')]; buttons.forEach((button) => { button.disabled = true; });
@@ -829,6 +889,7 @@ async function build({ wholeBook = false } = {}) {
   }
 }
 
+/** Requests a new proof for the current project and updates its display. */
 async function sendLiveBuild() {
   const scope = state.scope || scopeFor('book');
   if (!proofIsCurrent()) return;
@@ -839,6 +900,7 @@ async function sendLiveBuild() {
   finally { button.textContent = 'Send to live build'; renderLiveBuild(); }
 }
 
+/** Refreshes the current view or project data from its owner. */
 async function refresh() {
   const priorScope = state.scope?.id || 'book';
   state.graph = await request('/api/project/refresh', { method: 'POST', body: '{}' }); renderNodes();
@@ -846,6 +908,7 @@ async function refresh() {
   if (scope?.anchorNodeId) await loadNode(scope.anchorNodeId, scope.id);
 }
 
+/** Initializes the workspace with its selected source and controls. */
 async function bootstrap() {
   if (!book) { location.replace('/frige/'); return; }
   const [graph, attachments, buildState, liveBuild, pageMap, referenceMap] = await Promise.all(['/api/project/graph', '/api/project/attachments', '/api/project/build', '/api/project/live-build', '/api/project/page-map', '/api/project/reference-map'].map((url) => request(url)));
@@ -854,7 +917,7 @@ async function bootstrap() {
   Object.assign(state, { design: design.design, designHash: design.hash, defaultDesignHash: design.defaultHash, trimSizes: design.trimSizes });
   $('#book-title').textContent = state.graph.book?.title || book.replaceAll('-', ' ');
   renderNodes(); renderAttachments();
-  state.viewer = await createProofViewer($('#proof-viewer'), { describePage, onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
+  state.viewer = await createProofViewer($('#proof-viewer'), { describePage, /** Handles proof navigation for a selected page. */ onSelectPage: (number, nodeId) => loadNode(nodeId, nodeId) });
   // The address names the open scope; an unknown or retired one opens the whole book, and the address is corrected.
   const initial = scopeFor(new URLSearchParams(location.search).get('scope') || 'book') || scopeFor('book');
   // A reload keeps the entry's position, so Back and Forward still line up with it.
@@ -898,7 +961,41 @@ async function bootstrap() {
   $('#node-pages').addEventListener('click', () => { const mapped = nodePages(state.node.id); if (mapped) showPdfPage(mapped.firstPage); });
 }
 
+/**
+ * Replaces the workstation with a password prompt for a protected project.
+ * Frige checks the password and sets an unlock cookie; the page then reloads
+ * and opens normally. Nothing of the project is loaded before that.
+ */
+function renderUnlock() {
+  const form = document.createElement('form');
+  form.className = 'unlock-panel';
+  form.innerHTML = `<p class="eyebrow">Password protected</p><h1></h1>
+    <p>This project has its own password. Enter it to open the manuscript, proofs and editorial threads.</p>
+    <label for="project-password">Project password</label>
+    <input id="project-password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+    <div class="unlock-actions"><button class="quiet-button" type="submit">Open project</button><a class="quiet-button" href="${appBase()}/">Book projects</a></div>
+    <p class="unlock-state" role="status" aria-live="polite"></p>`;
+  form.querySelector('h1').textContent = (book || 'Project').replaceAll('-', ' ');
+  const input = form.querySelector('input'); const button = form.querySelector('button'); const status = form.querySelector('.unlock-state');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    button.disabled = true; status.textContent = 'Checking…'; status.classList.remove('failed');
+    try {
+      const response = await fetch(`${appBase()}/api/stex/access/v1/unlock`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'book', id: book, password: input.value }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'The project could not be unlocked.');
+      status.textContent = 'Opening…'; location.reload();
+    } catch (error) {
+      status.textContent = error.message; status.classList.add('failed');
+      button.disabled = false; input.select();
+    }
+  });
+  document.querySelector('main').replaceChildren(form);
+  input.focus();
+}
+
 bootstrap().catch((error) => {
+  if (error.code === 'PROJECT_LOCKED') { renderUnlock(); return; }
   // The server reads these files fresh from disk, so a server started before an update serves a page it cannot answer.
   const stale = error.message === 'Unknown API route.';
   document.querySelector('main').textContent = stale ? `Frige could not start: this page is newer than the Frige server at ${location.host}. Stop that server and start it again (corepack pnpm dev:frige), then reload.` : `Frige could not start: ${error.message}`;

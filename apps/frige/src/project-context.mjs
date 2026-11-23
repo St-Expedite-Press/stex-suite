@@ -1,9 +1,12 @@
+/** Frige publishing engine source that exports only validated project revisions for explicit approval. */
 // stex.project.context.v1: the owner exports explicit, revision-checked text.
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { sourceHash } from './project-store-vault.mjs';
 
+/** Returns an owning-API failure with the appropriate status and code. */
 const failure = (status, code, message) => Object.assign(new Error(message), { status, code });
+/** Bounds and validates the engine's exported source tree. */
 export async function validateContextTree(store) {
     // Refresh reads Programme.md and source text. Validate the tree before any
     // graph read, including a symlinked Programme or manuscript junction.
@@ -11,6 +14,7 @@ export async function validateContextTree(store) {
     if ((await lstat(store.root)).isSymbolicLink() || !root.startsWith(`${await realpath(store.root)}${path.sep}`)) throw failure(403, 'FORBIDDEN', 'Linked project directories cannot be exported.');
     if ((await lstat(store.manuscriptDirectory)).isSymbolicLink()) throw failure(403, 'FORBIDDEN', 'Linked manuscript directories cannot be exported.');
     let visited = 0;
+    /** Checks one tree entry against the export constraints. */
     async function inspect(directory) {
       for (const name of await readdir(directory)) {
         if (++visited > 10000) throw failure(413, 'CONTEXT_LIMIT', 'This manuscript is too large to inspect for context.');
@@ -22,11 +26,13 @@ export async function validateContextTree(store) {
     await inspect(store.manuscriptDirectory);
     return root;
 }
+/** Exposes the project catalog or one explicitly selected source revision. */
 export async function projectContext(store, id, { sourceId, revision, offset = '0' } = {}) {
   try {
     const root = await validateContextTree(store);
     const graph = await store.graph({ refresh: true });
     const project = { application: 'frige', id, title: graph.book.title, reference: `stex://frige/project/${id}` };
+    /** Shapes an engine source descriptor for the context contract. */
     async function describe(node, content = false) {
       const file = store.sourcePath(node.relativePath);
       const info = await lstat(file); const resolved = await realpath(file);

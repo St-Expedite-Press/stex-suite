@@ -1,3 +1,4 @@
+/** Seaxneat website engine source that builds an owner-verified revision observation for knowledge consent. */
 // Explicit accepted-source observation; engine-owned checkpoint, no source text.
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -5,8 +6,11 @@ import path from 'node:path';
 import { projectContext } from './project-context.mjs';
 
 const queues = new WeakMap();
+/** Computes the content digest used by this contract. */
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** Returns an owning-API failure with the appropriate status and code. */
 const failure = (status, code, message) => Object.assign(new Error(message), { status, code });
+/** Resolves the requested revision selection within the owning engine. */
 function selection(id, body) {
   if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(id) || !body || !Array.isArray(body.sources) || body.sources.length > 4) throw failure(400, 'INVALID_REQUEST', 'Choose a known project and at most four revision-checked sources.');
   const entries = body.sources.map((entry) => {
@@ -17,6 +21,7 @@ function selection(id, body) {
   return entries;
 }
 
+/** Validates owner state and emits its revision observation for consent. */
 export async function knowledgeEvent(store, id, body) {
   const requested = selection(id, body);
   const task = (queues.get(store) || Promise.resolve()).catch(() => {}).then(async () => {

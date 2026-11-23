@@ -1,3 +1,5 @@
+"""Configuration and registry validation checks for the STEX platform."""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +15,7 @@ from stex.platform.registry import load_registry
 
 
 def test_defaults_are_loopback_and_match_the_dev_alpha_ports() -> None:
+    """Verify that defaults are loopback and match the dev alpha ports."""
     settings = Settings.from_environment({})
     assert (settings.host, settings.port) == ("127.0.0.1", 4340)
     assert dict(settings.engine_origins) == {
@@ -22,6 +25,7 @@ def test_defaults_are_loopback_and_match_the_dev_alpha_ports() -> None:
 
 
 def test_engine_origins_come_from_the_same_variables_pantheon_uses() -> None:
+    """Verify that engine origins come from the same variables pantheon uses."""
     settings = Settings.from_environment(
         {"STEX_FRIGE_URL": "http://localhost:5001/", "STEX_PLATFORM_PORT": "4999"}
     )
@@ -45,6 +49,7 @@ def test_engine_origins_come_from_the_same_variables_pantheon_uses() -> None:
     ],
 )
 def test_non_loopback_or_decorated_engine_origins_are_refused(value: str) -> None:
+    """Verify that non loopback or decorated engine origins are refused."""
     with pytest.raises(ConfigurationError):
         loopback_origin(value, "STEX_FRIGE_URL")
     with pytest.raises(ConfigurationError):
@@ -64,11 +69,13 @@ def test_non_loopback_or_decorated_engine_origins_are_refused(value: str) -> Non
     ],
 )
 def test_the_platform_refuses_non_loopback_binding_and_invalid_ports(environment: dict[str, str]) -> None:
+    """Verify that the platform refuses non loopback binding and invalid ports."""
     with pytest.raises(ConfigurationError):
         Settings.from_environment(environment)
 
 
 def test_the_registry_reader_agrees_with_the_registry_schema() -> None:
+    """Verify that the registry reader agrees with the registry schema."""
     document = json.loads(DEFAULT_REGISTRY.read_text(encoding="utf-8"))
     schema = json.loads((PROTOCOL / "applications" / "registry.v2.schema.json").read_text(encoding="utf-8"))
     jsonschema.validate(document, schema)
@@ -108,6 +115,7 @@ def test_the_registry_reader_agrees_with_the_registry_schema() -> None:
     ],
 )
 def test_an_invalid_registry_stops_startup(tmp_path: Path, mutation: dict[str, object]) -> None:
+    """Verify that an invalid registry stops startup."""
     document = {**json.loads(DEFAULT_REGISTRY.read_text(encoding="utf-8")), **mutation}
     path = tmp_path / "registry.json"
     path.write_text(json.dumps(document), encoding="utf-8")

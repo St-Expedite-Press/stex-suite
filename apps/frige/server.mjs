@@ -1,3 +1,4 @@
+/** Frige HTTP entry point for publishing, compatibility routes, and engine-owned state. */
 import { createReadStream, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
@@ -7,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { legacyBooksApi } from './src/legacy-books.mjs';
+import { openProjectAccess } from './src/project-access.mjs';
 import { publishingRoute } from './src/publishing-contract.mjs';
 import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
@@ -21,7 +23,7 @@ import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -29,21 +31,24 @@ try {
     if (match && appEnvironment.has(match[1]) && !process.env[match[1]]) process.env[match[1]] = match[2];
   }
 } catch { /* The host may provide application-safe configuration directly. */ }
+/** Resolves a canonical setting, then its compatibility setting, then the default. */
 function configuration(canonical, legacy, fallback) {
   const current = process.env[canonical]; const previous = process.env[legacy];
   if (current && previous && current !== previous) console.warn(`${canonical} takes precedence over ${legacy}.`);
   return current || previous || fallback;
 }
+/** Keeps an existing compatibility path when the canonical location is absent. */
 function preservedDefault(current, legacy) { return existsSync(current) || !existsSync(legacy) ? current : legacy; }
 const legacyDirectory = path.join(directory, '..', 'texgraph');
 const projectDirectory = path.resolve(configuration('STEX_FRIGE_PROJECT_DIR', 'TEXGRAPH_PROJECT_DIR', preservedDefault(path.join(directory, '.local-book'), path.join(legacyDirectory, '.local-book'))));
-const projectsDirectory = path.resolve(configuration('STEX_FRIGE_PROJECTS_DIR', 'TEXGRAPH_PROJECTS_DIR', preservedDefault(path.join(directory, '..', 'pantheon', '.local-projects'), path.join(directory, '..', 'lab', '.local-projects'))));
+const projectsDirectory = path.resolve(configuration('STEX_FRIGE_PROJECTS_DIR', 'TEXGRAPH_PROJECTS_DIR', path.join(directory, '..', 'pantheon', '.local-projects')));
 const booksDirectory = path.resolve(configuration('STEX_FRIGE_BOOKS_DIR', 'TEXGRAPH_BOOKS_DIR', process.env.STEX_BOOKS_DIR || path.join(directory, 'books')));
 const platformOrigin = new URL(process.env.STEX_PANTHEON_URL || 'http://127.0.0.1:4300');
 if (platformOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(platformOrigin.hostname) || platformOrigin.username || platformOrigin.password || platformOrigin.pathname !== '/' || platformOrigin.search || platformOrigin.hash) throw new Error('STEX_PANTHEON_URL must be a loopback HTTP origin.');
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(configuration('STEX_FRIGE_PORT', 'TEXGRAPH_PORT', 4310));
+/** Validates the normalized mount prefix for publishing routes. */
 function basePath(value) {
   const normalized = String(value || '').trim().replace(/\/+$/, '');
   if (!normalized) return '';
@@ -51,6 +56,9 @@ function basePath(value) {
   return normalized;
 }
 const mountedAt = basePath(configuration('STEX_FRIGE_BASE_PATH', 'TEXGRAPH_BASE_PATH', ''));
+// Optional per-project passwords (src/project-access.mjs); unset means no project is protected.
+const projectAccess = openProjectAccess({ file: process.env.STEX_FRIGE_ACCESS_FILE || '' });
+const unlockCookiePath = `${mountedAt}/`;
 const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/home/' : '')).trim() || '/';
 
 const mimeTypes = {
@@ -61,6 +69,7 @@ const mimeTypes = {
 // origin under /design-system/; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons']);
+/** Resolves a permitted public design-system resource. */
 function designSystemFile(pathname) {
   // No ':' anywhere: on Windows it would reach NTFS stream aliases such as `::$DATA`.
   if (pathname.includes(':')) return null;
@@ -70,15 +79,18 @@ function designSystemFile(pathname) {
 }
 // The proof viewer's PDF.js browser build; only these two files are exposed.
 const pdfjsFiles = new Set(['pdf.min.mjs', 'pdf.worker.min.mjs']);
+/** Maps an allowed PDF.js resource name to its installed path. */
 function pdfjsFile(name) {
   try { return path.join(path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json')), 'build', name); } catch { return null; }
 }
 
+/** Sends an uncached JSON response with the selected HTTP status. */
 function json(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(value));
 }
 
+/** Reads and validates a bounded JSON request body. */
 async function body(request) {
   let raw = '';
   for await (const chunk of request) {
@@ -91,6 +103,7 @@ async function body(request) {
 // Interface files (pages, scripts, styles, design system, masthead media).
 // They revalidate by ETag and honour a single byte range, which browsers
 // (Safari in particular) require before they will play <video>.
+/** Streams a static file with the server's content and cache headers. */
 async function staticFile(request, response, file) {
   let info;
   try { info = await stat(file); } catch { return json(response, 404, { error: 'Not found.' }); }
@@ -113,11 +126,13 @@ async function staticFile(request, response, file) {
   pipeline(createReadStream(file, { start, end }), response, () => {});
 }
 
+/** Extracts the requested publishing page identifier from the URL. */
 function pageId(url) {
   const match = url.pathname.match(/^\/api\/pages\/([a-z0-9-]+)(?:\/|$)/);
   return match?.[1] || null;
 }
 
+/** Streams an approved artifact with its corresponding media type. */
 async function serveFile(response, file) {
   try {
     await access(file);
@@ -128,6 +143,7 @@ async function serveFile(response, file) {
   }
 }
 
+/** Resolves the selected engine store for a project context request. */
 async function contextStoreFor(id, url) {
   const candidate = new ProjectStore(path.join(booksDirectory, id));
   try { await validateContextTree(candidate); }
@@ -135,6 +151,7 @@ async function contextStoreFor(id, url) {
   const selected = new URL(url); selected.searchParams.set('book', id);
   return storeFor(selected);
 }
+/** Selects the engine-owned store for the requested book or project. */
 async function storeFor(url) {
   const bookId = url.searchParams.get('book');
   if (bookId) {
@@ -163,6 +180,7 @@ async function storeFor(url) {
 
 // The Frige root is a chooser, not an implicit mutation of any manuscript.
 // A selected project remains explicit in the `book` query parameter.
+/** Lists authorized local book workspaces with their labels. */
 async function availableBooks() {
   const entries = await readdir(booksDirectory, { withFileTypes: true }).catch(() => []);
   const records = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
@@ -171,7 +189,7 @@ async function availableBooks() {
     try { await access(path.join(root, 'manuscript', 'Programme.md')); } catch { return null; }
     const readme = await readFile(path.join(root, 'README.md'), 'utf8').catch(() => '');
     const title = /^#\s+(.+)$/m.exec(readme)?.[1]?.trim() || entry.name.replaceAll('-', ' ');
-    return { id: entry.name, title, reference: `stex://frige/project/${entry.name}` };
+    return { id: entry.name, title, reference: `stex://frige/project/${entry.name}`, locked: await projectAccess.isProtected('book', entry.name) };
   }));
   return records.filter(Boolean).sort((left, right) => left.title.localeCompare(right.title));
 }
@@ -181,6 +199,7 @@ async function availableBooks() {
 // are tooling, not author changes. Symlinks are not followed (Dirent uses
 // lstat). At most 5,000 entries per book are visited; files in a folder are
 // stat-ed together.
+/** Finds the newest modification under a bounded directory traversal. */
 async function newestChange(root, budget = { entries: 5000 }) {
   const entries = (await readdir(root, { withFileTypes: true }).catch(() => []))
     .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
@@ -193,15 +212,17 @@ async function newestChange(root, budget = { entries: 5000 }) {
 }
 
 // stex.projects.summary.v1 (protocol/projects): read-only summaries for Pantheon.
+/** Converts engine-owned projects to the read-only summary contract. */
 async function projectSummaries() {
   const books = await availableBooks();
   const projects = await Promise.all(books.map(async (book) => {
     const changed = await newestChange(path.join(booksDirectory, book.id));
-    return { reference: book.reference, id: book.id, title: book.title, kind: 'book', updatedAt: changed ? new Date(changed).toISOString() : null, status: { state: 'ready', label: 'Manuscript' }, openPath: `/?book=${encodeURIComponent(book.id)}` };
+    return { reference: book.reference, id: book.id, title: book.title, kind: 'book', updatedAt: changed ? new Date(changed).toISOString() : null, status: { state: 'ready', label: book.locked ? 'Password protected' : 'Manuscript' }, openPath: `/?book=${encodeURIComponent(book.id)}` };
   }));
   return { schemaVersion: 'stex.projects.summary.v1', application: 'frige', projects };
 }
 
+/** Creates a publishing project scaffold after validating its inputs. */
 async function createBookProject(payload) {
   const title = String(payload?.title || '').trim().replace(/\s+/g, ' ').slice(0, 140);
   const author = String(payload?.author || '').trim().replace(/\s+/g, ' ').slice(0, 160);
@@ -225,11 +246,14 @@ async function createBookProject(payload) {
   return { id, title, reference: `stex://frige/project/${id}` };
 }
 
+/** Extracts a syntactically valid publishing node identifier from the URL. */
 function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:\/|$)/)?.[1] || null; }
 
 const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
+/** Loads attachment metadata for the selected publishing project. */
 async function attachmentManifest(store) { try { const value = JSON.parse(await readFile(path.join(store.stateDirectory, 'documents.json'), 'utf8')); return Array.isArray(value) ? value : []; } catch { return []; } }
+/** Writes validated upload bytes and records their pending review state. */
 async function saveAttachments(store, payload) {
   const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
   if (!uploads.length || uploads.length > 10) throw new Error('Attach between one and ten files.');
@@ -247,6 +271,7 @@ async function saveAttachments(store, payload) {
   }
   await mkdir(store.stateDirectory, { recursive: true }); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return created;
 }
+/** Approves a successfully extracted attachment and records its review time. */
 async function reviewAttachment(store, id) { const manifest = await attachmentManifest(store); const record = manifest.find((entry) => entry.id === id); if (!record || record.contextState !== 'pending-review' || !record.extraction) throw new Error('This attachment is not ready for review.'); record.contextState = 'approved'; record.reviewedAt = new Date().toISOString(); await writeFile(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'); return record; }
 
 /**
@@ -261,6 +286,7 @@ async function reviewAttachment(store, id) { const manifest = await attachmentMa
  *   `start` and `end` are offsets into the canonical source; `text` is its exact bytes there.
  */
 function resolveTurnPassage(context, selection) {
+  /** Constructs the failure returned for rejected inputs at this boundary. */
   const invalid = (message) => Object.assign(new Error(message), { code: 'INVALID_PASSAGE' });
   if (!selection || typeof selection !== 'object' || Array.isArray(selection)) throw invalid('The selected passage is malformed.');
   if (!PASSAGE_ACTIONS.includes(selection.action)) throw invalid(`A passage action is one of: ${PASSAGE_ACTIONS.join(', ')}.`);
@@ -274,6 +300,7 @@ function resolveTurnPassage(context, selection) {
 
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
+/** Resolves approval context and submits a scoped publishing turn. */
 async function scopeTurn(store, scopeId, payload) {
   // The scope's offered sources come first: a selected passage is checked against them before
   // anything is recorded, so a stale or invalid selection leaves the conversation untouched.
@@ -327,6 +354,7 @@ async function scopeTurn(store, scopeId, payload) {
 
 // Artifact content is served as inert data: images by their checked type, text as
 // plain text, never as HTML or script, with a sandboxing policy and no sniffing.
+/** Serves artifact metadata or content according to the request. */
 async function artifactResponse(response, store, id, content, download) {
   if (!content) { const record = await store.artifact(id); return record ? json(response, 200, record) : json(response, 404, { error: 'Artifact not found.' }); }
   const found = await store.artifactContent(id);
@@ -343,6 +371,7 @@ async function artifactResponse(response, store, id, content, download) {
   response.end(found.content);
 }
 
+/** Handles graph, source and proof routes for the selected manuscript store. */
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
   const attachmentId = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/approve$/)?.[1];
@@ -401,6 +430,7 @@ async function vaultApi(request, response, url, store) {
   return false;
 }
 
+/** Dispatches legacy page publishing operations for the selected store. */
 async function api(request, response, url, store) {
   if (store instanceof ProjectStore) return vaultApi(request, response, url, store);
   const id = pageId(url);
@@ -459,7 +489,7 @@ const STATUS_BY_CODE = {
   CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
 };
 
-const legacyBooks = legacyBooksApi(booksDirectory);
+const legacyBooks = legacyBooksApi(booksDirectory, { isProtected: (id) => projectAccess.isProtected('book', id) });
 await defaultStore.initialize();
 http.createServer(async (request, response) => {
   try {
@@ -475,12 +505,28 @@ http.createServer(async (request, response) => {
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
     if (url.pathname.startsWith('/api/stex/context/v1/')) {
+      // Server-to-server readers carry no unlock cookie, so a protected project is unavailable to them.
+      const contextId = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/|$)/.exec(url.pathname)?.[1];
+      if (contextId) await projectAccess.assertUnlocked('book', contextId, request.headers);
       const observation = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/observation$/.exec(url.pathname);
       if (observation && request.method === 'POST') return json(response, 200, await knowledgeEvent(await contextStoreFor(observation[1], url), observation[1], await body(request)));
       const match = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/sources\/([a-z][a-z0-9-]{5,80}))?$/.exec(url.pathname);
       if (!match) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
       if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
       return json(response, 200, await projectContext(await contextStoreFor(match[1], url), match[1], { sourceId: match[2], revision: url.searchParams.get('revision'), offset: url.searchParams.get('offset') || '0' }));
+    }
+    // Unlock and lock a password-protected project for this browser.
+    const accessRoute = /^\/api\/stex\/access\/v1\/(unlock|lock)$/.exec(url.pathname)?.[1];
+    if (accessRoute) {
+      if (request.method !== 'POST') { response.setHeader('allow', 'POST'); return json(response, 405, { error: 'Method not allowed.' }); }
+      if (!/^application\/json\s*(;|$)/i.test(String(request.headers['content-type'] || ''))) return json(response, 415, { error: 'Requests must be JSON.', code: 'INVALID_REQUEST' });
+      const payload = await body(request);
+      const kind = payload.kind === 'project' ? 'project' : 'book';
+      const cookie = accessRoute === 'unlock'
+        ? await projectAccess.unlock({ kind, id: payload.id, password: payload.password, cookiePath: unlockCookiePath, secure: request.headers['x-forwarded-proto'] === 'https' })
+        : projectAccess.lockCookie(kind, payload.id, unlockCookiePath);
+      response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'set-cookie': cookie });
+      response.end(JSON.stringify({ ok: true, unlocked: accessRoute === 'unlock' })); return;
     }
     if (url.pathname === '/api/stex/publishing/v1' || url.pathname.startsWith('/api/stex/publishing/v1/')) {
       const suffix = url.pathname.slice('/api/stex/publishing/v1'.length);
@@ -490,7 +536,11 @@ http.createServer(async (request, response) => {
       response.setHeader('x-stex-contract', 'stex.frige.publishing.v1');
       url.pathname = `/api${suffix}`;
     }
-    if (/^\/api\/stex\/legacy-books\/v1(?:\/|$)/.test(url.pathname)) return await legacyBooks(request, response, url);
+    if (/^\/api\/stex\/legacy-books\/v1(?:\/|$)/.test(url.pathname)) {
+      const legacyId = /^\/api\/stex\/legacy-books\/v1\/([a-z0-9][a-z0-9-]{0,62})\//.exec(url.pathname)?.[1];
+      if (legacyId) await projectAccess.assertUnlocked('book', legacyId, request.headers);
+      return await legacyBooks(request, response, url);
+    }
     // Suite settings belong to the gateway, not to a book.
     const relay = { 'GET /api/settings/models': ['GET', '/v1/settings/models'], 'PUT /api/settings/models': ['PUT', '/v1/settings/models'], 'GET /api/settings/model-catalog': ['GET', '/v1/models/catalog'] }[`${request.method} ${url.pathname}`];
     if (relay) { const result = await gatewaySettings(relay[0], relay[1], relay[0] === 'PUT' ? await body(request) : undefined); return json(response, result.status, result.body); }
@@ -498,6 +548,10 @@ http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/api/stex/projects') return json(response, 200, await projectSummaries());
     if (request.method === 'POST' && url.pathname === '/api/books') return json(response, 201, await createBookProject(await body(request)));
     if (url.pathname.startsWith('/api/')) {
+      // A selected book or project opens only once this browser has unlocked it (when it has a password).
+      const selectedBook = url.searchParams.get('book'); const selectedProject = url.searchParams.get('project');
+      if (selectedBook) await projectAccess.assertUnlocked('book', selectedBook, request.headers);
+      else if (selectedProject) await projectAccess.assertUnlocked('project', selectedProject, request.headers);
       const activeStore = await storeFor(url);
       const handled = await api(request, response, url, activeStore);
       if (handled === false) json(response, 404, { error: 'Unknown API route.' });
@@ -514,8 +568,10 @@ http.createServer(async (request, response) => {
     const vendored = url.pathname.match(/^\/vendor\/pdfjs\/([a-z.]+)$/)?.[1];
     if (vendored) { const file = pdfjsFiles.has(vendored) && pdfjsFile(vendored); return file ? serveFile(response, file) : json(response, 404, { error: 'Not found.' }); }
     if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/lobby.html') {
+      // Through Pantheon's proxy the browser is already on Pantheon's origin (which
+      // may be a public one), so the redirect stays relative; direct visits go to Pantheon.
       const target = new URL('/frige/', platformOrigin); target.search = url.search;
-      response.writeHead(308, { location: target.href }); response.end(); return;
+      response.writeHead(308, { location: request.headers['x-forwarded-prefix'] === '/frige' ? `/frige/${url.search}` : target.href }); response.end(); return;
     }
     const requested = url.pathname;
     const file = path.resolve(publicDirectory, `.${requested}`);

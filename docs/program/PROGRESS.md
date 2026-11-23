@@ -9,8 +9,8 @@ Work packages for [the master plan](MASTER-PLAN.md). Area status stays in
 increment adds anchored edits for long pieces and passage review. It is
 merged (suite PR 8) and released (stex-igor `c5af494`)
 ([evidence](../verification/frige-wave-f-anchored-edits.md)). Interface
-increment 1 (navigation and exact passage selection) is on
-`feat/frige-ui-passages`
+increment 1 (navigation and exact passage selection) merged in suite PR 10.
+Its private adapter shipped in generation 15
 ([evidence](../verification/frige-ui-1-navigation-passages.md)). Next:
 interface increment 2 (editorial review), then F-B3 long-form context.
 
@@ -19,7 +19,7 @@ interface increment 2 (editorial review), then F-B3 long-form context.
 proposals) is implemented and reviewed. The stex-igor side of 3c, 4a and 4b,
 with D-018 and D-019, was released on 2026-11-20 (`bd8b3b0`), and a live turn
 after the release carried a director proposal into Frige (W4-f). The suite
-records are on PR 7. Evidence:
+records merged in PR 7. Evidence:
 [Wave 4b](../verification/director-proposals-w4.md),
 [Wave 4a](../verification/agent-config-w4a.md),
 [Wave 2](../verification/frige-change-contracts-w2.md),

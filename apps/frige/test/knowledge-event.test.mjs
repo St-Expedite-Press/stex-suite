@@ -1,3 +1,4 @@
+/** Frige regression tests source that checks knowledge event behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -7,6 +8,7 @@ import { knowledgeEvent } from '../src/knowledge-event.mjs';
 import { projectContext } from '../src/project-context.mjs';
 import { ProjectStore } from '../src/project-store-vault.mjs';
 
+/** Creates disposable inputs and state for this test module. */
 async function fixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-knowledge-'));
   context.after(() => rm(root, { recursive: true, force: true }));

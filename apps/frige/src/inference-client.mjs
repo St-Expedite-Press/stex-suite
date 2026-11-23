@@ -1,5 +1,7 @@
+/** Frige publishing engine source that exchanges bounded turns with the inference service or deterministic simulator. */
 const MAX_CONTEXT_TURNS = 10;
 
+/** Creates an assistant reply with its displayed transport state. */
 function assistantResult(commentary, availability = 'available', graphSuggestions = []) {
   return { commentary, availability, proposal: null, graphSuggestions };
 }
@@ -9,7 +11,9 @@ function assistantResult(commentary, availability = 'available', graphSuggestion
 // reply with typed parts and with changes for those nodes only; Frige
 // re-validates every change against what it offered and stores the parts.
 const empty = { changes: [], parts: [], droppedParts: [], meta: null };
+/** Builds server-side inference request headers using configured credentials. */
 const gatewayHeaders = () => ({ 'content-type': 'application/json', ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}) });
+/** Checks whether explicit deterministic inference is selected. */
 const deterministic = () => (process.env.STEX_FRIGE_INFERENCE_MODE || process.env.TEXGRAPH_INFERENCE_MODE) === 'fake';
 
 /** A message in this form asks the simulator for one labelled change. */
@@ -107,6 +111,7 @@ const simulatorReceipt = (message) => `Deterministic Igor simulator received: ${
  */
 function fakeScopeTurn(message, sources = [], passage = null) {
   const received = String(message || '').trim();
+  /** Builds metadata for the current simulated scope reply. */
   const meta = (output) => ({ model: 'stex/hermes-fake', usage: { inputChars: received.length, outputChars: output.length, transport: 'fake' } });
   if (passage && !/^simulate (edit|change|layout):/i.test(received)) {
     const lines = passage.startLine === passage.endLine ? `line ${passage.startLine}` : `lines ${passage.startLine}–${passage.endLine}`;
@@ -241,7 +246,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
   const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
     const response = await fetch(new URL('/v1/texgraph/scope-turn', endpoint), {
-      method: 'POST', headers: gatewayHeaders(), signal: controller.signal,
+      method: 'POST', headers: gatewayHeaders(), redirect: 'error', signal: controller.signal,
       body: JSON.stringify({
         contract: 'stex.texgraph.scope-turn.v3',
         book: { id: book.id, title: book.title, settings: book.settings || {} },
@@ -292,12 +297,13 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
 }
 
 // The gateway's own report on its provider: configured, model, and whether the key works.
+/** Classifies inference availability using its health boundary. */
 export async function inferenceHealth() {
   if (deterministic()) return { state: 'simulated', model: 'stex/hermes-fake', provider: 'fake' };
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { state: 'unconfigured', detail: 'STEX_INFERENCE_URL is not set.' };
   try {
-    const response = await fetch(new URL('/health?probe=1', endpoint), { headers: gatewayHeaders(), signal: AbortSignal.timeout(8_000) });
+    const response = await fetch(new URL('/health?probe=1', endpoint), { headers: gatewayHeaders(), redirect: 'error', signal: AbortSignal.timeout(8_000) });
     const health = await response.json();
     if (health.transport === 'fake') return { state: 'simulated', model: 'stex/hermes-fake', provider: 'fake' };
     if (!health.configured) return { state: 'unconfigured', detail: `Set ${(health.missing || []).join(' and ')} for the inference gateway.`, model: health.model };
@@ -308,15 +314,17 @@ export async function inferenceHealth() {
 
 // Model roster settings live in the gateway; Frige relays them with the shared
 // secret so the browser never holds it. Returns the gateway's status and body.
+/** Reads current inference settings through the service boundary. */
 export async function gatewaySettings(method, pathname, payload) {
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { status: 503, body: { error: 'STEX_INFERENCE_URL is not set.', code: 'UNCONFIGURED' } };
   try {
-    const response = await fetch(new URL(pathname, endpoint), { method, headers: gatewayHeaders(), signal: AbortSignal.timeout(15_000), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
+    const response = await fetch(new URL(pathname, endpoint), { method, headers: gatewayHeaders(), redirect: 'error', signal: AbortSignal.timeout(15_000), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
     return { status: response.status, body: await response.json().catch(() => ({ error: `The gateway returned ${response.status}.` })) };
   } catch { return { status: 503, body: { error: 'The inference gateway is not running.', code: 'GATEWAY_UNREACHABLE' } }; }
 }
 
+/** Requests a page proposal through the compatibility turn adapter. */
 export async function requestPageRevision({ book, page, approvedSourceExcerpts = [], turns, message }) {
   // The one-page book has no simulated changes; it only acknowledges the message.
   if (deterministic()) return assistantResult(`${simulatorReceipt(message)}. No canonical source was changed.\n\nNo source proposal was generated by the deterministic simulator.`, 'available');
@@ -333,10 +341,8 @@ export async function requestPageRevision({ book, page, approvedSourceExcerpts =
   try {
     const response = await fetch(new URL('/v1/texgraph/page-turn', endpoint), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}),
-      },
+      headers: gatewayHeaders(),
+      redirect: 'error',
       body: JSON.stringify({
         contract: 'stex.texgraph.page-turn.v1',
         book: { title: book.title, author: book.author, design: book.design, settings: book.settings || {}, context: book.context || {} },

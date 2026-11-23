@@ -1,3 +1,4 @@
+/** Frige publishing engine source that parses line-preserving manuscript units and document metadata. */
 import { createHash } from 'node:crypto';
 
 // Control characters other than tab and line ends have no printed form and stop or
@@ -8,6 +9,7 @@ const FENCE = /^\s*```/;
 
 // Content-derived ids stay stable when unrelated parts of a piece change; the
 // occurrence number separates identical blocks.
+/** Derives a manuscript unit identity from its source and metadata. */
 function identify(blocks) {
   const seen = new Map();
   for (const block of blocks) {
@@ -26,6 +28,7 @@ function identify(blocks) {
 // block carries its 1-based source line span; YAML front matter and code-fence
 // markers are recorded as excluded regions, so each non-blank source line is
 // accounted for exactly once.
+/** Parses manuscript structure while retaining source lineation. */
 export function parseManuscript(markdown) {
   const lines = String(markdown).replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(CONTROL_CHARACTERS, '').split('\n');
   const blocks = []; const excluded = []; let stanza = null; let note = null; let first = 0;
@@ -38,7 +41,9 @@ export function parseManuscript(markdown) {
       excluded.push({ type: 'front-matter', span: { start: 1, end: end + 1 } }); first = end + 1;
     }
   }
+  /** Finalizes the current manuscript unit in the parsed document. */
   const close = () => { if (stanza) blocks.push(stanza); stanza = null; };
+  /** Finds the next content line during document parsing. */
   const nextContent = (index) => lines.slice(index + 1).find((line) => line.trim() && !FENCE.test(line)) ?? '';
   for (let index = first; index < lines.length; index += 1) {
     const raw = lines[index]; const number = index + 1;

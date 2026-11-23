@@ -1,3 +1,4 @@
+/** Seaxneat regression tests source that checks child environment behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { childEnvironment, workspaceEnvironment } from '../src/child-environment.mjs';

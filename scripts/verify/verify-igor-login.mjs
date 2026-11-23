@@ -1,9 +1,10 @@
+/** Suite acceptance source that exercises the private renderer with a disposable sign-in. */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readManifest, repositoryRoot } from './assets/manifest.mjs';
+import { readManifest, repositoryRoot } from '../assets/manifest.mjs';
 import { launchBrowser, outDirectoryFromArgs, page, started } from './browser/devtools.mjs';
 
 // Browser verification of hosted Igor's sign-in page: the Pantheon splash with
@@ -43,10 +44,14 @@ const measure = `(async () => {
   };
 })()`;
 
+/** Checks whether two geometry ranges overlap. */
 const intersects = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+/** Checks whether the outer rectangle includes the inner rectangle. */
 const contains = (rect, [x, y]) => x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3];
+/** Checks whether the tested rectangle touches the specified line segment. */
 const crossesSegment = (rect, [x1, y1, x2, y2]) => Array.from({ length: 201 }, (_, i) => [x1 + (x2 - x1) * i / 200, y1 + (y2 - y1) * i / 200]).some((point) => contains(rect, point));
 
+/** Verifies the hosted sign-in renderer and password flow with a disposable user. */
 async function main() {
   const focal = (await readManifest()).assets.find((asset) => asset.id === 'P10').focal;
   const { hashPassword } = await import(new URL(`file:///${path.join(igorDirectory, 'server', 'auth.mjs').replace(/\\/g, '/')}`).href);
@@ -58,6 +63,7 @@ async function main() {
     STEX_IGOR_PORT: String(port), STEX_IGOR_DATA_DIR: path.join(scratch, 'data'), STEX_INFERENCE_URL: 'http://127.0.0.1:9', STEX_INFERENCE_SHARED_SECRET: 'verify-secret',
     STEX_IGOR_PUBLIC_ORIGIN: 'https://igor.example.test', STEX_IGOR_AUTH: 'password', STEX_IGOR_USERS_FILE: usersFile, STEX_IGOR_SESSION_SECRET: randomBytes(32).toString('hex') } });
   const failures = []; const report = { viewports: [] };
+  /** Records a named acceptance assertion and fails the run if it fails. */
   const check = (condition, message) => { if (!condition) failures.push(message); return condition; };
   let browser;
   try {
@@ -102,6 +108,7 @@ async function main() {
     await tab.go(`${base}/igor/c/abcdefabcdef`);
     const redirected = await tab.evaluate('location.pathname + location.search');
     check(redirected === '/igor/login?next=%2Figor%2Fc%2Fabcdefabcdef', `Signed-out visit was not sent to sign-in (${redirected}).`);
+    /** Enters the supplied text into the selected input. */
     const fill = (password) => `(() => { const set = (id, value) => { const input = document.getElementById(id); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }; set('username', 'Reader@example.test'); set('password', ${JSON.stringify(password)}); document.querySelector('.splash-action').click(); })()`;
     await tab.evaluate(fill('not the password'));
     const refused = await tab.evaluate(`new Promise((resolve) => { const started = Date.now(); const poll = () => { const text = document.getElementById('login-error').textContent; if (text || Date.now() - started > 8000) resolve(text); else setTimeout(poll, 100); }; poll(); })`);

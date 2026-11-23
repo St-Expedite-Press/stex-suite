@@ -1,8 +1,11 @@
+/** Frige regression tests source that checks document behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseManuscript } from '../src/document/parser.mjs';
 
+/** Constructs a verse sample with controlled lines for the test. */
 const verse = (block) => block.lines.map(({ indent, text }) => ({ indent, text }));
+/** Extracts the structure being compared in the test. */
 const shape = (blocks) => blocks.map((block) => block.type);
 const sample = ['---', 'title: x', '---', '# Title', '', 'First line  ', '    indented — Æther’s', '', '```', '   fenced *Latin*', '```', 'After', '', '---', '', '### Editorial Notes', '> cut', ''].join('\n');
 

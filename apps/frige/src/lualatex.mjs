@@ -1,3 +1,4 @@
+/** Frige publishing engine source that renders and compiles page proofs from validated source and layout. */
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,30 +13,36 @@ export const TRIM_SIZES = new Map([
   ['8.5 × 11 in', ['8.5in', '11in']],
 ]);
 
+/** Validates page source before including it in TeX. */
 export function validatePageSource(source) {
   if (SAFE_SOURCE.test(source)) return 'Page source cannot contain document setup, file access, command definitions, or Lua execution.';
   return null;
 }
 
+/** Resolves the selected supported paper dimensions. */
 function trimSize(value) { return TRIM_SIZES.get(String(value || '')) || TRIM_SIZES.get('6 × 9 in'); }
 
+/** Validates a margin before it is included in the page layout. */
 function margin(value) {
   const match = /^(\d+(?:\.\d+)?)\s*(in|mm|cm)$/i.exec(String(value || '').trim());
   if (!match || Number(match[1]) < 0.25 || Number(match[1]) > 2) return '0.5in';
   return `${match[1]}${match[2].toLowerCase()}`;
 }
 
+/** Validates or normalizes the selected proof font size. */
 function pointSize(value) {
   const match = /^(\d+(?:\.\d+)?)\s*pt$/i.exec(String(value || '').trim());
   if (!match || Number(match[1]) < 8 || Number(match[1]) > 18) return '11pt';
   return `${match[1]}pt`;
 }
 
+/** Selects a permitted font name for compiler input. */
 function safeFont(value) {
   const font = String(value || '').trim();
   return /^[A-Za-z0-9 .-]{1,120}$/.test(font) ? font : 'Latin Modern Roman';
 }
 
+/** Builds the TeX document for a page preview. */
 export function previewDocument(settings = {}) {
   const [width, height] = trimSize(settings.trimSize);
   const safeMargin = margin(settings.margins);
@@ -53,6 +60,7 @@ export function previewDocument(settings = {}) {
 `;
 }
 
+/** Compiles a single page and records its proof result. */
 export async function buildPage(store, page, book = {}) {
   const invalid = validatePageSource(page.source);
   if (invalid) return { ok: false, error: invalid, log: invalid };
@@ -70,10 +78,12 @@ export async function buildPage(store, page, book = {}) {
   }
 }
 
+/** Invokes the compiler in the disposable or configured build directory. */
 function runLuaLaTex(directory) {
   return new Promise((resolve) => {
     let output = '';
     let settled = false;
+    /** Completes a compiler invocation once and settles its captured output. */
     const finish = (result) => {
       if (!settled) { settled = true; resolve(result); }
     };

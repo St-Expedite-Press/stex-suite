@@ -1,3 +1,4 @@
+/** Knowledge regression tests source that checks projections behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -8,18 +9,23 @@ import test, { after } from 'node:test';
 import { openKnowledge, rebuildKnowledge } from '../src/projections.mjs';
 
 const project = { application: 'frige', id: 'test-book', reference: 'stex://frige/project/test-book', title: 'Synthetic book' };
+/** Makes a stable synthetic digest for the test record. */
 const sha = (source) => createHash('sha256').update(source).digest('hex');
 const directories = [];
 after(() => Promise.all(directories.map((directory) => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))));
+/** Builds the engine revision event checked by the journal test. */
 function event(sequence = 1, source = 'First revision') {
   return { id: `revision-${sequence}`, sequence, occurredAt: '2026-11-07T18:00:00.000Z', project, sources: [{ id: 'node-one', reference: `${project.reference}#source=node-one`, title: 'One', revision: sha(source), bytes: Buffer.byteLength(source), mediaType: 'text/markdown', source }] };
 }
+/** Allocates temporary fixture state and registers cleanup. */
 async function temporary(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'stex-knowledge-'));
   directories.push(directory);
   return directory;
 }
+/** Checks the returned failure code for the tested operation. */
 const code = (expected) => (error) => error.code === expected;
+/** Records an explicitly approved source revision if the expected version matches. */
 const accept = (store, sequence = 1) => store.accept({ idempotencyKey: `accept-${sequence}`, expectedVersion: store.view().version, event: event(sequence) });
 
 test('knowledge is disabled without an explicit selected directory', async () => {
@@ -60,6 +66,7 @@ test('out-of-order events, stale versions, conflicting parallel writes and inval
 test('inferences require current evidence and confidence, remain distinct after acceptance, and support correction/rejection', async (context) => {
   const store = await openKnowledge({ directory: await temporary(context) }); context.after(() => store.close()); await accept(store);
   const relationship = { id: 'inference-one', kind: 'inference', subject: project.reference, predicate: 'explores', object: 'a proposed concept', confidence: 0.7, evidence: [{ reference: event().sources[0].reference, revision: event().sources[0].revision }] };
+  /** Appends the supplied nodes to the current display. */
   const add = (relation, idempotencyKey) => store.relation({ idempotencyKey, expectedVersion: store.view().version, relation });
   await assert.rejects(() => add({ ...relationship, evidence: [] }, 'invalid-evidence'), code('INVALID_RELATION'));
   await assert.rejects(() => add({ ...relationship, confidence: 1.2 }, 'invalid-confidence'), code('INVALID_RELATION'));
@@ -92,6 +99,7 @@ test('accept and reject preserve the relationship object when no correction is s
   const directory = await temporary(context); let store = await openKnowledge({ directory });
   await accept(store);
   await store.relation({ idempotencyKey: 'optional-object-relation', expectedVersion: store.view().version, relation: { id: 'optional-object-inference', kind: 'inference', subject: project.reference, predicate: 'explores', object: 'Original inferred concept', confidence: 0.5, evidence: [{ reference: event().sources[0].reference, revision: event().sources[0].revision }] } });
+  /** Supplies a synthetic revision operation for the tested journal. */
   const revise = (status, idempotencyKey) => store.revise({ idempotencyKey, expectedVersion: store.view().version, id: 'optional-object-inference', status });
   await revise('accepted', 'optional-object-accept');
   assert.equal(store.view().graph.relations[0].object, 'Original inferred concept');

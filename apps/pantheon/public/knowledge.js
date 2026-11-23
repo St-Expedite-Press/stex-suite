@@ -1,15 +1,23 @@
+/** Pantheon browser source that renders Graph and sends explicit consent and relationship operations. */
 const root = document.querySelector('#knowledge-content');
 const notice = document.querySelector('#knowledge-notice');
 let view; let catalog; let busy = false; let projects = [];
+/** Reads the current source and metadata for a selected graph node. */
 const node = (tag, text, className) => { const value = document.createElement(tag); if (text !== undefined) value.textContent = text; if (className) value.className = className; return value; };
+/** Creates a labeled native button with the supplied handler. */
 function button(text, action) { const value = node('button', text, 'stex-button stex-button--secondary'); value.type = 'button'; value.addEventListener('click', () => run(action)); return value; }
+/** Creates or fills the input element used by this workflow. */
 function input(label, name, value = '') { const wrap = node('label', label); const control = node('input'); control.name = name; control.value = value; control.required = true; control.maxLength = 300; wrap.append(control); return wrap; }
+/** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api(route = '', body) {
   const response = await fetch('/api/knowledge/v1' + route, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(30000), ...(body ? { body: JSON.stringify(body) } : {}) });
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'Knowledge is unavailable.'); return result;
 }
+/** Executes the requested local operation and reports its result. */
 async function run(action) { if (busy) return; busy = true; root.inert = true; try { await action(); } catch (error) { notice.textContent = error.message; } finally { busy = false; root.inert = false; } }
+/** Sends an explicit journal mutation and reloads the view. */
 const mutation = (route, value) => api(route, { ...value, expectedVersion: view.version, idempotencyKey: crypto.randomUUID() });
+/** Rebuilds the current view from the accepted response data. */
 function render() {
   root.replaceChildren();
   if (!view.enabled) { notice.textContent = 'Knowledge is not enabled for this workspace.'; return; }

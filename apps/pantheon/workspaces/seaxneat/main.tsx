@@ -1,3 +1,4 @@
+/** Pantheon website workspace source that renders the Seaxneat workspace and talks to its versioned engine API. */
 import React, { FormEvent, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
@@ -6,6 +7,7 @@ type Revision = { id: string; kind: string; createdAt: string; sourceHash: strin
 type Project = { id: string; title: string; ref: string; revisionCount: number; hasPendingProposal: boolean; lastValidatedRevision: string | null; revisions: Revision[]; operation: { state: string; detail?: string } };
 type Proposal = { id: string; request: string; path: string; source: string; baseHash: string };
 const endpoint = '/seaxneat/api/stex/workspace/v1';
+/** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api<T>(route: string, payload?: object): Promise<T> {
   const response = await fetch(endpoint + route, { method: payload ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(390_000), ...(payload ? { body: JSON.stringify(payload) } : {}) });
   const value = await response.json();
@@ -13,9 +15,11 @@ async function api<T>(route: string, payload?: object): Promise<T> {
   if (value.schemaVersion !== 'stex.seaxneat.workspace.v1') throw new Error('Seaxneat returned an incompatible response.');
   return value.result as T;
 }
+/** Renders one conversation message or derives the displayable failure. */
 const message = (error: unknown) => error instanceof Error ? error.message : 'Seaxneat is unavailable.';
 /** The shared Company screen (agent configuration, Wave 4a), served by Igor and filtered to this studio's tasks. A plain link: this workspace holds no agent settings. */
 const companyHref: string = '/igor/team?app=seaxneat';
+/** Renders the website studio, its workspaces and revision controls. */
 function Workspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
@@ -26,6 +30,7 @@ function Workspace() {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState('');
   const [diff, setDiff] = useState('');
+  /** Selects a website project and clears stale details. */
   const select = async (project: Project | null) => {
     setSelected(project); setProposal(null); setPreview(''); setDiff('');
     const url = new URL(location.href);
@@ -33,6 +38,7 @@ function Workspace() {
     history.replaceState(null, '', url);
     if (project?.hasPendingProposal) setProposal(await api<Proposal>('/projects/' + project.id + '/proposal'));
   };
+  /** Reloads the website project list and selection. */
   const refresh = async (wanted?: string) => {
     const list = await api<Project[]>('/projects'); setProjects(list);
     const current = wanted ? list.find((project) => project.id === wanted) || null : null;
@@ -57,6 +63,7 @@ function Workspace() {
     }).catch((error) => { if (active) setNotice(message(error)); });
     return () => { active = false; };
   }, []);
+  /** Runs an explicit workspace operation and updates busy and error state. */
   const run = async (operation: () => Promise<void>) => {
     if (busy) return;
     setBusy(true); setNotice('Working in Seaxneat…');
@@ -66,32 +73,39 @@ function Workspace() {
       if (selected) await refresh(selected.id).catch(() => {});
     } finally { setBusy(false); }
   };
+  /** Creates a website project through the owning engine. */
   const create = (event: FormEvent) => { event.preventDefault(); void run(async () => {
     const project = await api<Project>('/projects', { title }); setTitle('');
     await refresh(); await select(project);
     setNotice(project.lastValidatedRevision ? 'Project built and ready.' : 'Setup failed. No validated revision is available; inspect the operation detail.');
   }); };
+  /** Requests a bounded simulated change for the current project. */
   const propose = (event: FormEvent) => { event.preventDefault(); if (!selected) return; void run(async () => {
     setProposal(await api<Proposal>('/projects/' + selected.id + '/proposal', { message: request }));
     setRequest(''); await refresh(selected.id); setNotice('Simulated proposal ready for review.');
   }); };
+  /** Applies and validates the selected proposal. */
   const apply = () => { if (!selected || !proposal) return; void run(async () => {
     await api('/projects/' + selected.id + '/apply', { proposalId: proposal.id });
     setProposal(null); setPreview(''); setDiff(''); await refresh(selected.id); setNotice('Validated edit applied.');
   }); };
+  /** Records dismissal of the current proposal. */
   const dismiss = () => { if (!selected || !proposal) return; void run(async () => {
     await api('/projects/' + selected.id + '/dismiss', { proposalId: proposal.id });
     setProposal(null); await refresh(selected.id); setNotice('Proposal dismissed.');
   }); };
+  /** Starts the validated revision's isolated preview. */
   const startPreview = () => { if (!selected) return; void run(async () => {
     const result = await api<{ path: string }>('/projects/' + selected.id + '/preview', {});
     if (result.path !== '/seaxneat/api/projects/' + selected.id + '/preview/') throw new Error('Invalid preview path.');
     setPreview(result.path); await refresh(selected.id); setNotice('Preview is starting after a successful build. Use Reload preview if it is still starting.');
   }); };
+  /** Loads changed files for the selected revision. */
   const viewDiff = (revision: string) => { if (!selected) return; void run(async () => {
     const result = await api<{ diff: string }>('/projects/' + selected.id + '/diff?revision=' + encodeURIComponent(revision));
     setDiff(result.diff || '(No source differences from this revision.)'); setNotice('Revision diff loaded.');
   }); };
+  /** Restores the chosen source as a new validated revision. */
   const restore = (revision: string) => { if (!selected || !confirm('Restore revision ' + revision + '? This creates a new validated revision.')) return; void run(async () => {
     const project = await api<Project>('/projects/' + selected.id + '/restore', { revision });
     await refresh(selected.id); await select(project); setNotice('Restored as a new validated revision.');

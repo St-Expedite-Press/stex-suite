@@ -1,14 +1,21 @@
+/** Pantheon server source that hosts the journal API and checks engine access before responding. */
 // Pantheon presents the knowledge service; engines remain source authorities.
 
+/** Reports an invalid value using this boundary's failure shape. */
 const fail = (status, message) => Object.assign(new Error(message), { status });
+/** Validates and normalizes an engine-owned project reference. */
 const projectRef = (value) => {
   const match = /^stex:\/\/(frige|seaxneat)\/project\/([a-z0-9][a-z0-9-]{0,62})$/.exec(value || '');
   if (!match) throw fail(400, 'Choose a known project reference.');
   return { application: match[1], id: match[2], reference: value };
 };
+/** Constructs the bounded host API around the optional journal. */
 export function knowledgeApi({ knowledge, targets, fetchImpl = fetch }) {
+  /** Fetches owner-verified data from the selected studio. */
   async function engine(project, suffix = '', payload, signal) {
     const target = targets[project.application];
+    // A studio the host defers has no target: its references are unavailable, never fetched.
+    if (!target) throw fail(503, 'The source engine is unavailable.');
     const url = new URL(`/${project.application}/api/stex/context/v1/projects/${project.id}${suffix}`, target);
     let response;
     try { response = await fetchImpl(url, { method: payload ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]), headers: { 'content-type': 'application/json' }, ...(payload ? { body: JSON.stringify(payload) } : {}) }); }
@@ -21,17 +28,20 @@ export function knowledgeApi({ knowledge, targets, fetchImpl = fetch }) {
     if (result.project?.reference !== project.reference || result.project?.application !== project.application || result.project?.id !== project.id) throw fail(502, 'The engine returned a different project.');
     return result;
   }
+  /** Loads the project's source catalog from its owner. */
   async function catalog(reference, offset = '0') {
     if (!/^\d{1,5}$/.test(offset)) throw fail(400, 'Invalid source page.');
     const project = projectRef(reference); const result = await engine(project, `?offset=${offset}`);
     if (result.schemaVersion !== 'stex.project.context.v1' || !Array.isArray(result.sources) || result.sources.length > 50) throw fail(502, 'The engine returned an invalid source catalog.');
     return result;
   }
+  /** Revalidates source references within the request budget. */
   async function accessible(view) {
     // At most forty source checks, four concurrently, within one six-second
     // deadline. Unchecked or failed references remain explicitly unavailable.
     const signal = AbortSignal.timeout(6000); const verified = new Set();
     let next = 0;
+    /** Processes queued reference checks within the shared deadline. */
     async function worker() {
       while (!signal.aborted && next < Math.min(40, view.knowledge.sources.length)) {
         const source = view.knowledge.sources[next++];
@@ -47,12 +57,14 @@ export function knowledgeApi({ knowledge, targets, fetchImpl = fetch }) {
     const available = new Set(sources.filter((s) => s.access === 'current').map((s) => `${s.reference}:${s.revision}`));
     return { ...view, knowledge: { sources }, graph: { ...view.graph, relations: view.graph.relations.map((relation) => ({ ...relation, evidenceState: relation.evidence.every((entry) => available.has(`${entry.reference}:${entry.revision}`)) ? 'current' : 'unavailable' })) } };
   }
+  /** Reads and validates a bounded JSON request body. */
   async function body(request) {
     const parts = []; let size = 0;
     for await (const part of request) { size += part.length; if (size > 16384) throw fail(413, 'Keep this request below 16,384 bytes.'); parts.push(part); }
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(parts))); } catch { throw fail(400, 'Send a valid UTF-8 JSON request.'); }
   }
   return async (request, response, url) => {
+    /** Sends the route result with its selected status and response headers. */
     const send = (status, value) => { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); response.end(JSON.stringify(value)); };
     try {
       const origin = request.headers.origin;
