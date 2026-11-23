@@ -59,7 +59,8 @@ credential. It accepts an Igor conversation with an epoch-specific id and
 binds the grant to the owned pending reply and the SHA-256 of the complete
 serialized turn. Inference verifies that request and digest with Igor over
 a private Unix socket before dispatch. Source bytes travel only through the
-broker's tool replies. The credential stays in the internal transport.
+broker's tool replies. The credential never reaches browsers or model
+messages.
 
 The isolated MCP client offers `search_approved_excerpts({query})` and
 `read_approved_excerpt({reference,revision})`. Both resolve the current
