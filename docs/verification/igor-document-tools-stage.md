@@ -66,6 +66,12 @@ handler. A production worker and its model relay are distinct deliverables.
 
 ## Production acceptance still pending
 
+On November 23, 2026, the code shipped switched off as Igor generation 18
+(`7aa7b25`, stex-igor PR 8). The deploy read the active release back from
+the VM. Signed-out public requests to Igor and Pantheon redirected to
+sign-in, and the conversation API returned 401. No document-tool socket or
+worker is configured, so production turns use the existing transports.
+
 The candidate is based on private revision `8ebcfb2631de` and suite revision
 `a3708e1dcaf0`. The production serving worker and model relay still need
 their final service identities, socket permissions, process lifecycle and
