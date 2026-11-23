@@ -116,7 +116,10 @@ Remaining, by design or low:
   locally do not reach the VM.
 - The release was built from a working tree with uncommitted changes
   (generation 0, labelled `-dirty`); there is no CI build or automatic
-  deploy for the suite release yet.
+  deploy for the suite release yet. *Later:* generation 1 (`a3708e1`)
+  was built from a clean archive of the merged revision after trusted CI
+  ([editorial release](frige-editorial-release.md)). Installation is still
+  a manual run of the rollback-capable installer.
 - No live model turn was made for this verification. Frige editorial turns
   use the production inference service and are paid calls when used.
 - Seaxneat and the Python platform API are not hosted.

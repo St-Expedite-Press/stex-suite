@@ -267,7 +267,7 @@ a destination, not a reorganization to perform in one step.
 
 | Milestone | Objective | Status |
 | --- | --- | --- |
-| M0 | Merge both repositories with effective CI; record production state, backup and rollback | Igor merged and deployed; suite PR 5 CI passing, its merge awaiting owner authorization (see [STATUS](STATUS.md); the [release report](verification/platform-release.md) records the earlier blocked state) |
+| M0 | Merge both repositories with effective CI; record production state, backup and rollback | Done. Igor merged and deployed. Suite PR 5 merged as `ce7f8f5` on 2026-11-18 after the trusted job passed. Later releases are listed in [STATUS](STATUS.md). The [release report](verification/platform-release.md) records the earlier blocked state |
 | M1 | Python foundation beside Node: `backend/stex` FastAPI app, typed settings, `/health`, read-only `stex.platform.projects.v1` over studio summaries; uv, Ruff, mypy, pytest in `corepack pnpm test` and CI | Implemented and tested locally ([evidence](verification/platform-m1-python-foundation.md)) |
 | M2a | Pantheon consumes the platform API: read-only `/api/platform/v1/projects` route, project pages render from it with the per-studio browser path as fallback, `dev:alpha` starts it | Implemented and tested locally ([evidence](verification/platform-m2a-pantheon-consumption.md)) |
 | M2b | Identity boundary | Hosted part decided ([D-023](program/DECISIONS.md#d-023--hosted-pantheon-uses-igors-accounts-as-its-sign-in)): hosted Pantheon uses Igor's password accounts ([evidence](verification/hosted-pantheon.md)). The local splash entry stays credential-free; per-user engine state and a platform identity service remain undecided |
@@ -324,8 +324,8 @@ Igor, verify its active release, authentication, preserved records and rollback,
 then pin that merged revision in the suite and merge the suite after its gates.
 Do not treat a skipped test job or a planned deployment as completed evidence.
 
-The release is in progress. Exact merge revisions, CI results, production
-checks and final repository state belong in
+That release has merged and deployed. Exact merge revisions, CI results,
+production checks and final repository state for it and later releases belong in
 [the release report](verification/platform-release.md) and [STATUS.md](STATUS.md).
 Earlier acceptance reports remain historical. No credential/permission change,
 billable runtime workload, runtime tool enablement, Python rewrite or Obsidian
