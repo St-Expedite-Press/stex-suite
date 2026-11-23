@@ -81,8 +81,10 @@ units.
   per-attempt limits rely on the attempt id from the worker's forwarder.
 - Document turns need a plain model id for Igor's conversation task. It
   currently uses the default.
-- stex-igor PR 11 is not yet deployed. It makes the installer restart the
-  worker and relay after each release, and it logs one outcome code per
-  turn. Until it is deployed, restart both units after any Igor release.
+- Generation 21 (`5f1b594`, stex-igor PR 11) makes the installer restart
+  the worker and relay after each release, and it logs one outcome code per
+  turn. On its deploy, both units restarted onto the new release six seconds
+  after the install. Document tools stayed active, and signed-out public
+  requests still redirected or returned 401.
 - PDF and DOCX conversion (MarkItDown) still needs a product-owned binary
   upload and approval flow.
