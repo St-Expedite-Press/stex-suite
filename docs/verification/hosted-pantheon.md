@@ -120,3 +120,12 @@ Remaining, by design or low:
 - No live model turn was made for this verification. Frige editorial turns
   use the production inference service and are paid calls when used.
 - Seaxneat and the Python platform API are not hosted.
+
+## Merge and release record
+
+2026-11-23. stex-igor PR 6 (`e9c0d85`) was fast-forwarded to `main`, and its
+automatic deploy installed Igor generation 16 with Igor's code unchanged.
+Suite PR 13 merged as `2660dfb` after CI passed. The hosted Pantheon release
+was then rebuilt from that merge (`stex-pantheon-2660dfbecfdb`) and installed
+with every health and gate check passing. The book's password, the accounts
+and Igor's Frige link were unchanged afterwards.
