@@ -34,6 +34,23 @@ FastAPI platform when the locked Python environment is available. Stop the
 stack with Ctrl+C. The nested Hermes source is needed for work on the
 native runtime itself.
 
+### Connect an existing inference gateway
+
+For an operator-approved live session, start the isolated Hermes runtime
+and its STEX inference service separately using the private runtime
+runbook. Verify the runtime isolation boundary before activation and
+obtain explicit authorization and a call budget.
+
+Export `STEX_INFERENCE_URL` and `STEX_INFERENCE_SHARED_SECRET` from the
+ignored local configuration into the workspace launcher shell. Use the
+inference service's loopback HTTP origin and its matching shared token. Run
+`corepack pnpm dev:alpha --use-inference-gateway`. The launcher checks the
+inference service's readiness, then sends both Frige editorial turns and
+Igor conversations through that service. Keep upstream Hermes and model
+provider credentials in their owning processes.
+
+Regular `corepack pnpm dev:alpha` still uses simulated inference.
+
 ## Configuration
 
 Use the application-specific settings in [.env.example](../.env.example)

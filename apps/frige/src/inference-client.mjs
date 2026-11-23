@@ -246,7 +246,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
   const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
     const response = await fetch(new URL('/v1/texgraph/scope-turn', endpoint), {
-      method: 'POST', headers: gatewayHeaders(), signal: controller.signal,
+      method: 'POST', headers: gatewayHeaders(), redirect: 'error', signal: controller.signal,
       body: JSON.stringify({
         contract: 'stex.texgraph.scope-turn.v3',
         book: { id: book.id, title: book.title, settings: book.settings || {} },
@@ -303,7 +303,7 @@ export async function inferenceHealth() {
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { state: 'unconfigured', detail: 'STEX_INFERENCE_URL is not set.' };
   try {
-    const response = await fetch(new URL('/health?probe=1', endpoint), { headers: gatewayHeaders(), signal: AbortSignal.timeout(8_000) });
+    const response = await fetch(new URL('/health?probe=1', endpoint), { headers: gatewayHeaders(), redirect: 'error', signal: AbortSignal.timeout(8_000) });
     const health = await response.json();
     if (health.transport === 'fake') return { state: 'simulated', model: 'stex/hermes-fake', provider: 'fake' };
     if (!health.configured) return { state: 'unconfigured', detail: `Set ${(health.missing || []).join(' and ')} for the inference gateway.`, model: health.model };
@@ -319,7 +319,7 @@ export async function gatewaySettings(method, pathname, payload) {
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { status: 503, body: { error: 'STEX_INFERENCE_URL is not set.', code: 'UNCONFIGURED' } };
   try {
-    const response = await fetch(new URL(pathname, endpoint), { method, headers: gatewayHeaders(), signal: AbortSignal.timeout(15_000), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
+    const response = await fetch(new URL(pathname, endpoint), { method, headers: gatewayHeaders(), redirect: 'error', signal: AbortSignal.timeout(15_000), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
     return { status: response.status, body: await response.json().catch(() => ({ error: `The gateway returned ${response.status}.` })) };
   } catch { return { status: 503, body: { error: 'The inference gateway is not running.', code: 'GATEWAY_UNREACHABLE' } }; }
 }
@@ -341,10 +341,8 @@ export async function requestPageRevision({ book, page, approvedSourceExcerpts =
   try {
     const response = await fetch(new URL('/v1/texgraph/page-turn', endpoint), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(process.env.STEX_INFERENCE_SHARED_SECRET ? { 'x-stex-inference-token': process.env.STEX_INFERENCE_SHARED_SECRET } : {}),
-      },
+      headers: gatewayHeaders(),
+      redirect: 'error',
       body: JSON.stringify({
         contract: 'stex.texgraph.page-turn.v1',
         book: { title: book.title, author: book.author, design: book.design, settings: book.settings || {}, context: book.context || {} },

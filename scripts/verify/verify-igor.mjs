@@ -182,18 +182,25 @@ async function main() {
     for (let index = 0; index < 20; index += 1) { await tab.key('Tab', 'Tab', 9); order.push(await tab.evaluate(`(document.activeElement.getAttribute('aria-label') || document.activeElement.textContent || document.activeElement.className).trim().replace(/\\s+/g, ' ').slice(0, 40)`)); }
     report.flows.keyboard = order;
     check(order.some((label) => /new conversation/i.test(label)) && order.some((label) => /rename/i.test(label)), `Keyboard order missed key controls: ${order.join(' → ')}.`);
-    // Explicit source selection: loading metadata sends no inference turn.
+    // Follow Frige's actual handoff. Its link and catalog load must not send inference.
     const beforeContext = state.turns.length;
-    await tab.go(`${base}/igor/new?project=${encodeURIComponent('stex://frige/project/context-book')}`);
+    await tab.go(`${base}/frige/?book=context-book`);
+    const discuss = '.publishing-toolbar a[href^="/igor/new?project="]';
+    check(await waitFor(`document.querySelector(${JSON.stringify(discuss)})?.textContent === 'Discuss with Igor'`), 'Frige did not render the Discuss with Igor link.');
+    await tab.evaluate(`document.querySelector(${JSON.stringify(discuss)}).click(); true`);
     check(await waitFor(`document.querySelectorAll('.igor-context input[type="checkbox"]').length >= 2`), 'Context catalog did not load.');
+    check(await waitFor(`location.pathname === '/igor/new' && document.querySelector('[aria-label="Context project"]')?.value === 'stex://frige/project/context-book' && document.querySelector('.igor-context')?.open`), 'Frige did not open Igor with the selected book.');
+    await type('.igor-composer__input', 'Discuss only the approved source');
+    check(await tab.evaluate(`document.querySelector('.igor-send').disabled`), 'Context handoff allowed sending before source approval.');
+    await enter();
     check(state.turns.length === beforeContext, 'Reading source metadata started inference.');
     await tab.evaluate(`[...document.querySelectorAll('.igor-context li')].find(node => node.textContent.includes('Selected source')).querySelector('input').click()`);
     await tab.evaluate(`[...document.querySelectorAll('.igor-context button')].find(node => node.textContent === 'Preview selected context').click()`);
     check(await waitFor(`document.querySelector('[aria-label="Exact context preview"] pre')?.textContent === ${JSON.stringify(contextText)}`), 'Exact source preview differs from canonical text.');
     check(state.turns.length === beforeContext, 'Preview sent inference before approval.');
     await tab.evaluate(`[...document.querySelectorAll('.igor-context button')].find(node => node.textContent === 'Use this context').click()`);
-    await waitFor(`!document.querySelector('.igor-composer__input').disabled`);
-    await type('.igor-composer__input', 'Discuss only the approved source'); await enter();
+    check(await waitFor(`!document.querySelector('.igor-send').disabled`), 'Approving the context did not enable sending.');
+    await tab.evaluate(`document.querySelector('.igor-composer__input').focus()`); await enter();
     check(await waitFor(`document.querySelector('.igor-message--assistant[data-status="complete"]')`), 'Context turn did not complete.');
     const offered = state.turns.at(-1).turn;
     check(offered.context?.projectContext?.sources?.length === 1 && offered.context.projectContext.sources[0].source === contextText, 'Inference did not receive exactly the approved source.');
