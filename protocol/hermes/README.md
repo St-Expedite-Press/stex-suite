@@ -48,6 +48,34 @@ names the model the turn requested (the task's configured model), and
 `meta.taskId` names its agent-configuration task. A simulated reply keeps
 its `stex.hermes.fake` label. No field was removed or retyped.
 
+## Approved-document turns
+
+The opt-in `POST /v1/hermes/document-turn` uses the v1 turn and reply
+envelopes. Igor's server may call it after a signed-in account approves an
+exact project snapshot through [the context API](../context/README.md).
+The route requires the inference secret and a per-attempt `X-STEX-Document-Grant`
+credential. It accepts an Igor conversation with an epoch-specific id and
+`context.approvedDocuments` containing `project` and `approvalDigest`. Igor
+binds the grant to the owned pending reply and the SHA-256 of the complete
+serialized turn. Inference verifies that request and digest with Igor over
+a private Unix socket before dispatch. Source bytes travel only through the
+broker's tool replies. The credential never reaches browsers or model
+messages.
+
+The isolated MCP client offers `search_approved_excerpts({query})` and
+`read_approved_excerpt({reference,revision})`. Both resolve the current
+grant on Igor's broker. Search returns exact reference and revision pairs.
+Read returns the selected UTF-8 excerpt with provenance and an untrusted
+source label. The broker verifies the approval and source hashes, allows up
+to eight calls and 24,000 cumulative UTF-8 JSON result bytes, and closes
+the grant at completion, cancellation or timeout. A context withdrawal
+advances the epoch and closes access for subsequent turns.
+
+The route requires a separately isolated streaming worker and fails closed
+when it is unavailable. The existing conversational route and TexGraph
+adapters continue to use their current transports. PDF and DOCX approval
+and conversion are outside this text-snapshot route.
+
 ## Agent configuration v1
 
 `stex.hermes.agent-config.v1` ([schema](agent-config.v1.schema.json)) is
