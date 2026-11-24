@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,38 +61,55 @@ test('with a converter, every upload is converted to reviewable Markdown and fai
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-convert-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const converter = await fakeConverter(root);
-  context.after(converter.close);
+  let open = true;
+  context.after(() => open && converter.close());
   const { api, upload } = await startFrige(context, root, 4432, { STEX_FRIGE_CONVERTER_SOCKET: converter.where });
+  const convert = async (id) => fetch(api(`/${id}/convert`), { method: 'POST' });
+  const convertOk = async (id) => { const response = await convert(id); assert.equal(response.status, 200); return response.json(); };
 
+  // The upload only stores the files; the client converts each one with its own request.
   const created = await upload([['notes.md', 'Plain notes.'], ['Three Melodramas.pdf', '%PDF-1.7 synthetic']]);
   assert.equal(created.status, 201);
   const [notes, pdf] = await created.json();
-  assert.deepEqual(converter.seen, ['notes.md', 'Three Melodramas.pdf'], 'text files go through MarkItDown too');
-  for (const record of [notes, pdf]) {
-    assert.equal(record.contextState, 'pending-review');
-    assert.equal(record.converter, 'markitdown-mcp');
+  assert.deepEqual([notes.contextState, pdf.contextState, converter.seen], ['awaiting-extraction', 'awaiting-extraction', []]);
+  for (const record of [await convertOk(notes.id), await convertOk(pdf.id)]) {
+    assert.deepEqual([record.contextState, record.converter], ['pending-review', 'markitdown-mcp']);
   }
+  assert.deepEqual(converter.seen, ['notes.md', 'Three Melodramas.pdf'], 'text files go through MarkItDown too');
   const preview = await (await fetch(api(`/${pdf.id}/excerpt`))).json();
   assert.match(preview.excerpt, /^# Three Melodramas\.pdf\n\n%PDF-1\.7 synthetic/);
   const approved = await fetch(api(`/${pdf.id}/approve`), { method: 'POST', headers: json, body: JSON.stringify({ hash: preview.hash }) });
   assert.equal(approved.status, 200);
-  assert.equal((await fetch(api(`/${pdf.id}/convert`), { method: 'POST' })).status, 409, 'converted text is never replaced behind the author');
+  const again = await convert(pdf.id);
+  assert.deepEqual([again.status, (await again.json()).code], [409, 'ALREADY_CONVERTED'], 'converted text is never replaced behind the author');
 
   converter.control.mode = 'no-text';
   const [scan] = await (await upload([['scan.pdf', '%PDF image only']])).json();
-  assert.deepEqual([scan.contextState, scan.conversionError, scan.extraction], ['no-text', 'NO_TEXT', undefined]);
+  const scanned = await convertOk(scan.id);
+  assert.deepEqual([scanned.contextState, scanned.conversionError, scanned.extraction], ['no-text', 'NO_TEXT', undefined]);
   converter.control.mode = 'fail';
   const [broken] = await (await upload([['draft.docx', 'PK synthetic']])).json();
-  assert.deepEqual([broken.contextState, broken.conversionError], ['conversion-failed', 'CONVERSION_FAILED']);
+  const failed = await convertOk(broken.id);
+  assert.deepEqual([failed.contextState, failed.conversionError], ['conversion-failed', 'CONVERSION_FAILED']);
   assert.equal((await fetch(api(`/${broken.id}/excerpt`))).status, 404);
-
   converter.control.mode = 'ok';
-  const retried = await fetch(api(`/${broken.id}/convert`), { method: 'POST' });
-  assert.equal(retried.status, 200);
-  const record = await retried.json();
-  assert.deepEqual([record.contextState, record.converter, record.conversionError], ['pending-review', 'markitdown-mcp', undefined]);
+  const retried = await convertOk(broken.id);
+  assert.deepEqual([retried.contextState, retried.converter, retried.conversionError], ['pending-review', 'markitdown-mcp', undefined]);
   assert.match((await (await fetch(api(`/${broken.id}/excerpt`))).json()).excerpt, /^# draft\.docx/);
-  assert.equal((await fetch(api('/0000000000000000/convert'), { method: 'POST' })).status, 404);
+  assert.equal((await convert('0000000000000000')).status, 404);
+
+  // A long name keeps its extension, which decides how the file is converted.
+  const [long] = await (await upload([[`${'n'.repeat(200)}.pdf`, '%PDF long']])).json();
+  assert.ok(long.name.endsWith('.pdf') && long.name.length <= 160, long.name);
+  assert.equal((await convertOk(long.id)).contextState, 'pending-review');
+
+  // A converter outage fails PDF and Word files honestly, but plain-text files are still read as UTF-8.
+  const [text, word] = await (await upload([['outage.txt', 'Read while the converter is down.'], ['outage.docx', 'PK']])).json();
+  await converter.close(); open = false;
+  const plain = await convertOk(text.id);
+  assert.deepEqual([plain.contextState, plain.converter], ['pending-review', 'utf8']);
+  const down = await convertOk(word.id);
+  assert.deepEqual([down.contextState, down.conversionError], ['conversion-failed', 'CONVERTER_UNAVAILABLE']);
 });
 
 test('without a converter, text files are decoded and PDF or Word files wait for one', async (context) => {
@@ -131,6 +148,7 @@ for line in sys.stdin:
         else:
             media, data = uri[5:].split(";base64,", 1)
             if mode == "hang":
+                Path(__file__).with_name("hung.pid").write_text(str(__import__("os").getpid()))
                 time.sleep(30)
             text = "   " if mode == "empty" else "# Converted " + media + "\n\n" + base64.b64decode(data).decode("utf-8", "replace")
             result = {"content": [{"type": "text", "text": text}]}
@@ -176,6 +194,10 @@ test('the converter service sends only data URIs to the stock server and enforce
   const started = Date.now();
   assert.equal(await code(converter.convert({ name: 'a.pdf', bytes: Buffer.from('x') })), 'CONVERSION_TIMEOUT');
   assert.ok(Date.now() - started < 10_000, 'the time limit stops a hung conversion');
+  const hung = Number((await readFile(path.join(fake, 'hung.pid'), 'utf8')).trim());
+  const alive = async () => readFile(`/proc/${hung}/stat`, 'utf8').then((line) => line.split(') ')[1]?.[0] !== 'Z', () => false);
+  for (let tries = 0; tries < 50 && await alive(); tries += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(await alive(), false, 'the hung MarkItDown process was killed');
   await setMode('ok');
   assert.equal((await converter.convert({ name: 'after.txt', bytes: Buffer.from('still serving') })).markdown, '# Converted text/plain\n\nstill serving');
 });

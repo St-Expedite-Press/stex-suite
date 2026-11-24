@@ -8,8 +8,8 @@
  */
 import http from 'node:http';
 
-/** Upper bound on a converter reply, in bytes. The converter caps its own Markdown at 600,000 bytes. */
-const MAX_REPLY_BYTES = 2_000_000;
+/** Upper bound on a converter reply: 600,000 bytes of Markdown, even if every character is JSON-escaped. */
+const MAX_REPLY_BYTES = 4_000_000;
 const CODE = /^[A-Z_]{1,40}$/;
 
 /** A conversion that produced no Markdown, with a stable code the interface can show. */

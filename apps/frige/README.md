@@ -392,7 +392,9 @@ password-protected book supports this workflow in Frige after unlock.
 When `STEX_FRIGE_CONVERTER_SOCKET` names the socket of Frige's isolated
 converter (`src/document_convert.py`), every upload is converted to Markdown
 by Microsoft's stock MarkItDown MCP server. The converter passes it only the
-uploaded bytes, as a `data:` URI. The attachment then shows its outcome:
+uploaded bytes, as a `data:` URI. The workstation converts new uploads one
+at a time after storing them. If the converter is down, plain-text files are
+still read as UTF-8. The attachment then shows its outcome:
 text to review, **No readable text** (for example a scanned PDF),
 **Conversion failed** or **Converter unavailable**. **Convert to text**
 retries an attachment that has no text, including files uploaded before the

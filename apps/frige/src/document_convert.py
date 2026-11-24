@@ -25,6 +25,7 @@ import base64
 import binascii
 import json
 import os
+import queue
 import re
 import select
 import signal
@@ -54,7 +55,8 @@ MAX_BODY_BYTES = 11_300_000  # Base64 of the largest input plus the JSON envelop
 MAX_MARKDOWN_BYTES = 600_000  # Frige's excerpt reader refuses larger extraction files.
 MAX_LINE_BYTES = 4 * MAX_MARKDOWN_BYTES  # One JSON-RPC reply, escaping included.
 CONVERT_SECONDS = 60.0
-QUEUE_SECONDS = 90.0
+QUEUE_SECONDS = 20.0  # Queue wait plus conversion stays below Frige's 90-second client timeout.
+READ_SECONDS = 30.0  # Socket timeout for reading a request.
 CONFIG_EXIT = 78  # Configuration refusal; the unit does not restart on it.
 CREDENTIAL_VARIABLES = frozenset({"OPENROUTER_API_KEY", "STEX_HERMES_API_KEY", "STEX_INFERENCE_SHARED_SECRET", "API_SERVER_KEY"})
 PROTOCOL_VERSION = "2025-06-18"
@@ -109,17 +111,19 @@ class _Session:
         self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.DEVNULL, env=env, cwd="/", start_new_session=True)
         self.buffer = b""
+        # One writer thread keeps messages in order; a child that stops reading cannot block past the deadline.
+        self.outbox: queue.Queue[bytes] = queue.Queue()
+        threading.Thread(target=self._write, daemon=True).start()
 
     def send(self, message: dict[str, Any]) -> None:
-        line = json.dumps({"jsonrpc": "2.0", **message}).encode() + b"\n"
-        writer = threading.Thread(target=self._write, args=(line,), daemon=True)
-        writer.start()  # A child that stops reading cannot block past the deadline.
+        self.outbox.put(json.dumps({"jsonrpc": "2.0", **message}).encode() + b"\n")
 
-    def _write(self, line: bytes) -> None:
+    def _write(self) -> None:
         try:
             assert self.process.stdin is not None
-            self.process.stdin.write(line)
-            self.process.stdin.flush()
+            while True:
+                self.process.stdin.write(self.outbox.get())
+                self.process.stdin.flush()
         except (OSError, ValueError):
             pass
 
@@ -238,19 +242,23 @@ class ConverterHandler(BaseHTTPRequestHandler):
 
     server: ConverterServer
     protocol_version = "HTTP/1.1"
+    timeout = READ_SECONDS
 
     def log_message(self, *_args: object) -> None:  # Never log request lines.
         pass
 
     def _send(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
-        self.end_headers()
-        self.wfile.write(body)
+        body = json.dumps(value, ensure_ascii=False).encode()
         self.close_connection = True
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError:
+            pass  # The client left, for example after its own timeout.
 
     def do_GET(self) -> None:  # noqa: N802 - http.server naming
         self._send(404, {"error": {"code": "NOT_FOUND"}})

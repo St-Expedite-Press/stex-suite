@@ -26,7 +26,7 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 | GET / POST | `/project/attachments` | Read source manifest / upload bounded source documents |
 | GET | `/project/attachments/<id>/excerpt` | Preview the exact bounded excerpt and its hash |
 | POST | `/project/attachments/<id>/approve` | Approve the previewed excerpt using `{hash}` |
-| POST | `/project/attachments/<id>/convert` | Convert a stored attachment that has no text yet (503 without a converter, 409 once it has text) |
+| POST | `/project/attachments/<id>/convert` | Convert a stored attachment that has no text yet. With a converter, uploads return `awaiting-extraction` and are converted one by one this way (503 without a converter, 409 once it has text) |
 | GET | `/artifacts/<id>` or `/artifacts/<id>/content` | Read artifact metadata / inert content, optionally `?download=1` |
 | GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread / current change contract |
 | POST | `/scopes/<id>/turn` | Offer selected sources and a message or validated answer to inference |
