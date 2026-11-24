@@ -339,7 +339,11 @@ def main() -> None:
         _refuse_start("The converter needs an absolute STEX_CONVERTER_SOCKET path.")
     if CREDENTIAL_VARIABLES.intersection(os.environ):
         _refuse_start("The converter must not see provider or service credentials.")
-    if {name for _, name in socket.if_nameindex()} - {"lo"}:
+    try:
+        interfaces = {name for _, name in socket.if_nameindex()}
+    except OSError:
+        _refuse_start("The converter cannot list its network interfaces; its sandbox must allow AF_NETLINK.")
+    if interfaces - {"lo"}:
         _refuse_start("The converter must run without network interfaces other than loopback.")
     serve(path, socket_group=os.environ.get("STEX_CONVERTER_SOCKET_GROUP") or None)
 
