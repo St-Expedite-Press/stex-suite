@@ -33,6 +33,7 @@ export function publishingRoute(pathname) {
   if (/^\/nodes\/[a-z0-9-]+$/.test(pathname)) return ['GET', 'PUT'];
   if (/^\/project\/attachments\/[a-f0-9]{16}\/approve$/.test(pathname)) return ['POST'];
   if (/^\/project\/attachments\/[a-f0-9]{16}\/excerpt$/.test(pathname)) return ['GET'];
+  if (/^\/project\/attachments\/[a-f0-9]{16}\/convert$/.test(pathname)) return ['POST'];
   if (/^\/artifacts\/art-[a-f0-9]{16}(?:\/content)?$/.test(pathname)) return ['GET'];
   const scope = /^\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/.exec(pathname);
   if (scope) return ['turn', 'changes/decide'].includes(scope[2]) ? ['POST'] : ['GET'];

@@ -20,11 +20,12 @@ import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
 import { PASSAGE_ACTIONS, resolvePassage } from './src/change-contract.mjs';
 import { runPreflight } from './src/preflight.mjs';
+import { createDocumentConverter } from './src/document-converter.mjs';
 import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -59,6 +60,8 @@ function basePath(value) {
 const mountedAt = basePath(configuration('STEX_FRIGE_BASE_PATH', 'TEXGRAPH_BASE_PATH', ''));
 // Optional per-project passwords (src/project-access.mjs); unset means no project is protected.
 const projectAccess = openProjectAccess({ file: process.env.STEX_FRIGE_ACCESS_FILE || '' });
+// With a converter configured, every upload is converted to Markdown by MarkItDown before review.
+const converter = createDocumentConverter({ socketPath: process.env.STEX_FRIGE_CONVERTER_SOCKET || '' });
 const unlockCookiePath = `${mountedAt}/`;
 const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/home/' : '')).trim() || '/';
 
@@ -258,6 +261,40 @@ function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:
 
 const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
+/** States in which an attachment has no text yet and may be converted again. */
+const convertibleStates = new Set(['awaiting-extraction', 'conversion-unavailable', 'conversion-failed', 'no-text', 'unreadable']);
+const attachmentError = (status, code, message) => Object.assign(new Error(message), { status, code });
+
+/**
+ * Gives an attachment record its reviewable text. With the MarkItDown
+ * converter configured, every upload is converted to Markdown. Without it,
+ * text files are decoded as UTF-8, and PDF and Word files wait for a
+ * converter. The text is never approved here: the author reviews it first.
+ */
+async function extractAttachment(store, record, bytes) {
+  for (const field of ['extraction', 'extractedAt', 'converter', 'conversionError', 'approvalHash']) delete record[field];
+  let text;
+  if (converter) {
+    try { text = (await converter.convert({ name: record.name, bytes })).markdown; record.converter = 'markitdown-mcp'; }
+    catch (error) {
+      record.conversionError = typeof error.code === 'string' ? error.code : 'CONVERSION_FAILED';
+      record.contextState = record.conversionError === 'NO_TEXT' ? 'no-text' : 'conversion-failed';
+      return record;
+    }
+  } else if (readableAttachmentExtensions.has(path.extname(record.name).toLowerCase())) {
+    try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); record.converter = 'utf8'; }
+    catch { record.contextState = 'unreadable'; return record; }
+  } else { record.contextState = 'conversion-unavailable'; return record; }
+  text = text.slice(0, 200_000);
+  if (!text.isWellFormed()) text = text.slice(0, -1);
+  if (!text.trim()) { record.contextState = 'no-text'; return record; }
+  const extraction = `extractions/${record.id}.txt`;
+  await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true });
+  await writeFile(path.join(store.stateDirectory, extraction), text, 'utf8');
+  Object.assign(record, { extraction, contextState: 'pending-review', extractedAt: new Date().toISOString() });
+  return record;
+}
+
 /** Writes validated upload bytes and records their pending review state. */
 async function saveAttachments(store, payload) {
   const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
@@ -271,22 +308,25 @@ async function saveAttachments(store, payload) {
     const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16); const safeName = name.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160); const storedAs = `${Date.now()}-${id}-${safeName}`;
     const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
     const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
-    if (readableAttachmentExtensions.has(extension)) {
-      let source;
-      try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes).slice(0, 200_000); }
-      catch { record.contextState = 'unreadable'; }
-      if (source) {
-        if (!source.isWellFormed()) source = source.slice(0, -1);
-        const extraction = `extractions/${id}.txt`;
-        await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true });
-        await writeFile(path.join(store.stateDirectory, extraction), source, 'utf8');
-        record.extraction = extraction;
-        record.contextState = 'pending-review';
-      }
-    }
+    await extractAttachment(store, record, bytes);
     manifest.push(record); created.push(record);
   }
   await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
+}
+
+/** Converts a stored attachment that has no text yet, such as a PDF uploaded before the converter existed. */
+async function convertAttachment(store, id) {
+  if (!converter) throw attachmentError(503, 'CONVERTER_UNAVAILABLE', 'The document converter is not configured.');
+  const manifest = await readAttachmentManifest(store.root);
+  const record = manifest.find((entry) => entry.id === id);
+  if (!record) throw attachmentError(404, 'NOT_FOUND', 'Attachment not found.');
+  if (record.extraction || !convertibleStates.has(record.contextState)) throw attachmentError(409, 'ALREADY_CONVERTED', 'This attachment already has text to review.');
+  const stored = path.basename(String(record.storedAs || ''));
+  if (!stored || stored !== record.storedAs) throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.');
+  const bytes = await readFile(path.join(store.root, 'sources', stored)).catch(() => { throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.'); });
+  await extractAttachment(store, record, bytes);
+  await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  return record;
 }
 async function attachmentPreview(store, id) {
   const record = (await readAttachmentManifest(store.root)).find((entry) => entry.id === id);
@@ -413,13 +453,14 @@ async function artifactResponse(response, store, id, content, download) {
 /** Handles graph, source and proof routes for the selected manuscript store. */
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
-  const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt)$/);
+  const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt|convert)$/);
   if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await readAttachmentManifest(store.root));
   if (request.method === 'POST' && url.pathname === '/api/project/attachments') {
     const payload = await body(request);
     return json(response, 201, await mutateAttachments(store.root, () => saveAttachments(store, payload)));
   }
   if (request.method === 'GET' && attachment?.[2] === 'excerpt') return json(response, 200, await attachmentPreview(store, attachment[1]));
+  if (request.method === 'POST' && attachment?.[2] === 'convert') return json(response, 200, await mutateAttachments(store.root, () => convertAttachment(store, attachment[1])));
   if (request.method === 'POST' && attachment?.[2] === 'approve') {
     const payload = await body(request);
     return json(response, 200, await mutateAttachments(store.root, () => reviewAttachment(store, attachment[1], payload?.hash)));

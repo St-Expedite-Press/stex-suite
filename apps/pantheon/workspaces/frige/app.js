@@ -254,6 +254,12 @@ function scopeUrl(scopeId) {
   return `${location.pathname}?${params}${location.hash}`;
 }
 
+/** What an attachment without reviewable text shows, by its state. */
+const ATTACHMENT_STATUS = {
+  'awaiting-extraction': 'Not converted', 'conversion-unavailable': 'Converter unavailable', 'conversion-failed': 'Conversion failed',
+  'no-text': 'No readable text', unreadable: 'Invalid text encoding',
+};
+
 /** Renders the current attachment extraction and review state. */
 function renderAttachments() {
   const box = $('#attachments');
@@ -265,7 +271,15 @@ function renderAttachments() {
       item.append(' ', preview);
       if (attachment.contextState === 'approved' && attachment.approvalHash) item.append(element('small', '', ' Approved'));
       if (attachment.contextState === 'rejected') item.append(element('small', '', ' Rejected'));
-    } else item.append(element('small', '', attachment.contextState === 'unreadable' ? ' Invalid text encoding' : ' Excerpt unavailable'));
+    } else {
+      item.append(element('small', '', ` ${ATTACHMENT_STATUS[attachment.contextState] || 'Excerpt unavailable'}`));
+      if (attachment.contextState in ATTACHMENT_STATUS) {
+        const convert = element('button', 'quiet-button', 'Convert to text'); convert.type = 'button';
+        convert.setAttribute('aria-label', `Convert ${attachment.name} to text`);
+        convert.addEventListener('click', () => convertAttachment(attachment.id));
+        item.append(' ', convert);
+      }
+    }
     return item;
   }));
 }
@@ -898,11 +912,20 @@ async function revert(contractId, nodeId, { layout = false } = {}) {
 
 /** Uploads the author-selected files to the current project. */
 async function uploadAttachments(files) {
-  if (!files.length) return; $('#attachment-state').textContent = 'Uploading…';
+  if (!files.length) return; $('#attachment-state').textContent = 'Uploading and converting…';
   try {
     const attachments = await Promise.all(files.map(async (file) => ({ name: file.name, contentBase64: (await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.readAsDataURL(file); })) })));
     await request('/api/project/attachments', { method: 'POST', body: JSON.stringify({ attachments }) }); state.attachments = await request('/api/project/attachments'); renderAttachments(); $('#attachment-state').textContent = '';
   } catch (error) { $('#attachment-state').textContent = error.message; } finally { $('#attachment-input').value = ''; }
+}
+
+/** Converts a stored attachment that has no text yet; the result still needs review. */
+async function convertAttachment(id) {
+  $('#attachment-state').textContent = 'Converting…';
+  try {
+    await request(`/api/project/attachments/${id}/convert`, { method: 'POST' });
+    state.attachments = await request('/api/project/attachments'); renderAttachments(); $('#attachment-state').textContent = '';
+  } catch (error) { $('#attachment-state').textContent = error.message; }
 }
 
 /** Previews the exact bytes and binds the next approval to their hash. */
