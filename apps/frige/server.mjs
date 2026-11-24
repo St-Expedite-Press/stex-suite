@@ -20,11 +20,12 @@ import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
 import { PASSAGE_ACTIONS, resolvePassage } from './src/change-contract.mjs';
 import { runPreflight } from './src/preflight.mjs';
+import { createDocumentConverter } from './src/document-converter.mjs';
 import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn } from './src/inference-client.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -59,6 +60,8 @@ function basePath(value) {
 const mountedAt = basePath(configuration('STEX_FRIGE_BASE_PATH', 'TEXGRAPH_BASE_PATH', ''));
 // Optional per-project passwords (src/project-access.mjs); unset means no project is protected.
 const projectAccess = openProjectAccess({ file: process.env.STEX_FRIGE_ACCESS_FILE || '' });
+// With a converter configured, every upload is converted to Markdown by MarkItDown before review.
+const converter = createDocumentConverter({ socketPath: process.env.STEX_FRIGE_CONVERTER_SOCKET || '' });
 const unlockCookiePath = `${mountedAt}/`;
 const shellUrl = String(configuration('STEX_FRIGE_SHELL_URL', 'TEXGRAPH_SHELL_URL', mountedAt ? '/home/' : '')).trim() || '/';
 
@@ -258,7 +261,63 @@ function nodeId(url) { return url.pathname.match(/^\/api\/nodes\/([a-z0-9-]+)(?:
 
 const attachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json', '.pdf', '.docx']);
 const readableAttachmentExtensions = new Set(['.md', '.txt', '.tex', '.csv', '.json']);
-/** Writes validated upload bytes and records their pending review state. */
+/** States in which an attachment has no text yet and may be converted again. */
+const convertibleStates = new Set(['awaiting-extraction', 'conversion-unavailable', 'conversion-failed', 'no-text', 'unreadable']);
+const attachmentError = (status, code, message) => Object.assign(new Error(message), { status, code });
+/** Stored text stays below the excerpt reader's 600,000-byte limit. */
+const MAX_EXTRACTION_BYTES = 590_000;
+
+/** Bounds text to 200,000 characters and MAX_EXTRACTION_BYTES, ending on a whole character. */
+function boundedText(text) {
+  let bounded = text.slice(0, 200_000);
+  while (Buffer.byteLength(bounded, 'utf8') > MAX_EXTRACTION_BYTES) bounded = bounded.slice(0, Math.floor(bounded.length * 0.9));
+  return bounded.isWellFormed() ? bounded : bounded.slice(0, -1);
+}
+
+/**
+ * Produces an upload's reviewable text without touching stored state:
+ * `{ text, converter }`, or `{ state, error }` when there is none. With the
+ * MarkItDown converter configured, every file goes through it. A converter
+ * outage does not break plain-text files, which are then decoded as UTF-8.
+ */
+async function convertUpload(name, bytes) {
+  const readable = readableAttachmentExtensions.has(path.extname(name).toLowerCase());
+  const decode = () => {
+    try { return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), converter: 'utf8' }; }
+    catch { return { state: 'unreadable' }; }
+  };
+  if (!converter) return readable ? decode() : { state: 'conversion-unavailable' };
+  try { return { text: (await converter.convert({ name, bytes })).markdown, converter: 'markitdown-mcp' }; }
+  catch (error) {
+    const code = typeof error.code === 'string' ? error.code : 'CONVERSION_FAILED';
+    if (code === 'CONVERTER_UNAVAILABLE' && readable) return decode();
+    return { state: code === 'NO_TEXT' ? 'no-text' : 'conversion-failed', error: code };
+  }
+}
+
+/** Records a conversion outcome, writing the extraction file when there is text. The author still reviews it. */
+async function applyConversion(store, record, outcome) {
+  for (const field of ['extraction', 'extractedAt', 'converter', 'conversionError', 'approvalHash']) delete record[field];
+  if (outcome.text === undefined) {
+    record.contextState = outcome.state;
+    if (outcome.error) record.conversionError = outcome.error;
+    return record;
+  }
+  const text = boundedText(outcome.text);
+  if (!text.trim()) { record.contextState = 'no-text'; return record; }
+  const extraction = `extractions/${record.id}.txt`;
+  await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true });
+  await writeFile(path.join(store.stateDirectory, extraction), text, 'utf8');
+  Object.assign(record, { extraction, converter: outcome.converter, contextState: 'pending-review', extractedAt: new Date().toISOString() });
+  return record;
+}
+
+/**
+ * Writes validated upload bytes and records them. With a converter, records
+ * wait in `awaiting-extraction` and the client converts them one by one
+ * (`/convert`), so no request holds the book's lock for several
+ * conversions. Without one, text files are decoded here.
+ */
 async function saveAttachments(store, payload) {
   const uploads = Array.isArray(payload.attachments) ? payload.attachments : [];
   if (!uploads.length || uploads.length > 10) throw new Error('Attach between one and ten files.');
@@ -268,26 +327,48 @@ async function saveAttachments(store, payload) {
     if (!name || name !== upload.name || !attachmentExtensions.has(extension)) throw new Error('Unsupported attachment type or filename.');
     if (typeof upload.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Attachment is missing or too large.');
     const bytes = Buffer.from(upload.contentBase64, 'base64'); if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each attachment must be between 1 byte and 8 MB.');
-    const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16); const safeName = name.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160); const storedAs = `${Date.now()}-${id}-${safeName}`;
+    const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16);
+    // A long name keeps its extension, which decides how the file is converted.
+    const safeName = `${name.slice(0, name.length - extension.length).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160 - extension.length)}${extension}`;
+    const storedAs = `${Date.now()}-${id}-${safeName}`;
     const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
     const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
-    if (readableAttachmentExtensions.has(extension)) {
-      let source;
-      try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes).slice(0, 200_000); }
-      catch { record.contextState = 'unreadable'; }
-      if (source) {
-        if (!source.isWellFormed()) source = source.slice(0, -1);
-        const extraction = `extractions/${id}.txt`;
-        await mkdir(path.join(store.stateDirectory, 'extractions'), { recursive: true });
-        await writeFile(path.join(store.stateDirectory, extraction), source, 'utf8');
-        record.extraction = extraction;
-        record.contextState = 'pending-review';
-      }
-    }
+    if (!converter) await applyConversion(store, record, await convertUpload(safeName, bytes));
     manifest.push(record); created.push(record);
   }
   await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
 }
+
+/**
+ * Converts a stored attachment that has no text yet. The record is checked
+ * under the book's attachment lock, converted outside it, and updated only if
+ * it is still unchanged and without text, so converted or approved text is
+ * never replaced.
+ */
+async function convertAttachment(store, id) {
+  if (!converter) throw attachmentError(503, 'CONVERTER_UNAVAILABLE', 'The document converter is not configured.');
+  const { record, bytes } = await mutateAttachments(store.root, async () => {
+    const found = (await readAttachmentManifest(store.root)).find((entry) => entry.id === id);
+    if (!found) throw attachmentError(404, 'NOT_FOUND', 'Attachment not found.');
+    if (found.extraction || !convertibleStates.has(found.contextState)) throw attachmentError(409, 'ALREADY_CONVERTED', 'This attachment already has text to review.');
+    const stored = path.basename(String(found.storedAs || ''));
+    if (!stored || stored !== found.storedAs) throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.');
+    const content = await readFile(path.join(store.root, 'sources', stored)).catch(() => { throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.'); });
+    return { record: { ...found }, bytes: content };
+  });
+  const outcome = await convertUpload(record.name, bytes);
+  return mutateAttachments(store.root, async () => {
+    const manifest = await readAttachmentManifest(store.root);
+    const current = manifest.find((entry) => entry.id === id);
+    if (!current || current.extraction || current.storedAs !== record.storedAs || !convertibleStates.has(current.contextState)) {
+      throw attachmentError(409, 'ATTACHMENT_CHANGED', 'This attachment changed while it was converting.');
+    }
+    await applyConversion(store, current, outcome);
+    await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    return current;
+  });
+}
+
 async function attachmentPreview(store, id) {
   const record = (await readAttachmentManifest(store.root)).find((entry) => entry.id === id);
   const preview = await store.attachmentExcerpt(record);
@@ -413,13 +494,14 @@ async function artifactResponse(response, store, id, content, download) {
 /** Handles graph, source and proof routes for the selected manuscript store. */
 async function vaultApi(request, response, url, store) {
   const id = nodeId(url);
-  const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt)$/);
+  const attachment = url.pathname.match(/^\/api\/project\/attachments\/([a-f0-9]{16})\/(approve|excerpt|convert)$/);
   if (request.method === 'GET' && url.pathname === '/api/project/attachments') return json(response, 200, await readAttachmentManifest(store.root));
   if (request.method === 'POST' && url.pathname === '/api/project/attachments') {
     const payload = await body(request);
     return json(response, 201, await mutateAttachments(store.root, () => saveAttachments(store, payload)));
   }
   if (request.method === 'GET' && attachment?.[2] === 'excerpt') return json(response, 200, await attachmentPreview(store, attachment[1]));
+  if (request.method === 'POST' && attachment?.[2] === 'convert') return json(response, 200, await convertAttachment(store, attachment[1]));
   if (request.method === 'POST' && attachment?.[2] === 'approve') {
     const payload = await body(request);
     return json(response, 200, await mutateAttachments(store.root, () => reviewAttachment(store, attachment[1], payload?.hash)));

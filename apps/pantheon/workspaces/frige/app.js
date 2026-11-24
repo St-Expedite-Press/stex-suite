@@ -254,6 +254,12 @@ function scopeUrl(scopeId) {
   return `${location.pathname}?${params}${location.hash}`;
 }
 
+/** What an attachment without reviewable text shows, by its state. */
+const ATTACHMENT_STATUS = {
+  'awaiting-extraction': 'Not converted', 'conversion-unavailable': 'Converter unavailable', 'conversion-failed': 'Conversion failed',
+  'no-text': 'No readable text', unreadable: 'Invalid text encoding',
+};
+
 /** Renders the current attachment extraction and review state. */
 function renderAttachments() {
   const box = $('#attachments');
@@ -265,7 +271,17 @@ function renderAttachments() {
       item.append(' ', preview);
       if (attachment.contextState === 'approved' && attachment.approvalHash) item.append(element('small', '', ' Approved'));
       if (attachment.contextState === 'rejected') item.append(element('small', '', ' Rejected'));
-    } else item.append(element('small', '', attachment.contextState === 'unreadable' ? ' Invalid text encoding' : ' Excerpt unavailable'));
+    } else {
+      const known = Object.hasOwn(ATTACHMENT_STATUS, attachment.contextState);
+      const reason = attachment.contextState === 'conversion-failed' && attachment.conversionError ? ` (${attachment.conversionError})` : '';
+      item.append(element('small', '', ` ${known ? ATTACHMENT_STATUS[attachment.contextState] : 'Excerpt unavailable'}${reason}`));
+      if (known) {
+        const convert = element('button', 'quiet-button', 'Convert to text'); convert.type = 'button';
+        convert.setAttribute('aria-label', `Convert ${attachment.name} to text`);
+        convert.addEventListener('click', () => { convert.disabled = true; convertAttachments([attachment.id]); });
+        item.append(' ', convert);
+      }
+    }
     return item;
   }));
 }
@@ -901,8 +917,23 @@ async function uploadAttachments(files) {
   if (!files.length) return; $('#attachment-state').textContent = 'Uploading…';
   try {
     const attachments = await Promise.all(files.map(async (file) => ({ name: file.name, contentBase64: (await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.readAsDataURL(file); })) })));
-    await request('/api/project/attachments', { method: 'POST', body: JSON.stringify({ attachments }) }); state.attachments = await request('/api/project/attachments'); renderAttachments(); $('#attachment-state').textContent = '';
+    const created = await request('/api/project/attachments', { method: 'POST', body: JSON.stringify({ attachments }) });
+    state.attachments = await request('/api/project/attachments'); renderAttachments(); $('#attachment-state').textContent = '';
+    // With the converter configured, new uploads wait to be converted; convert them now, one at a time.
+    const waiting = created.filter((record) => record.contextState === 'awaiting-extraction').map((record) => record.id);
+    if (waiting.length) await convertAttachments(waiting);
   } catch (error) { $('#attachment-state').textContent = error.message; } finally { $('#attachment-input').value = ''; }
+}
+
+/** Converts stored attachments one at a time; each result still needs the author's review. */
+async function convertAttachments(ids) {
+  let failure = '';
+  for (const [index, id] of ids.entries()) {
+    $('#attachment-state').textContent = ids.length > 1 ? `Converting ${index + 1} of ${ids.length}…` : 'Converting…';
+    try { await request(`/api/project/attachments/${id}/convert`, { method: 'POST' }); } catch (error) { failure = error.message; }
+  }
+  try { state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { failure ||= error.message; }
+  $('#attachment-state').textContent = failure;
 }
 
 /** Previews the exact bytes and binds the next approval to their hash. */

@@ -381,13 +381,26 @@ author operation in the shared project. [Publishing API](../../protocol/frige/RE
 
 ## Read an attached document with Igor
 
-In a Frige conversation, use **Attach files**, select a UTF-8 Markdown,
-plain-text, TeX, CSV or JSON document, and choose **Review excerpt**.
-Inspect the shown text and select **Use this excerpt in chat**. The exact
-excerpt can then accompany Igor turns for that book. The context limit can
-omit an excerpt on a large turn. Review again if the excerpt changes.
-PDF and DOCX uploads have no readable preview. A password-protected book
-supports this workflow in Frige after unlock.
+In a Frige conversation, use **Attach files**, select a Markdown,
+plain-text, TeX, CSV, JSON, PDF or Word (`.docx`) document, and choose
+**Review excerpt**. Inspect the shown text and select **Use this excerpt in
+chat**. The exact excerpt, the first 6,000 characters of the converted text,
+can then accompany Igor turns for that book. The context limit can omit an
+excerpt on a large turn. Review again if the excerpt changes. A
+password-protected book supports this workflow in Frige after unlock.
+
+When `STEX_FRIGE_CONVERTER_SOCKET` names the socket of Frige's isolated
+converter (`src/document_convert.py`), every upload is converted to Markdown
+by Microsoft's stock MarkItDown MCP server. The converter passes it only the
+uploaded bytes, as a `data:` URI. The workstation converts new uploads one
+at a time after storing them. If the converter is down, plain-text files are
+still read as UTF-8. The attachment then shows its outcome:
+text to review, **No readable text** (for example a scanned PDF),
+**Conversion failed** or **Converter unavailable**. **Convert to text**
+retries an attachment that has no text, including files uploaded before the
+converter was configured. Without a converter, text files are decoded as
+UTF-8, and PDF and Word files wait for one. The hosted unit and its
+provisioning are in stex-igor's `deploy/pantheon/converter`.
 
 ## Interface
 
