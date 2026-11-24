@@ -17,7 +17,7 @@ and approves the text as before, and Igor reads only approved excerpts.
 | stex-suite PR 20 | `1350391` | The converter service `apps/frige/src/document_convert.py`, the Frige client, per-file conversion with **Convert to text**, and tests |
 | Pantheon generation 2 | `1350391` | Clean build (`dirty: false`), installed with the rollback-capable installer |
 | stex-igor PR 12, Igor generation 22 | `3da9e6e` | Converter unit, Frige drop-in, pinned packages and runbook. No Igor code change |
-| stex-igor PR 13 | open | Adds `AF_NETLINK` to the converter unit. The VM already runs this unit |
+| stex-igor PR 13, Igor generation 23 | `a9b187f` | Adds `AF_NETLINK` to the converter unit, matching the unit the VM already ran |
 
 ## Design
 
