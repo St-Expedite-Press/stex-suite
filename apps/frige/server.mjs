@@ -13,8 +13,10 @@ import { editorialRoute, publishingRoute } from './src/publishing-contract.mjs';
 import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
-import { mutateAttachments, readAttachmentManifest } from './src/attachment-manifest.mjs';
+import { mutateAttachments, readAttachmentManifest, storeAttachmentOriginal } from './src/attachment-manifest.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
+import { LOCAL_ACTOR, actorRefused, resolveActor } from './src/actor.mjs';
+import { MAIN_CONVERSATION } from './src/editorial-sessions.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
@@ -25,7 +27,7 @@ import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'STEX_PLATFORM_ACTOR_SECRET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -327,23 +329,20 @@ async function saveAttachments(store, payload) {
     if (!name || name !== upload.name || !attachmentExtensions.has(extension)) throw new Error('Unsupported attachment type or filename.');
     if (typeof upload.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Attachment is missing or too large.');
     const bytes = Buffer.from(upload.contentBase64, 'base64'); if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each attachment must be between 1 byte and 8 MB.');
-    const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16);
     // A long name keeps its extension, which decides how the file is converted.
     const safeName = `${name.slice(0, name.length - extension.length).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160 - extension.length)}${extension}`;
-    const storedAs = `${Date.now()}-${id}-${safeName}`;
-    const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
-    const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
+    const { record, duplicateOf } = await storeAttachmentOriginal(store.root, manifest, safeName, bytes);
     if (!converter) await applyConversion(store, record, await convertUpload(safeName, bytes));
-    manifest.push(record); created.push(record);
+    manifest.push(record); created.push(duplicateOf ? { ...record, duplicateOf } : record);
   }
   await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
 }
 
 /**
  * Converts a stored attachment that has no text yet. The record is checked
- * under the book's attachment lock, converted outside it, and updated only if
- * it is still unchanged and without text, so converted or approved text is
- * never replaced.
+ * under the book's attachment lock, including its original-byte receipt when
+ * present. Conversion runs outside the lock and updates only the same
+ * unconverted record, preserving converted and approved text.
  */
 async function convertAttachment(store, id) {
   if (!converter) throw attachmentError(503, 'CONVERTER_UNAVAILABLE', 'The document converter is not configured.');
@@ -354,13 +353,16 @@ async function convertAttachment(store, id) {
     const stored = path.basename(String(found.storedAs || ''));
     if (!stored || stored !== found.storedAs) throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.');
     const content = await readFile(path.join(store.root, 'sources', stored)).catch(() => { throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.'); });
+    if (Object.hasOwn(found, 'sourceSha256') && createHash('sha256').update(content).digest('hex') !== found.sourceSha256) {
+      throw attachmentError(409, 'ATTACHMENT_CHANGED', 'The stored attachment no longer matches its uploaded bytes.');
+    }
     return { record: { ...found }, bytes: content };
   });
   const outcome = await convertUpload(record.name, bytes);
   return mutateAttachments(store.root, async () => {
     const manifest = await readAttachmentManifest(store.root);
     const current = manifest.find((entry) => entry.id === id);
-    if (!current || current.extraction || current.storedAs !== record.storedAs || !convertibleStates.has(current.contextState)) {
+    if (!current || current.extraction || current.storedAs !== record.storedAs || current.sourceSha256 !== record.sourceSha256 || !convertibleStates.has(current.contextState)) {
       throw attachmentError(409, 'ATTACHMENT_CHANGED', 'This attachment changed while it was converting.');
     }
     await applyConversion(store, current, outcome);
@@ -418,8 +420,18 @@ function resolveTurnPassage(context, selection) {
 
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
-/** Resolves approval context and submits a scoped publishing turn. */
-async function scopeTurn(store, scopeId, payload) {
+/**
+ * Resolves approval context and submits a scoped publishing turn.
+ *
+ * @param {ProjectStore} store
+ * @param {string} scopeId
+ * @param {Record<string, any>} payload  The request body.
+ * @param {{ conversationId?: string, actor?: import('./src/actor.mjs').Actor }} [options]
+ *   The conversation of the scope the turn belongs to (the first one by default) and who sent it.
+ *   The model is offered only this conversation's recent turns, plus up to three saved summaries
+ *   of other sessions of the scope as labelled context (`sessionSummaries`).
+ */
+async function scopeTurn(store, scopeId, payload, { conversationId = MAIN_CONVERSATION, actor = LOCAL_ACTOR } = {}) {
   // The scope's offered sources come first: a selected passage is checked against them before
   // anything is recorded, so a stale or invalid selection leaves the conversation untouched.
   const context = await store.scopeContext(scopeId);
@@ -429,19 +441,23 @@ async function scopeTurn(store, scopeId, payload) {
   let userTurn = null; let reservation = null;
   if (payload.answer && typeof payload.answer === 'object') {
     if (passage) throw Object.assign(new Error('An answer to Igor’s question cannot carry a selected passage.'), { code: 'INVALID_PASSAGE' });
-    reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values);
+    reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values, conversationId);
+    // A closed conversation refuses the answer; the reserved question stays open to answer again.
+    try { await store.beginTurn(scopeId, conversationId, actor); } catch (error) { store.releaseAnswer(reservation); throw error; }
   } else {
     if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+    // Refuses a completed or abandoned session, resumes a paused or awaiting-review one (recorded), and only then
+    // stores the message, all under one store lock so a concurrent close cannot land in between.
     // The passage is kept with the author's message, so the thread and the contract's
     // `origin.userTurnId` show exactly which text, at which revision, the turn was about.
-    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) });
+    ({ turn: userTurn } = await store.beginTurn(scopeId, conversationId, actor, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) }));
   }
   try {
-    const [priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    const [priorTurns, approvedSourceExcerpts, settings, sessionSummaries] = await Promise.all([store.turns(scopeId, 12, conversationId), store.approvedSourceExcerpts(), store.settingsTicket(), store.sessionSummariesFor(scopeId, conversationId)]);
     // Context from the levels around the scope (outline, settings in force, approved contracts), labelled by category.
     const hierarchy = await store.hierarchy(context.scope, context.graph);
     const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null, passage });
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null, passage, sessionSummaries });
     if (reservation) {
       // Hermes did not receive the answer: leave the question open and say why.
       if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
@@ -450,7 +466,9 @@ async function scopeTurn(store, scopeId, payload) {
     // What the contract records about this turn: who asked, which model answered, and
     // what it was shown beyond the offered sources. Categories stay separate in the record.
     const provenance = {
-      request: (reservation || userTurn).message, userTurnId: userTurn?.id || null,
+      request: (reservation || userTurn).message, userTurnId: userTurn?.id || null, conversationId,
+      // Saved summaries of other sessions offered with this turn: what Frige sent (the gateway does not report them yet).
+      sessionSummaries: sessionSummaries.map(({ conversationId: id, summaryRevision }) => ({ conversationId: id, summaryRevision })),
       model: result.meta?.model || null, transport: result.meta?.usage?.transport || null,
       withheld: context.withheld, references: approvedSourceExcerpts
         .filter(({ id, hash }) => result.meta?.forwardedContext?.approvedSourceExcerpts?.some((entry) => entry.id === id && entry.hash === hash))
@@ -467,7 +485,7 @@ async function scopeTurn(store, scopeId, payload) {
     const bounds = passage && passage.action !== 'ask' ? { nodeId: passage.nodeId, start: passage.start, end: passage.end } : null;
     const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout, bounds }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);
-    const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
+    const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped, ...(sessionSummaries.length ? { offered: { sessionSummaries: provenance.sessionSummaries.map((entry) => ({ ...entry, category: 'session-summary' })) } } : {}) }, conversationId);
     return { userTurn, assistantTurn, changeSet, availability: result.availability };
   } finally { if (reservation) store.releaseAnswer(reservation); }
 }
@@ -511,10 +529,14 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
   if (request.method === 'GET' && url.pathname === '/api/project/build') return json(response, 200, await store.buildStatus());
   if (request.method === 'GET' && url.pathname === '/api/project/preflight') {
-    const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
-    const pdfData = await readFile(store.previewPath()).catch(() => new Uint8Array());
-    const [graph, design] = await Promise.all([store.graph(), store.design()]);
-    return json(response, 200, await runPreflight({ manifest, pdfPath: store.previewPath(), pdfData, graph, currentDesign: design, currentHeadTitle: await resolveHeadTitle(store, graph, design) }));
+    const report = await store.exclusive(async () => {
+      const pdfPath = store.previewPath();
+      const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
+      const pdfData = await readFile(pdfPath).catch(() => new Uint8Array());
+      const [graph, design] = await Promise.all([store.graph(), store.design()]);
+      return runPreflight({ manifest, pdfPath, pdfData, graph, currentDesign: design, currentHeadTitle: await resolveHeadTitle(store, graph, design) });
+    });
+    return json(response, 200, report);
   }
   if (request.method === 'GET' && url.pathname === '/api/project/design') { const design = await store.design(); return json(response, 200, { design, hash: designHash(design), defaultHash: designHash({}), trimSizes: [...TRIM_SIZES.keys()] }); }
   if (request.method === 'PUT' && url.pathname === '/api/project/design') { const design = await store.saveDesign(await body(request)); return json(response, 200, { design, hash: designHash(design) }); }
@@ -544,13 +566,45 @@ async function vaultApi(request, response, url, store) {
     return record ? json(response, 200, record) : json(response, 404, { error: 'Change contract not found.', code: 'CONTRACT_NOT_FOUND' });
   }
   if (contractRoute && request.method === 'POST' && contractRoute[2]) { const payload = await body(request); return json(response, 200, await store.revertChanges(contractRoute[1], { nodeId: payload?.nodeId || null })); }
+  // Editorial sessions: a scope's named conversations (D-027), under the same scope ids as the routes below.
+  // The pattern admits only `main` (the scope's original journal) or a generated `c-` id of 16 hex digits,
+  // so a conversation id can never name a path outside the scope's session folder. The actor has already
+  // been checked for state-changing methods at the top of the handler (D-028); project passwords apply
+  // here as on every scope route. Closing a conversation never decides a proposal.
+  const session =url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/conversations(?:\/(main|c-[a-f0-9]{16})(?:\/(turns|turn|summary|summary\/draft|continue))?)?$/);
+  if (session) {
+    const [, scopeId, conversationId, action] = session;
+    const actor = request.actor ?? LOCAL_ACTOR;
+    if (!conversationId) {
+      if (request.method === 'GET') return json(response, 200, await store.conversations(scopeId));
+      if (request.method === 'POST') return json(response, 201, await store.createConversation(scopeId, await body(request), actor));
+    } else if (!action) {
+      if (request.method === 'GET') return json(response, 200, await store.conversation(scopeId, conversationId));
+      if (request.method === 'PATCH') return json(response, 200, await store.updateConversation(scopeId, conversationId, await body(request), actor));
+    } else if (action === 'turns' && request.method === 'GET') {
+      await store.conversation(scopeId, conversationId);
+      return json(response, 200, await store.turns(scopeId, 40, conversationId));
+    } else if (action === 'turn' && request.method === 'POST') {
+      await store.conversation(scopeId, conversationId);
+      return json(response, 200, await scopeTurn(store, scopeId, await body(request), { conversationId, actor }));
+    } else if (action === 'summary') {
+      if (request.method === 'GET') return json(response, 200, await store.summary(scopeId, conversationId));
+      if (request.method === 'PUT') return json(response, 200, await store.saveSummary(scopeId, conversationId, await body(request), actor));
+    } else if (action === 'summary/draft' && request.method === 'GET') return json(response, 200, await store.summaryDraft(scopeId, conversationId));
+    else if (action === 'continue' && request.method === 'POST') {
+      // 201 for a new conversation; 200 when the same summary revision was already continued (a replay).
+      const continued = await store.continueConversation(scopeId, conversationId, await body(request), actor);
+      return json(response, continued.replayed ? 200 : 201, continued);
+    }
+    return json(response, 405, { error: 'Method not allowed.' });
+  }
   const scoped = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/);
   if (scoped) {
     const [, scopeId, action] = scoped;
     if (request.method === 'GET' && action === 'turns') return json(response, 200, await store.turns(scopeId));
     if (request.method === 'GET' && action === 'changes') return json(response, 200, await store.changeSet(scopeId));
     if (request.method === 'POST' && action === 'changes/decide') { const payload = await body(request); return json(response, 200, await store.decideChanges(scopeId, payload.changeSetId, { nodeId: payload.nodeId || null, decision: payload.decision })); }
-    if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request)));
+    if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request), { actor: request.actor ?? LOCAL_ACTOR }));
   }
   const editorial = response.getHeader('x-stex-contract') && editorialRoute.exec(url.pathname.slice('/api'.length));
   if (editorial) {
@@ -627,6 +681,9 @@ const STATUS_BY_CODE = {
   STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409, PASSAGE_STALE: 409,
   INVALID_PASSAGE: 400,
   CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
+  // Editorial sessions (D-027) and the platform actor (D-028).
+  SESSION_CLOSED: 409, INVALID_TRANSITION: 409, STALE_SUMMARY: 409, SUMMARY_REQUIRED: 409, SESSION_HISTORY_FULL: 409,
+  CONVERSATION_NOT_FOUND: 404, SESSIONS_UNAVAILABLE: 503, INVALID_SESSION_REQUEST: 400, INVALID_SUMMARY: 400, ACTOR_REQUIRED: 401,
 };
 
 const legacyBooks = legacyBooksApi(booksDirectory, { isProtected: (id) => projectAccess.isProtected('book', id) });
@@ -644,6 +701,12 @@ http.createServer(async (request, response) => {
       if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
+    // The platform actor (D-028, stex.platform.actor.v1). Local mode (no secret) ignores actor headers and acts as `local`.
+    // With the secret set, every state-changing request needs a verified actor, with no exceptions. Pantheon's knowledge API
+    // forwards the signed-in actor on its server-to-server observation POST (D-028), so that checkpoint is covered too.
+    const actor = resolveActor(request.headers);
+    request.actor = actor;
+    if (actorRefused(request.method, actor)) return json(response, 401, { error: 'A signed-in person is required to change this.', code: 'ACTOR_REQUIRED' });
     if (url.pathname.startsWith('/api/stex/context/v1/')) {
       // Server-to-server readers carry no unlock cookie, so a protected project is unavailable to them.
       const contextId = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/|$)/.exec(url.pathname)?.[1];

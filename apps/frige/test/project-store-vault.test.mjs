@@ -1,7 +1,8 @@
 /** Frige regression tests source that checks project store vault behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import fs, { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -109,7 +110,11 @@ test('stages only a current verified proof for the live-build adapter', async (c
   const graph = await store.graph(); const scope = await store.scope(graph.readingOrder[0]); const assembled = await assembleBook(store, { scopeId: scope.id });
   await writeFile(store.previewPath(), '%PDF-test');
   /** Constructs or reads the proof evidence needed by the test. */
-  const proof = (verified, includedNodeIds = assembled.includedNodeIds) => store.recordBuild({ ok: true, targetScope: scope, includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap: { schemaVersion: 3, pagination: { verified } }, log: 'proof' });
+  const proof = async (verified, includedNodeIds = assembled.includedNodeIds) => {
+    const pageMap = { schemaVersion: 3, pagination: { verified } };
+    await writeFile(path.join(store.buildDirectory(), 'page-map.json'), JSON.stringify(pageMap));
+    return store.recordBuild({ ok: true, targetScope: scope, includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap, log: 'proof' });
+  };
   await proof(false);
   await assert.rejects(() => store.queueLiveBuild(scope.id), { code: 'PAGINATION_UNVERIFIED' });
   await proof(true, []);
@@ -165,6 +170,104 @@ test('derives the page map only from compiler markers and refuses inconsistent e
     assert.equal(bad.pagination.verified, false); assert.ok(bad.pagination.warnings.length);
   }
 });
+test('proof promotion retries a busy page map and restores it on PDF failure', async (context) => {
+  const { root, store } = await vault();
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const output = path.join(root, 'proof-output');
+  const document = path.join(output, 'document.pdf');
+  const pageMap = path.join(store.buildDirectory(), 'page-map.json');
+  const proof = { builtAt: 'synthetic-proof' };
+  await mkdir(output);
+  await writeFile(document, '%PDF-synthetic accepted');
+
+  const originalRename = fs.rename;
+  const faults = [{ file: pageMap, code: 'EBUSY' }];
+  fs.rename = async (source, destination) => {
+    if (destination === faults[0]?.file) throw Object.assign(new Error('Synthetic proof replacement failure'), { code: faults.shift().code });
+    return originalRename(source, destination);
+  };
+  syncBuiltinESMExports();
+  try {
+    await store.activateBuild(output, proof);
+    assert.deepEqual(faults, []);
+    assert.deepEqual(JSON.parse(await readFile(pageMap, 'utf8')), proof);
+
+    await writeFile(document, '%PDF-synthetic newer');
+    faults.push({ file: pageMap, code: 'EIO' });
+    await assert.rejects(store.activateBuild(output, { builtAt: 'newer-proof' }), { code: 'EIO' });
+    assert.equal(await readFile(store.previewPath(), 'utf8'), '%PDF-synthetic accepted');
+    assert.deepEqual(JSON.parse(await readFile(pageMap, 'utf8')), proof);
+
+    faults.push({ file: store.previewPath(), code: 'EIO' });
+    await assert.rejects(store.activateBuild(output, { builtAt: 'newer-proof' }), { code: 'EIO' });
+    assert.equal(await readFile(store.previewPath(), 'utf8'), '%PDF-synthetic accepted');
+    assert.deepEqual(JSON.parse(await readFile(pageMap, 'utf8')), proof);
+
+    await rm(store.previewPath());
+    await rm(pageMap);
+    faults.push({ file: store.previewPath(), code: 'EIO' });
+    await assert.rejects(store.activateBuild(output, { builtAt: 'first-proof' }), { code: 'EIO' });
+    await assert.rejects(readFile(store.previewPath()), { code: 'ENOENT' });
+    assert.deepEqual(await readdir(store.buildDirectory()), []);
+  } finally {
+    fs.rename = originalRename;
+    syncBuiltinESMExports();
+  }
+});
+
+test('live-build handoff waits for proof promotion and refuses mismatched proof metadata', async (context) => {
+  const { root, store } = await vault();
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const output = path.join(root, 'proof-output');
+  const document = path.join(output, 'document.pdf');
+  const pageMap = path.join(store.buildDirectory(), 'page-map.json');
+  const { scope, includedNodeIds, sourceHashes } = await assembleBook(store);
+  const priorMap = { schemaVersion: 3, pagination: { verified: true }, builtAt: 'prior-proof' };
+  const nextMap = { ...priorMap, builtAt: 'next-proof' };
+  const record = (manifest) => store.recordBuild({ ok: true, targetScope: scope, includedNodeIds, sourceHashes, pageMap: manifest });
+  await mkdir(output);
+  await writeFile(document, '%PDF-synthetic previous');
+  await store.activateBuild(output, priorMap);
+  await record(priorMap);
+  await writeFile(document, '%PDF-synthetic next');
+
+  const paused = Promise.withResolvers();
+  const resume = Promise.withResolvers();
+  const originalRename = fs.rename;
+  const proofStatus = context.mock.method(store, 'buildStatus');
+  fs.rename = async (source, destination) => {
+    if (destination === store.previewPath()) {
+      paused.resolve();
+      await resume.promise;
+    }
+    return originalRename(source, destination);
+  };
+  syncBuiltinESMExports();
+  const promotion = store.activateBuild(output, nextMap);
+  let handoff;
+  try {
+    await Promise.race([paused.promise, promotion]);
+    handoff = store.queueLiveBuild(scope.id).catch((error) => error);
+    assert.equal(proofStatus.mock.callCount(), 0, 'the handoff cannot inspect the proof while promotion holds the lock');
+    assert.deepEqual(JSON.parse(await readFile(pageMap, 'utf8')), nextMap);
+    assert.equal(await readFile(store.previewPath(), 'utf8'), '%PDF-synthetic previous');
+    resume.resolve();
+    await promotion;
+    assert.equal((await handoff).code, 'STALE_BUILD');
+    assert.equal(await store.liveBuildStatus(), null);
+  } finally {
+    resume.resolve();
+    await promotion.catch(() => {});
+    await handoff;
+    fs.rename = originalRename;
+    syncBuiltinESMExports();
+  }
+  await record(nextMap);
+  const queued = await store.queueLiveBuild(scope.id);
+  assert.equal(await readFile(path.join(store.liveBuildsDirectory, queued.artifact.pdf), 'utf8'), '%PDF-synthetic next');
+  assert.deepEqual(JSON.parse(await readFile(path.join(store.liveBuildsDirectory, queued.artifact.pageMap), 'utf8')), nextMap);
+});
+
 test('compiles a multi-page proof whose page map matches LuaLaTeX output', { skip: !hasLuaLaTeX && 'lualatex is not on PATH' }, async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'texgraph-proof-')); context.after(() => rm(root, { recursive: true, force: true }));
   const stanzas = Array.from({ length: 30 }, (_, stanza) => Array.from({ length: 4 }, (_, line) => `Stanza ${stanza + 1} line ${line + 1} — Æther’s *turn*`).join('\n'));
@@ -494,7 +597,9 @@ test('a graph from before stable ids is rebuilt on first use, and records, artif
   // A proof made under the old id still counts for the section's live build.
   const assembled = await assembleBook(fresh, { scopeId: section.id });
   await writeFile(fresh.previewPath(), '%PDF-test');
-  await fresh.recordBuild({ ok: true, targetScope: { ...section, id: oldId }, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap: { schemaVersion: 3, mode: 'prefix', designHash: assembled.designHash, pagination: { verified: true } }, log: '' });
+  const pageMap = { schemaVersion: 3, mode: 'prefix', designHash: assembled.designHash, pagination: { verified: true } };
+  await writeFile(path.join(fresh.buildDirectory(), 'page-map.json'), JSON.stringify(pageMap));
+  await fresh.recordBuild({ ok: true, targetScope: { ...section, id: oldId }, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, pageMap, log: '' });
   assert.equal((await fresh.queueLiveBuild(section.id)).status, 'queued-locally');
 });
 

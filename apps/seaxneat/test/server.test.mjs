@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { PREVIEW_CONTENT_SECURITY_POLICY } from '../src/preview-proxy.mjs';
 
 test('engine refuses foreign/opaque browser origins and rebinding, redirects presentation, and sandboxes preview responses', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-seaxneat-server-'));
@@ -32,7 +33,8 @@ test('engine refuses foreign/opaque browser origins and rebinding, redirects pre
   const redirect = await fetch(base + '/seaxneat/?project=fixture', { redirect: 'manual' });
   assert.equal(redirect.headers.get('location'), 'http://127.0.0.1:4496/workspaces/seaxneat/?project=fixture');
   const generated = await fetch(base + '/seaxneat/api/projects/fixture/preview/');
-  assert.equal(generated.headers.get('content-security-policy'), "sandbox allow-scripts; frame-ancestors 'self'");
+  assert.equal(generated.headers.get('content-security-policy'), PREVIEW_CONTENT_SECURITY_POLICY);
+  assert.match(generated.headers.get('content-security-policy'), /connect-src 'self'/);
   assert.equal(generated.headers.get('x-content-type-options'), 'nosniff');
   assert.match(await generated.text(), /Generated fixture/);
   const opaqueAsset = await fetch(base + '/seaxneat/api/projects/fixture/preview/_next/static/fixture.js', { headers: { origin: 'null', 'sec-fetch-site': 'cross-site' } });

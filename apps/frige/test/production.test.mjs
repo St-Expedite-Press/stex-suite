@@ -1,7 +1,9 @@
 /** Frige regression tests source that checks production behavior with disposable fixtures. */
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import childProcess, { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -59,6 +61,32 @@ test('preflight reports what a real proof gets wrong and never declares it press
   const first = await preflight();
   assert.deepEqual({ ...status(first), embedding: undefined }, { 'source-map': 'pass', 'page-count': 'pass', geometry: 'pass', embedding: undefined, fonts: 'fail', glyphs: 'fail', overfull: 'warn', freshness: 'pass' });
   assert.ok(['pass', 'unavailable'].includes(status(first).embedding));
+  const originalExecFile = childProcess.execFile;
+  let fontTimeout;
+  childProcess.execFile = (file, args, options, callback) => {
+    assert.equal(file, 'pdffonts');
+    assert.deepEqual(args, [store.previewPath()]);
+    fontTimeout = options.timeout;
+    assert.equal(options.killSignal, 'SIGKILL');
+    queueMicrotask(() => callback(new Error('Synthetic font inspection timeout')));
+  };
+  syncBuiltinESMExports();
+  try {
+    assert.equal(status(await preflight()).embedding, 'unavailable');
+    assert.equal(fontTimeout, 5000);
+  } finally {
+    childProcess.execFile = originalExecFile;
+    syncBuiltinESMExports();
+  }
+  const proofBytes = await readFile(store.previewPath());
+  assert.equal(manifest.pdfSha256, createHash('sha256').update(proofBytes).digest('hex'));
+  await writeFile(store.previewPath(), Buffer.concat([proofBytes, Buffer.from('\n')]));
+  const mismatched = await preflight();
+  assert.equal(mismatched.proof, null);
+  assert.match(mismatched.checks[0].detail, /differs from the compiler page map/);
+  await assert.rejects(() => store.queueLiveBuild('book'), { code: 'STALE_BUILD' });
+  assert.deepEqual(await readdir(store.liveBuildsDirectory), []);
+  await writeFile(store.previewPath(), proofBytes);
   // Every overfull line belongs to the piece with the unbreakable word, none to the plain one.
   assert.match(first.checks.find((entry) => entry.id === 'overfull').items.join('|'), /^manuscript\/01_A\/Wide\.md: \d+$/);
   assert.ok(!JSON.stringify(first).match(/press-ready|ready to print/i));

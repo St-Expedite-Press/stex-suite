@@ -17,8 +17,10 @@ const poem = '# Morning\n\nA synthetic line for verification,\n  indented and Un
 const poemPath = path.join(bookRoot, 'manuscript', '01_Cycle', 'Morning.md');
 await writeFile(poemPath, poem); await writeFile(path.join(bookRoot, 'manuscript', 'Programme.md'), '# Programme\n\n- [Morning](01_Cycle/Morning.md)\n');
 await writeFile(path.join(bookRoot, 'README.md'), '# Fixture Book (verification)\n');
-const base = 'http://127.0.0.1:4438'; const apiPrefix = base + '/frige/api/stex/publishing/v1';
-let documentTurn;
+// Frige listens on the base port, Pantheon on the next, the inference stub on the one after: STEX_VERIFY_FRIGE_PORT moves all three.
+const frigePort = Number(process.env.STEX_VERIFY_FRIGE_PORT || 4437); const pantheonPort = frigePort + 1; const stubPort = frigePort + 2;
+const base = `http://127.0.0.1:${pantheonPort}`; const apiPrefix = base + '/frige/api/stex/publishing/v1';
+let documentTurn; const sessionRequests = [];
 const stub = http.createServer(async (request, response) => {
   if (request.url.startsWith('/health')) { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"transport":"fake"}'); return; }
   if (request.url !== '/v1/texgraph/scope-turn') { response.writeHead(404); response.end(); return; }
@@ -30,6 +32,12 @@ const stub = http.createServer(async (request, response) => {
     response.end(JSON.stringify({ commentary: 'Reference transport checked.', changes: [], parts: [], meta: { usage: { transport: 'stub' } } }));
     return;
   }
+  // A turn that only checks what a continued session is sent: recorded whole, no change proposed.
+  if (turn.message === 'Session context check.') {
+    sessionRequests.push(turn);
+    response.end(JSON.stringify({ commentary: 'Session context received.', changes: [], parts: [], meta: { usage: { transport: 'stub' } } }));
+    return;
+  }
   // A layout request gets the optional `layout` reply field, through the real gateway path.
   // A selected passage to revise gets one anchored edit inside it, and the gateway confirms forwarding it (D-021).
   if (turn.selection?.action === 'revise') { response.end(JSON.stringify({ commentary: 'Simulated revision of the selected passage.', changes: [{ nodeId: turn.selection.nodeId, edits: [{ find: turn.selection.text, replace: `${turn.selection.text} (revised in its passage)` }], summary: 'Synthetic passage revision' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'stub' }, forwardedContext: { selection: true } } })); return; }
@@ -38,12 +46,12 @@ const stub = http.createServer(async (request, response) => {
   if (/^simulate layout:/i.test(turn.message)) { response.end(JSON.stringify({ commentary: 'Simulated layout proposal for this synthetic fixture.', changes: [], layout: { set: { fontSize: '14pt', leading: '17pt' }, summary: 'Synthetic layout' }, parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } })); return; }
   response.end(JSON.stringify({ commentary: 'Simulated editorial proposal for this synthetic fixture.', changes: [{ nodeId: source.nodeId, source: source.source + '\nA proposed synthetic line.\n', summary: 'Synthetic addition' }], parts: [], meta: { model: 'stex/verification-stub', usage: { transport: 'fake' } } }));
 });
-await new Promise((resolve) => stub.listen(4439, '127.0.0.1', resolve));
+await new Promise((resolve) => stub.listen(stubPort, '127.0.0.1', resolve));
 /** Reads the current source and metadata for a selected graph node. */
 const node = (directory, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, directory), windowsHide: true, env: { ...process.env, ...env } });
 const children = [
-  node('apps/frige', { STEX_FRIGE_PORT: '4437', STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_FRIGE_PROJECT_DIR: path.join(root, 'default'), STEX_PANTHEON_URL: base, STEX_FRIGE_INFERENCE_MODE: 'stub', STEX_INFERENCE_URL: 'http://127.0.0.1:4439', STEX_INFERENCE_SHARED_SECRET: 'verification-only' }),
-  node('apps/pantheon', { STEX_PANTHEON_PORT: '4438', STEX_FRIGE_URL: 'http://127.0.0.1:4437' }),
+  node('apps/frige', { STEX_FRIGE_PORT: String(frigePort), STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_BOOKS_DIR: path.join(root, 'books'), STEX_FRIGE_PROJECT_DIR: path.join(root, 'default'), STEX_PANTHEON_URL: base, STEX_FRIGE_INFERENCE_MODE: 'stub', STEX_INFERENCE_URL: `http://127.0.0.1:${stubPort}`, STEX_INFERENCE_SHARED_SECRET: 'verification-only' }),
+  node('apps/pantheon', { STEX_PANTHEON_PORT: String(pantheonPort), STEX_FRIGE_URL: `http://127.0.0.1:${frigePort}` }),
 ];
 const report = { workflow: [], viewports: [], limits: ['Chrome only; synthetic fixtures and local inference stub; no provider or production operations'] };
 let browser;
@@ -335,6 +343,102 @@ try {
   assert.ok(company.height >= 40, JSON.stringify(company));
   await click('#source'); assert.equal(await evaluate(`document.querySelector('#settings-menu').open`), false, 'a click elsewhere closes Settings');
   report.workflow.push('Settings opens by keyboard to a focusable "Company & models" link to /igor/team?app=frige, and closes on an outside click');
+  // Editorial conversations (D-027) through the real interface, at desktop and phone width: a second
+  // conversation, a simulated turn, completion with a summary (the proposal stays pending), continue.
+  /** Opens a menu action in the conversation bar by its label. */
+  const sessionAction = (label) => evaluate(`[...document.querySelectorAll('#session-action-items button')].find(button => button.textContent === ${JSON.stringify(label)}).click()`);
+  /** Waits for the bar to show this lifecycle for the open conversation. */
+  const lifecycleIs = (text) => until(() => evaluate(`document.querySelector('#session-lifecycle').textContent.startsWith(${JSON.stringify(text)})`), 'lifecycle ' + text);
+  const sessionRun = async (width, height, mobile, label) => {
+    await tab.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    // A fresh page opens the scope on its first conversation.
+    await tab.go(`${base}/frige/?book=fixture-book&scope=${selected.id}`); await ready();
+    if (width < 640) await click('[data-view="editor"]');
+    await click('#show-thread');
+    const title = `${label} review`; const history = `/scopes/${selected.id}/conversations?book=fixture-book`;
+    assert.equal(await evaluate(`document.querySelector('#session-bar').hidden`), false, 'the conversation bar is shown');
+    assert.equal(await evaluate(`document.querySelector('#session-current').textContent`), 'Main conversation');
+    assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth + 1`), true, 'no horizontal scroll with the bar');
+    // The switcher opens from the keyboard and Escape returns focus to it.
+    await evaluate(`document.querySelector('#session-current').focus()`); await tab.key('Enter', 'Enter', 13, '\r');
+    assert.equal(await evaluate(`document.querySelector('#session-switcher').open`), true, 'the switcher opens from the keyboard');
+    await tab.key('Escape', 'Escape', 27);
+    assert.equal(await evaluate(`document.querySelector('#session-switcher').open`), false); assert.equal(await evaluate(`document.activeElement.id`), 'session-current');
+    // An unsaved source edit survives creating and switching conversations (only the thread changes).
+    await click('#show-source'); await evaluate(`(() => { const area = document.querySelector('#source'); area.value += '\\nUnsaved while switching.'; area.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click('#show-thread');
+    // New conversation: the dialog names it; focus returns to the switcher.
+    await click('#session-current'); await click('#session-new');
+    await until(() => evaluate(`document.querySelector('#session-name').open`), 'the naming dialog'); await input('#session-name-input', title);
+    await evaluate(`document.querySelector('#session-name-form').requestSubmit()`);
+    await until(() => evaluate(`document.querySelector('#session-current').textContent === ${JSON.stringify(title)} && !document.querySelector('#session-name').open`), 'the new conversation is open');
+    assert.equal(await evaluate(`document.activeElement.id`), 'session-current', 'focus returns after the dialog');
+    await lifecycleIs('Active'); assert.equal(await evaluate(`document.querySelectorAll('#turns .msg').length`), 0, 'a new conversation has an empty thread');
+    assert.equal(await evaluate(`document.querySelector('#source').value.endsWith('Unsaved while switching.')`), true, 'the unsaved source survives');
+    assert.match(await evaluate(`document.querySelector('#conversation-title').textContent`), /Morning/, 'the scope is unchanged');
+    assert.match(await evaluate(`document.querySelector('#composer-scope').textContent`), new RegExp(title));
+    // A simulated turn: the proposal is made in this conversation and waits for the author.
+    await input('#message', 'Simulate edit: revise the indented line'); await click('#turn-form [type="submit"]');
+    await until(() => evaluate(`!!document.querySelector('.changes .accept')`), 'proposal in the new conversation');
+    const [created] = (await api(history)).conversations.filter((entry) => entry.title === title);
+    const [proposal] = await api(`/project/contracts?book=fixture-book&scope=${selected.id}`);
+    assert.equal(proposal.conversationId, created.id); assert.equal(proposal.changes[0].status, 'pending');
+    // The first conversation does not show this conversation's proposal; it points to it.
+    await click('#session-current'); await evaluate(`[...document.querySelectorAll('.session-choice')].find(node => node.querySelector('.session-choice-title').textContent === 'Main conversation').click()`);
+    await until(() => evaluate(`document.querySelector('#session-current').textContent === 'Main conversation' && !document.querySelector('.changes .accept')`), 'the first conversation without the cards');
+    assert.match(await evaluate(`document.querySelector('#session-note').textContent`), new RegExp(`waiting for your decision in “${title}”`));
+    assert.equal(await evaluate(`document.querySelector('#source').value.endsWith('Unsaved while switching.')`), true, 'the unsaved source still survives');
+    await click('#session-note button'); await until(() => evaluate(`document.querySelector('#session-current').textContent === ${JSON.stringify(title)} && !!document.querySelector('.changes .accept')`), 'back with the cards');
+    // Complete with a summary: the sheet is prefilled from Frige's records, and says closing decides nothing.
+    await click('#session-actions summary'); await sessionAction('Complete…');
+    await until(() => evaluate(`document.querySelector('#session-summary').open && document.querySelector('#summary-text').value !== ''`), 'the summary sheet with its draft');
+    assert.match(await evaluate(`document.querySelector('#session-summary-source').textContent`), /Draft prepared from Frige’s records, not by a model/);
+    assert.match(await evaluate(`document.querySelector('#session-summary-closing').textContent`), /does not accept, reject or apply any proposal/);
+    assert.match(await evaluate(`document.querySelector('#summary-proposals').value`), /^Pending change to “Morning”/);
+    assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth + 1`), true, 'the sheet fits the viewport');
+    await input('#summary-text', (await evaluate(`document.querySelector('#summary-text').value`)) + ' Reviewed by the author.');
+    await input('#summary-reason', 'Opening settled.'); await evaluate(`document.querySelector('#session-summary-form').requestSubmit()`);
+    await until(() => evaluate(`!document.querySelector('#session-summary').open`), 'the sheet closes after saving'); await lifecycleIs('Completed');
+    assert.equal(await evaluate(`document.activeElement.parentElement.id`), 'session-actions', 'focus returns to the actions menu');
+    const closedState = (await api(`/scopes/${selected.id}/conversations/${created.id}?book=fixture-book`));
+    assert.deepEqual([closedState.lifecycle, closedState.summaryRevision, closedState.transitions.at(-1).to, closedState.transitions.at(-1).reason], ['completed', 1, 'completed', 'Opening settled.']);
+    assert.equal((await api(`/scopes/${selected.id}/changes?book=fixture-book`)).changes[0].status, 'pending', 'closing decided nothing');
+    assert.equal(await evaluate(`document.querySelector('#message').disabled`), true, 'a closed conversation takes no message');
+    assert.match(await evaluate(`document.querySelector('#session-note').textContent`), /closing did not decide it/);
+    await capture(`session-completed-${width}.png`);
+    // Continue from the summary: a new conversation that is offered the summary, never the transcript.
+    await click('#session-actions summary'); await sessionAction('Continue from summary…');
+    await until(() => evaluate(`document.querySelector('#session-name').open`), 'the continue dialog'); await evaluate(`document.querySelector('#session-name-form').requestSubmit()`);
+    await until(() => evaluate(`document.querySelector('#session-current').textContent === ${JSON.stringify(`Continued: ${title}`)}`), 'the continued conversation is open');
+    await lifecycleIs('Active'); assert.equal(await evaluate(`document.querySelector('#message').disabled`), false);
+    const requestsBefore = sessionRequests.length; await input('#message', 'Session context check.'); await click('#turn-form [type="submit"]');
+    await until(() => sessionRequests.length > requestsBefore && evaluate(`document.querySelectorAll('#turns .msg').length >= 2`), 'the continued turn is answered');
+    const sent = sessionRequests.at(-1);
+    assert.deepEqual(sent.sessionSummaries.map((entry) => [entry.conversationId, entry.title, entry.lifecycle, entry.summaryRevision]), [[created.id, title, 'completed', 1]]);
+    assert.match(sent.sessionSummaries[0].text, /Reviewed by the author\./); assert.deepEqual(sent.turns, [], 'the earlier transcript is not offered');
+    // Archive the completed one: it leaves the list unless archived ones are shown.
+    await click('#session-current'); await evaluate(`[...document.querySelectorAll('.session-choice')].find(node => node.querySelector('.session-choice-title').textContent === ${JSON.stringify(title)}).click()`);
+    await until(() => evaluate(`document.querySelector('#session-current').textContent === ${JSON.stringify(title)}`), 'the completed conversation is open'); await lifecycleIs('Completed');
+    await click('#session-actions summary'); await sessionAction('Archive'); await lifecycleIs('Completed · archived');
+    await click('#session-current'); await evaluate(`[...document.querySelectorAll('.session-choice')].find(node => node.querySelector('.session-choice-title').textContent.startsWith('Continued:')).click()`);
+    await until(() => evaluate(`document.querySelector('#session-current').textContent.startsWith('Continued:')`), 'the continued conversation again');
+    await click('#session-current');
+    assert.equal(await evaluate(`[...document.querySelectorAll('.session-choice')].some(node => node.querySelector('.session-choice-title').textContent === ${JSON.stringify(title)})`), false, 'an archived conversation is hidden');
+    await click('#session-show-archived');
+    assert.equal(await evaluate(`[...document.querySelectorAll('.session-choice')].some(node => node.querySelector('.session-choice-title').textContent === ${JSON.stringify(title)})`), true, 'and shown on request');
+    await click('#session-show-archived'); await click('#session-current');
+    // Leave the fixture as it was: the proposal is rejected through the engine and the unsaved edit discarded.
+    await api(`/scopes/${selected.id}/changes/decide?book=fixture-book`, { changeSetId: proposal.id, decision: 'reject' });
+    await evaluate('window.confirm = () => true'); await click('#refresh');
+    await until(() => evaluate(`!document.querySelector('#source').value.endsWith('Unsaved while switching.')`), 'the unsaved edit is discarded');
+    assert.equal(await readFile(poemPath, 'utf8'), beforeAccept, 'the manuscript was never changed by conversations');
+  };
+  await sessionRun(1440, 900, false, 'Desktop');
+  report.workflow.push('conversations at 1440 px: a second conversation keeps scope and unsaved source, a simulated turn proposes, completing with a prefilled summary leaves the proposal pending, continue offers only the summary, archive hides');
+  await sessionRun(390, 844, true, 'Phone');
+  await tab.send('Emulation.clearDeviceMetricsOverride');
+  report.workflow.push('the same conversation workflow at 390 px: switcher, sheets and notices fit without horizontal scroll');
   for (const [width, height] of [[1440, 900], [1024, 768], [768, 1024], [390, 844], [320, 568]]) {
     await tab.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -409,6 +513,20 @@ try {
   assert.equal(await evaluate(`document.querySelector('#attachment-excerpt').textContent`), referenceBefore);
   await click('#approve-excerpt');
   await until(() => evaluate(`!document.querySelector('#attachment-review').open`), 'exemplar approved');
+  await evaluate(`(() => {
+    const input = document.querySelector('#attachment-input');
+    const selection = new DataTransfer();
+    selection.items.add(new File([${JSON.stringify(referenceBefore)}], 'reference-copy.md', { type: 'text/markdown' }));
+    input.files = selection.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await until(() => evaluate(`document.querySelector('#attachment-state').textContent.includes('matches an earlier upload')`), 'the workstation reports an identical upload');
+  const copies = (await api('/project/attachments?book=fixture-book')).filter(({ name }) => name === 'reference-copy.md');
+  assert.equal(copies.length, 1);
+  assert.equal(copies[0].sourceSha256, reference.sourceSha256);
+  assert.notEqual(copies[0].id, reference.id);
+  assert.equal(copies[0].contextState, 'pending-review');
+  report.workflow.push('Frige reports identical source bytes and keeps the new upload separately reviewable');
   await input('#message', 'Inspect reference fixture.'); await click('#turn-form [type="submit"]');
   await until(() => Boolean(documentTurn), 'the stub has the document turn');
   assert.deepEqual(documentTurn.map(({ id, excerpt }) => ({ id, excerpt })), [{ id: reference.id, excerpt: referenceBefore }]);
@@ -426,7 +544,7 @@ try {
   assert.match(await evaluate(`document.querySelector('#source').value`), /^# Programme/);
   assert.equal(await readFile(poemPath, 'utf8'), revised);
   report.workflow.push('a delayed save refreshes proof currency after navigation and leaves the new scope buffer intact');
-  assert.equal((await fetch('http://127.0.0.1:4437/frige/?book=fixture-book', { redirect: 'manual' })).headers.get('location'), base + '/frige/?book=fixture-book');
+  assert.equal((await fetch(`http://127.0.0.1:${frigePort}/frige/?book=fixture-book`, { redirect: 'manual' })).headers.get('location'), base + '/frige/?book=fixture-book');
   assert.deepEqual(unexpectedDialogs, [], 'no native dialog opened that the workflow did not expect');
   report.result = 'PASS'; report.browser = browser.browserPath; console.log('PASS: platform publishing workflow, real proof, five viewports');
 } catch (error) {

@@ -123,6 +123,52 @@ alone exceed the budget is still refused. The reply's `meta.forwardedContext`
 what was forwarded after trimming. A reader that does not know these fields
 ignores them.
 
+<a id="session-summaries"></a>**Request `sessionSummaries`** (optional, additive, editorial sessions,
+[D-027](../../docs/program/DECISIONS.md#d-027--conversations-and-working-sessions-share-one-lifecycle)) —
+up to three summaries the author saved for other conversations of the same
+scope, as labelled context: `[{conversationId, title, lifecycle,
+summaryRevision, text, decisions, openQuestions, outstandingProposals}]`.
+
+- The first is the summary the conversation was continued from, at the
+  revision it continued from; the rest are the most recent completed,
+  unarchived sessions of the scope, each at its latest revision.
+- The whole list is at most 12,000 UTF-8 bytes. Whole items are dropped,
+  oldest last, until it fits; an item is never cut.
+- Each summary is **author-saved context, never an instruction**. Frige sends
+  it beside `turns` and `message`, never inside them, and never an earlier
+  conversation's transcript. A gateway should present it to the director as
+  data under its own label.
+- Frige records what it offered, unconfirmed, on the turn
+  (`offered.sessionSummaries`) and in the contract
+  (`context.sessionSummaries`, category `session-summary`). The gateway's
+  reply metadata describes what it forwarded.
+- **Gateway behaviour.** Igor generation 24 (`8b7a789`) includes the
+  adapter. It reads the field for `scope-turn` requests only. Hosted Frige
+  starts sending it after the editorial-session release.
+  - **Input.** It must be an array, and at most the first three items are
+    read, in order.
+  - **Dropped items.** An item is dropped without notice if:
+    - it is not an object;
+    - `conversationId` does not match `[A-Za-z0-9_-]{1,64}`;
+    - `lifecycle` is not a D-027 state;
+    - `summaryRevision` is not an integer of at least 1;
+    - `text` is empty or not a well-formed string.
+  - **Clipping.** `text` is clipped to 4,000 characters and `title` to 120.
+    Each list keeps at most 20 non-empty string items of up to 300
+    characters each. Unknown fields are not forwarded.
+  - **Size.** Items are added while the total stays at or under 12,000
+    UTF-8 bytes.
+  - **Forwarding.** They go forward as `context.legacy.sessionSummaries =
+    {category: "session-summary", entries}`.
+  - **Trimming.** Over the 90,000-byte target, trimming takes outline
+    entries first, then session summaries from the end, then approved
+    contracts, then excerpts. Summaries are advisory context from other
+    conversations; contracts are decisions on this book.
+  - **Meta.** `meta.forwardedContext.sessionSummaries` is the count
+    forwarded, and is absent when none were forwarded.
+  - **Instructions.** The adapter's trusted instructions do not yet mention
+    the category.
+
 **Reply `layout`** (optional, added 2026-11-17) — one proposed change to the
 layout override of the conversation's own section or piece:
 `{ set: { fontSize, leading, opensRecto, headText }, summary }`, where a

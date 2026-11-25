@@ -43,25 +43,28 @@ async function exists(file) {
   }
 }
 
+/** Replaces a file with bounded retries for transient filesystem contention. */
+export async function renameWithRetry(source, destination) {
+  // OneDrive and antivirus scanners can briefly hold a destination open on Windows.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      const retryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
+      if (!retryable || attempt === 7) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, 25 * (2 ** attempt))));
+    }
+  }
+}
+
 /** Persists the value through a same-directory temporary replacement. */
 export async function writeAtomic(file, content) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporary, content, 'utf8');
   try {
-    // OneDrive and antivirus scanners can briefly hold the destination open on
-    // Windows.  Keep the atomic replacement, but give that transient lock time
-    // to clear rather than failing a vault refresh.
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      try {
-        await rename(temporary, file);
-        return;
-      } catch (error) {
-        const retryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
-        if (!retryable || attempt === 7) throw error;
-        await new Promise((resolve) => setTimeout(resolve, Math.min(500, 25 * (2 ** attempt))));
-      }
-    }
+    await writeFile(temporary, content, 'utf8');
+    await renameWithRetry(temporary, file);
   } finally {
     await rm(temporary, { force: true }).catch(() => {});
   }

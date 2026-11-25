@@ -1,4 +1,9 @@
-# Platform project list v1
+# Platform contracts
+
+This directory holds two contracts: the project list (`stex.platform.projects.v1`,
+below) and the [platform actor](#platform-actor-v1) (`stex.platform.actor.v1`).
+
+## Project list v1
 
 `stex.platform.projects.v1` is served by the Python platform API
 (`backend/stex`) at `GET /api/v1/projects`. It merges every active studio's
@@ -11,7 +16,7 @@ Status: introduced in M1; consumed since M2a. Pantheon forwards
 home, projects and studios pages render from this list, falling back to
 polling each studio from the browser when the platform is unavailable.
 
-## Ownership
+### Ownership
 
 The platform owns only this merged read model. Each studio keeps its own
 endpoint and data. The platform reads studios over loopback HTTP
@@ -22,7 +27,7 @@ Studios polled are those the [application registry](../applications/registry.v2.
 lists with `kind: "studio"` and `state: "active"`; deferred studios and
 non-studio applications such as Igor are never polled.
 
-## Response
+### Response
 
 ```json
 {
@@ -68,13 +73,69 @@ non-studio applications such as Igor are never polled.
   `Nov 5, 2026` sorts last here; `20261105` is accepted here). Studios emit
   RFC 3339 UTC times, where the two agree.
 
-## Failure behaviour
+### Failure behaviour
 
 The endpoint itself answers `200` whenever the platform is running, even if
 every studio is unavailable. An invalid registry stops the platform at
 startup rather than serving a guessed list.
 
-## Versioning
+### Versioning
 
 Additive optional fields may be added to v1. Removing or changing a field's
 meaning requires `stex.platform.projects.v2`, served alongside v1.
+
+## Platform actor v1
+
+`stex.platform.actor.v1` tells an engine which signed-in person made a
+request that came through hosted Pantheon ([D-028](../../docs/program/DECISIONS.md#d-028--a-verified-actor-reaches-the-engines)).
+It is attribution and personal-state ownership only. It grants no access
+that the engine did not already allow.
+
+### Headers
+
+| Header | Value |
+| --- | --- |
+| `x-stex-actor` | The actor ID uses 1 to 128 visible ASCII characters (0x21–0x7e). It carries the Igor username directly if it fits and falls outside the reserved digest format. Other valid usernames use the digest described below. |
+| `x-stex-actor-role` | `owner` or `member` |
+| `x-stex-platform-token` | The shared secret `STEX_PLATFORM_ACTOR_SECRET` (at least 32 characters) |
+
+Pantheon reserves actor IDs matching `^sha256-[0-9a-f]{64}$`. A username
+that matches this pattern, or cannot travel directly in the header, is
+encoded as a JSON string, including its quotes and escapes. Pantheon hashes
+that string's UTF-8 bytes with SHA-256 and prefixes the lowercase hex
+digest with `sha256-`.
+
+### Pantheon (the only sender)
+
+- It deletes all three headers from **every** incoming request, in every
+  mode, before routing. A browser can never supply them.
+- In hosted mode, for a request its gate admitted with a signed-in user, it
+  sets all three headers on requests to engines that verify them. Today that
+  is Frige alone, including the legacy `/api/books` proxy and the knowledge
+  API's server-to-server calls to Frige.
+- An engine that does not verify the actor (Seaxneat today) never receives
+  the token.
+- It never sends them to Igor, which has its own session, or to generated
+  preview content.
+- With no secret configured, it sends none.
+
+### Engines (receivers)
+
+Each engine resolves one actor per request:
+
+| Engine configuration | Request | Actor |
+| --- | --- | --- |
+| No `STEX_PLATFORM_ACTOR_SECRET` (local mode) | Any; actor headers are ignored | `{ id: "local", role: "owner", verified: false }` |
+| Secret set | Token matches (constant-time comparison) and the actor and role are valid | `{ id, role, verified: true }` |
+| Secret set | Token missing or wrong, or the actor or role is invalid | none |
+
+With the secret set, a request that changes state and has no actor is
+refused: `401 { code: "ACTOR_REQUIRED" }`. Reads without an actor keep
+today's behaviour, so Igor's loopback context reads still work. Engines
+record `actor.id` as attribution on the records they create. They must not
+log the token.
+
+### Versioning
+
+New optional headers may be added. Changing a header's meaning needs
+`stex.platform.actor.v2`.

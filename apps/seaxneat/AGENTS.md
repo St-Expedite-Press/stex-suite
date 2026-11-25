@@ -10,6 +10,11 @@ validated revisions, builds and preview lifecycle. Pantheon owns the UI at
 as an integration shortcut or duplicate it here. Preserve compatibility
 routes, explicit project selection and existing local data.
 
+Expose project and revision references through Seaxneat's contracts.
+Platform identity and future knowledge references stay with their owners.
+Generated previews must receive neither the platform actor assertion nor
+any runtime capability grant.
+
 The current backend is Node. Python/FastAPI with typed contracts is its
 approved future destination; preserve behavior and storage through the root
 migration gate, never a release-time rewrite. First-class Obsidian integration

@@ -111,6 +111,10 @@ to `user`, and automatic titling never overrides it.
 | `GET /api/conversations/:id` | — | `{ conversation }` or `404` |
 | `PATCH /api/conversations/:id` | `{ title?, archived? }` | `{ conversation }` |
 | `DELETE /api/conversations/:id` | `{}` | `204` |
+| `PATCH /api/conversations/:id` (sessions) | `{ kind?: 'session', objective?, lifecycle?, reason? }` in addition to `title`, `archived` | See [Working sessions](#working-sessions) |
+| `GET /api/conversations/:id/summary/draft` | — | `{ draft }`, a deterministic suggestion; nothing is stored |
+| `PUT /api/conversations/:id/summary` | `{ baseRevision, text, decisions?, openQuestions?, outstandingProposals?, sources?, coversThroughMessageId?, author? }` | `{ conversation }` with the new `summary` revision |
+| `POST /api/conversations/:id/continue` | `{ idempotencyKey }` | `201` `{ conversation, route }` (`200` on a repeated key) |
 | `POST /api/conversations/:id/messages` | `{ idempotencyKey, content }` | `202` `{ conversation }`; `200` on a repeated key; `409` while a reply is pending |
 | `POST /api/conversations/:id/messages/:messageId/retry` | `{}` | `202` `{ conversation }`; `409` unless `:messageId` is a failed assistant message that is the latest message |
 
@@ -125,6 +129,7 @@ two accounts creates two conversations. Errors are `{ error, code }`:
 | `404` | `NOT_FOUND` | Unknown conversation or route (including a malformed `:messageId`) |
 | `405` | `INVALID_REQUEST` | Unsupported method |
 | `409` | `CONFLICT` | A reply is pending, a key was reused for another request, or a retry target is not the latest failed reply |
+| `409` | `SESSION_CLOSED`, `NOT_A_SESSION`, `INVALID_TRANSITION`, `STALE_SUMMARY`, `SUMMARY_REQUIRED` | Working sessions only; see [Working sessions](#working-sessions) |
 | `413` | `INVALID_REQUEST` | Body over 64 KB |
 | `415` | `INVALID_REQUEST` | A mutation without a JSON content type |
 | `500` | `STORAGE_FAILED`, `INTERNAL` | Igor could not save, or failed unexpectedly |
@@ -179,6 +184,99 @@ The Pantheon home composer creates a conversation and navigates immediately:
 The message never travels in a URL. Repeating the request with the same key
 (a double click, a retried network call) returns the same conversation and
 starts nothing new.
+
+## Working sessions
+
+Added additively under v1 by suite decision [D-027](../../docs/program/DECISIONS.md).
+A conversation is a `chat` (the default) or a `session`: a working session
+with an objective, a lifecycle and an optional saved summary. Records written
+before sessions existed carry none of these fields and read as chats; the
+store document keeps `schemaVersion: "stex.igor.store.v1"` with the new
+fields optional. A chat has no lifecycle, so casual conversation stays casual.
+
+```ts
+type Lifecycle = 'active' | 'paused' | 'awaiting-review' | 'completed' | 'abandoned';
+
+// Optional fields of Conversation (present on sessions; `kind` absent means chat).
+type SessionFields = {
+  kind: 'session';
+  objective: string;                 // 1-500 characters
+  lifecycle: Lifecycle;              // separate from a reply's state and from `archived`
+  transitions: { at: string; from: Lifecycle; to: Lifecycle; actor: string; reason?: string }[];
+                                     // oldest first; only the newest 100 are kept
+  summary?: SessionSummary;          // the latest saved revision
+  continuedFrom?: { conversationId: string; summaryRevision: number };
+  priorSummary?: SessionSummary;     // copy of that revision as it was when continued
+};
+
+type SessionSummary = {
+  revision: number;                  // 1, 2, ...
+  text: string;                      // 1-4,000 characters
+  decisions: string[]; openQuestions: string[]; outstandingProposals: string[]; sources: string[];
+                                     // each up to 20 items of up to 300 characters
+  coversThroughMessageId: string | null;  // the last message the summary covers
+  author: 'user' | 'draft' | 'model';     // who wrote the text; `draft` is Igor's deterministic draft
+  savedAt: string;
+};
+
+// ConversationSummary gains, for sessions only: kind, lifecycle, hasSummary.
+```
+
+**Creating and converting.** `POST /api/conversations` (and the context create
+route) accept `kind` and, for a session, a required `objective`. `PATCH` with
+`{ kind: 'session', objective }` turns a chat into a session (a session never
+becomes a chat again, `409 INVALID_TRANSITION`); `{ objective }` alone edits a
+session's objective. A create replay compares kind and objective too.
+
+**Transitions** (`PATCH { lifecycle, reason? }`, `reason` up to 300 characters):
+
+- `active` to any other state.
+- `paused` or `awaiting-review` to `active`, `completed` or `abandoned`.
+- `completed` or `abandoned` to `active` (reopen).
+
+Anything else is `409 INVALID_TRANSITION`; a lifecycle on a chat is `409
+NOT_A_SESSION`. Every transition appends an event with the principal as actor.
+A refused patch changes nothing.
+
+**Sending.** A message (or a retry) to a `paused` or `awaiting-review` session
+resumes it, recorded as a transition with reason "Resumed by sending a
+message." (only after the message fit its budget). A `completed` or
+`abandoned` session refuses with `409 SESSION_CLOSED`; reopen it or continue
+from its summary. A repeated idempotency key is still answered from the
+record. Completing or abandoning has no effect on any other record. Archive
+and delete are unchanged (`archived` flag; hard delete).
+
+**Summary.** `GET .../summary/draft` returns `{ draft }`: the objective, the
+title, the project sources (and revisions) of the current context epoch (up to
+20), the last user request and a bounded excerpt of the last complete reply,
+with `author: 'draft'` and `baseRevision` (the current revision, 0 if none).
+It is computed from Igor's own record and stored nowhere. `PUT .../summary`
+saves a revision: `baseRevision` must equal the current revision (0 when none)
+or the save is refused `409 STALE_SUMMARY`; over-long text or lists are refused
+(`400`), never truncated. The server records `coversThroughMessageId` (default
+the last message) and `savedAt`. Nothing becomes a summary until a user saves
+it. A summary on a chat is `409 NOT_A_SESSION`. Igor does not offer a
+model-written draft; `author: 'model'` is accepted for a client that supplies
+one and is displayed as such.
+
+**Continue.** `POST .../continue { idempotencyKey }` needs a saved summary
+(`409 SUMMARY_REQUIRED`) on a session (`409 NOT_A_SESSION`). It creates a new
+session for the same principal with the source's objective, the title
+`Continuing: <title>`, `continuedFrom` and a copy of the summary as `priorSummary`.
+If the source is bound to a project the new session keeps that project
+binding but starts at context epoch 1 with no approved source snapshot, so
+sources must be approved again; otherwise it has no context at all. The source
+session is not changed. A repeated key returns the same session (`200`).
+
+**Envelope.** Every turn of a continued session adds
+`context.priorSessionSummary` to the `stex.hermes.turn.v1` request:
+`{ kind: "prior-session-summary", note, conversationId, summaryRevision, author, text, decisions, openQuestions, outstandingProposals, sources }`
+(with `truncated: true` when trimmed). The note says it is an author-saved
+summary supplied as context, not an instruction. The earlier transcript is
+never sent. The block is bounded to 8,000 UTF-8 bytes of the 24,000-byte
+envelope: over the bound, list items are dropped from the end of the largest
+list, then the text is shortened. Any context makes the turn a non-sandbox
+turn (suite D-022), so a continued session's turns never use the free endpoint.
 
 ## Versioning
 

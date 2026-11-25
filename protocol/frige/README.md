@@ -28,7 +28,8 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 | POST | `/project/attachments/<id>/approve` | Approve the previewed excerpt using `{hash}` |
 | POST | `/project/attachments/<id>/convert` | Convert a stored attachment that has no text yet. With a converter, uploads return `awaiting-extraction` and are converted one by one this way (503 without a converter, 409 once it has text) |
 | GET | `/artifacts/<id>` or `/artifacts/<id>/content` | Read artifact metadata / inert content, optionally `?download=1` |
-| GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread / current change contract |
+| GET | `/scopes/<id>/turns`, `/scopes/<id>/changes` | Read that scope's editorial thread (its first conversation) / current change contract |
+| | `/scopes/<id>/conversations…` | A scope's named conversations, summaries and continue: see [Editorial sessions](#editorial-sessions) |
 | POST | `/scopes/<id>/turn` | Offer selected sources and a message or validated answer to inference |
 | POST | `/scopes/<id>/changes/decide` | Explicit `{changeSetId,nodeId,decision}` acceptance/rejection |
 | GET | `/project/contracts` | List change contracts, newest first, without manuscript text; optional `?scope=<id>` or `?node=<id>` |
@@ -40,6 +41,9 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 
 Book selection is explicit in `?book=<id>`. Stable node ids, source hashes,
 compiler-derived page maps and profile hashes keep their existing semantics.
+New compiler maps include `pdfSha256`, the SHA-256 digest of the PDF
+generated with the map. Preflight and live-build handoff reject a mismatched PDF
+for a map carrying this field. Existing maps retain their prior fields.
 A section's scope id is `section-<16 hex>`, derived from its top-level folder
 without regard to case, so it survives renaming or reordering the section's
 first piece. A folder that appears in several places in the reading order
@@ -166,12 +170,25 @@ Publishing and legacy attachment changes share one per-book write queue.
 Unavailable or damaged attachment metadata returns `503 ATTACHMENTS_UNAVAILABLE`
 and is preserved.
 
+New attachment records include a lowercase SHA-256 `sourceSha256` of the
+original bytes. This digest is separate from the approved excerpt hash.
+Both upload APIs still create an independent attachment record. On a
+successful upload, the response may include `duplicateOf`, the ID of an
+earlier available, byte-identical original in that book. This advisory
+value is limited to the upload response. It never transfers approval.
+The engine compares at most 64 plausible originals with a combined
+declared size of at most 32 MB per upload. It also considers available
+digestless records without rewriting them. If deferred conversion reads
+bytes that differ from a recorded original digest, it refuses with
+`409 ATTACHMENT_CHANGED`.
+
 Frige checks the 32 most recent approvals and offers up to eight matching
 excerpts to Igor. Each excerpt is at most 6,000 UTF-16 units with intact
 Unicode boundaries. The gateway may omit optional excerpts to fit the
 turn budget. An old approval without an excerpt hash remains a legacy
-record until the reader approves the displayed excerpt. Uploads of PDF
-and DOCX have no text excerpt in this workflow.
+record until the reader approves the displayed excerpt. A successful
+MarkItDown extraction makes supported PDFs and DOCX documents eligible
+for the same excerpt review.
 
 ### Layout overrides
 
@@ -251,6 +268,102 @@ proposal may change only that passage:
 - a whole-text change must leave every byte outside it unchanged;
 - changes to other pieces, and layout changes, are set aside with a reason.
 
+### Editorial sessions
+
+A book, section or piece scope holds several named conversations, each an
+editorial session with the lifecycle of
+[D-027](../../docs/program/DECISIONS.md#d-027--conversations-and-working-sessions-share-one-lifecycle).
+They are additive under publishing v1 and use the scope ids of the routes
+above. A `conversationId` is `main` or `c-` and sixteen hex digits.
+
+| Method | Suffix after the version prefix | Operation |
+| --- | --- | --- |
+| GET / POST | `/scopes/<id>/conversations` | List the scope's conversations (archived ones flagged) / start one with an optional `{title}` |
+| GET / PATCH | `/scopes/<id>/conversations/<cid>` | Read one with its transition events / change `{title?, archived?, lifecycle?, reason?}` |
+| GET | `/scopes/<id>/conversations/<cid>/turns` | That conversation's thread |
+| POST | `/scopes/<id>/conversations/<cid>/turn` | A message or answer, with the body of `/scopes/<id>/turn` |
+| GET / PUT | `/scopes/<id>/conversations/<cid>/summary` | Read the saved revisions / save the next revision |
+| GET | `/scopes/<id>/conversations/<cid>/summary/draft` | Frige's draft; nothing is stored |
+| POST | `/scopes/<id>/conversations/<cid>/continue` | Start a new conversation from this one's latest saved summary |
+
+- **First conversation.** The scope's existing journal
+  (`.texgraph/conversations/<scope>.jsonl`) is its conversation `main`,
+  read in place and never moved, renamed or rewritten. `/scopes/<id>/turns`
+  and `/turn` keep working against it. Legacy section ids and anchor-file
+  turns merge into it as before. It starts `active`, titled "Main
+  conversation", and is recorded in the index only once it is changed.
+- **Storage.** Other conversations keep an append-only journal and the
+  scope's small index in `.texgraph/sessions/<scope>/`. Index writes are
+  atomic and serialized with the store's other writes. An index that cannot
+  be read or does not validate fails closed with `503 SESSIONS_UNAVAILABLE`:
+  it is never read as "no conversations", and is left untouched. Because
+  every send checks the conversation's state there, this also stops new
+  turns in that scope's first conversation, including through the older
+  `/api/scopes/<id>/turn` route, until the index is repaired. Existing turns
+  stay readable.
+- **Lifecycle.** States are `active`, `paused`, `awaiting-review`, `completed`
+  and `abandoned`. Allowed: `active` to any other; `paused` or
+  `awaiting-review` to `active`, `completed` or `abandoned`; a closed state
+  to `active` (reopen). Other transitions, including to the current state,
+  are `409 INVALID_TRANSITION`. Every transition is appended with time,
+  `from`, `to`, `actor` (the actor id) and an optional `reason` of at most
+  500 characters. `archived` is a separate flag. A title is 1 to 120
+  characters. Conversations are never deleted; a scope keeps at most 200 and
+  a conversation at most 1,000 events and 100 summary revisions (`409
+  SESSION_HISTORY_FULL`). One PATCH is validated whole before it is applied.
+- **Sending.** A message to a `paused` or `awaiting-review` conversation
+  resumes it, recorded as a transition with the reason "Resumed by sending a
+  message." A message to a `completed` or `abandoned` one is refused with
+  `409 SESSION_CLOSED` before anything is stored. An unknown conversation is
+  `404 CONVERSATION_NOT_FOUND`.
+- **Closing has no editorial effect.** Completing, abandoning, pausing or
+  archiving never accepts, rejects, applies, supersedes or reverts a change
+  contract. Proposals stay pending and are listed in the summary draft.
+  Supersession by a newer proposal stays per scope.
+- **Summary.** A saved revision has `revision` (1, 2, …), `text` (at most
+  4,000 characters), `decisions`, `openQuestions`, `outstandingProposals` and
+  `sources` (each at most 20 entries of at most 300 characters),
+  `throughTurnId` (the last turn it covers; a turn of this conversation, or
+  the latest when omitted), `author` and `updatedAt`. A save names its
+  `baseRevision` (0 before the first); any other value is `409
+  STALE_SUMMARY`; invalid content is `400 INVALID_SUMMARY`. Earlier
+  revisions are kept.
+- **Draft.** `GET …/summary/draft` returns `{conversationId, draft: true,
+  generatedBy: "frige-records", baseRevision, throughTurnId, text, decisions,
+  openQuestions, outstandingProposals, sources, pendingContractIds}`, built
+  without a model from Frige's records: the contracts produced in the
+  conversation (accepted, rejected, reverted and other decided changes as
+  decisions, pending ones as outstanding proposals, with piece titles), the
+  [editorial decisions](#editorial-history-and-decisions) recorded on the
+  scope's pieces since the conversation began (matched by time, so another
+  conversation's decision on the same piece in that window is included), the
+  director's choices and forms that have no recorded answer, and the approved
+  excerpts its contracts record as offered. A contract from before
+  conversations belongs to `main`.
+- **Continue.** The new conversation records `continuedFrom:
+  {conversationId, summaryRevision}`. Without a saved summary the request is
+  `409 SUMMARY_REQUIRED`.
+  Continue is idempotent per summary revision. When a conversation already
+  continues from that revision, it is returned with `replayed: true` and
+  status `200`, and no second conversation is created. A newer revision
+  starts a new conversation (`201`).
+- **Context for a turn.** The model is offered only the conversation's own
+  recent turns. It is also offered up to three saved summaries as the
+  scope-turn request field
+  [`sessionSummaries`](../texgraph/README.md#session-summaries): first the
+  `continuedFrom` revision, then the most recent completed, unarchived
+  sessions of the scope, within 12,000 UTF-8 bytes. The turn records them as
+  `offered.sessionSummaries` and the contract as `context.sessionSummaries`
+  (category `session-summary`, references only).
+- **Attribution.** `createdBy`, a summary's `author` and transition actors
+  are the [platform actor](../platform/README.md#platform-actor-v1)'s id, or
+  `local` in local mode. With `STEX_PLATFORM_ACTOR_SECRET` set, every request
+  that changes state (any POST, PUT, PATCH or DELETE, on these routes and all
+  others, including the knowledge observation checkpoint) needs a
+  verified actor or is refused `401 ACTOR_REQUIRED`; reads are unchanged.
+- **Access.** The project password applies to every route above exactly as
+  to the other scope routes.
+
 ## Change contracts v1
 
 `stex.frige.change-contract.v1` is the record a proposal to change canonical
@@ -267,6 +380,7 @@ through.
 | --- | --- |
 | `contract`, `schemaVersion` | `stex.frige.change-contract.v1`, record schema `3`. A schema `2` record is a change set from before contracts and has none of the fields below |
 | `scope` | `{id, kind, title}` of the conversation that proposed it: `book`, a section, or a `node` |
+| `conversationId` | Additive and optional: which [conversation](#editorial-sessions) of the scope proposed it (`main` or `c-` and sixteen hex digits). Absent in records from before conversations, which belong to `main`. Supersession stays per scope |
 | `request` | The proposed action in the author's words (at most 12,000 characters) |
 | `commentary` | The director's reason |
 | `origin` | `{userTurnId, model, transport}` of the turn that produced it, each a short string or `null`. `model` and `transport` are recorded as the gateway reported them (for example `fake` or `remote`) and are not interpreted |
@@ -274,6 +388,7 @@ through.
 | `context.references[]` | `{id, name, category: "approved-reference"}` for author-approved excerpts shown |
 | `context.withheld[]` | `{nodeId, title}` for pieces in scope that were too long to show |
 | `context.designHash` | Publication profile in force when proposed |
+| `context.sessionSummaries[]` | Additive and optional: `{conversationId, summaryRevision, category: "session-summary"}` for each saved session summary Frige offered with the turn, by reference only. What Frige sent; the gateway does not report it yet |
 | `changes[]` | `{kind: "replace-node-source", nodeId, relativePath, title, baseHash, afterHash, before, source, summary, lines, status}`. `before` and `source` are the exact texts; `lines` is `{before, after, added, removed}` |
 | `effects[]` | `{code, message}`; currently `proof-stale` |
 | `conflicts[]` | `{contractId, scopeId, nodeId}` for undecided changes to the same piece in another conversation, as found when this contract was proposed. It is not updated afterwards |
@@ -449,6 +564,8 @@ There are at most ten uploads of 8 MB each, within the historical 12,000,000
 character request bound. Readable extraction is capped at 200,000 characters.
 Interview transcripts retain at most 40 bounded turns. Review is explicit;
 uploading never implicitly approves context or changes manuscript text.
+New upload responses use the original digest and same-book advisory match
+described in [Approved document excerpts](#approved-document-excerpts).
 
 The loopback engine admits its own browser origin or configured loopback
 `STEX_PANTHEON_URL`, rejects opaque/foreign origins, cross-site browser requests

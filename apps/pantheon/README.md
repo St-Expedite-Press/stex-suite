@@ -178,6 +178,29 @@ sign-in ([D-023](../../docs/program/DECISIONS.md#d-023--hosted-pantheon-uses-igo
   removed before any request reaches a non-Igor application.
 - Loopback requests without proxy headers (health checks) keep local
   behaviour.
+- **Actor ([`stex.platform.actor.v1`](../../protocol/platform/README.md#platform-actor-v1)).**
+  Pantheon deletes `x-stex-actor`, `x-stex-actor-role` and
+  `x-stex-platform-token` from every incoming request in every mode. With
+  `STEX_PLATFORM_ACTOR_SECRET` set (at least 32 characters; a shorter value
+  refuses startup in any mode), it sets all three on requests proxied to
+  Frige (including the legacy `/api/books` proxy and the knowledge
+  `/accept` engine fetches) for the signed-in user. Pantheon uses the
+  username directly when it is visible ASCII, 1 to 128 characters, and
+  outside the reserved digest format. Other valid usernames use a stable
+  digest. A role other than `owner` becomes `member`. Hosted with the secret
+  unset, Pantheon logs one startup warning and omits the actor headers.
+  Local mode sends nothing. The actor grants no access.
+- **Knowledge is personal.** Hosted, each username has its own journal at
+  `STEX_KNOWLEDGE_DATA_DIR/people/<username digest>/`,
+  opened on first use. At most 32 journals stay open (idle ones are
+  closed, releasing their lock; a request that would need a 33rd while all
+  are in use gets `503`). A journal that cannot open fails for that person
+  only. A hosted request with no signed-in user gets `401`. A journal that
+  existed in the root of that directory before this change is never moved,
+  rewritten or deleted: set `STEX_KNOWLEDGE_LEGACY_OWNER` to a username to
+  give it to that person, otherwise nobody reaches it and
+  `GET /api/knowledge/v1` adds `legacyJournal: "unassigned"`. Local mode is
+  unchanged (one journal, in place).
 
 `corepack pnpm release:pantheon` builds the self-contained release (Pantheon
 and Frige, no manuscripts or local state). The private stex-igor repository

@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { designDocument, designHash, resolveLayout } from './design-settings.mjs';
 import { compilerFindings } from './preflight.mjs';
 import { sourceHash, writeAtomic } from './project-store.mjs';
@@ -246,7 +246,17 @@ function runLuaLaTex(directory) {
     child.stdout.on('data', (chunk) => { output += chunk; }); child.stderr.on('data', (chunk) => { output += chunk; });
     child.on('error', (error) => finish({ ok: false, error: 'LuaLaTeX is unavailable. Install TeX Live or MiKTeX and ensure lualatex is on PATH.', log: `${output}\n${error.message}` }));
     const timer = setTimeout(() => { child.kill('SIGKILL'); finish({ ok: false, error: 'LuaLaTeX exceeded the 30-second build limit.', log: output }); }, 30_000);
-    child.on('close', async (code) => { clearTimeout(timer); if (settled) return; if (code !== 0) return finish({ ok: false, error: 'LuaLaTeX could not build this book.', log: output }); try { await readFile(path.join(directory, 'document.pdf')); finish({ ok: true, log: output }); } catch { finish({ ok: false, error: 'LuaLaTeX exited without producing a PDF.', log: output }); } });
+    child.on('close', async (code) => {
+      clearTimeout(timer);
+      if (settled) return;
+      if (code !== 0) return finish({ ok: false, error: 'LuaLaTeX could not build this book.', log: output });
+      try {
+        const pdf = await readFile(path.join(directory, 'document.pdf'));
+        finish({ ok: true, log: output, pdfSha256: createHash('sha256').update(pdf).digest('hex') });
+      } catch {
+        finish({ ok: false, error: 'LuaLaTeX exited without producing a PDF.', log: output });
+      }
+    });
   });
 }
 
@@ -264,7 +274,7 @@ export async function buildBook(store, { scopeId = 'book', mode = 'prefix' } = {
     const marks = await readFile(path.join(directory, 'document.tgmap'), 'utf8').catch(() => '');
     const compiled = paginationFromCompiler({ marks, log: result.log, units: assembled.units, pageOffset: assembled.numbering.startPage - 1 });
     const compiler = compilerFindings({ log: result.log, document: assembled.document, units: assembled.units });
-    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, design: assembled.settings, designHash: assembled.designHash, headTitle: assembled.headTitle, compiler, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, ...compiled };
+    const manifest = { schemaVersion: 3, mode: assembled.mode, numbering: assembled.numbering, design: assembled.settings, designHash: assembled.designHash, headTitle: assembled.headTitle, compiler, builtAt: new Date().toISOString(), tableOfContentsPath: assembled.graph.tableOfContentsPath || assembled.graph.programmePath, programmePath: assembled.graph.programmePath, targetScope: assembled.scope, includedNodeIds: assembled.includedNodeIds, sourceHashes: assembled.sourceHashes, pdfSha256: result.pdfSha256, ...compiled };
     await writeAtomic(path.join(directory, 'page-map.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await store.activateBuild(directory, manifest);
     // A verified book-order proof is the reference for later isolated page numbering.

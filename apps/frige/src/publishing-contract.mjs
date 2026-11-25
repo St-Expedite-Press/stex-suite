@@ -12,7 +12,9 @@ const fixed = {
   '/project/contracts': ['GET'],
 };
 const CONTRACT_ROUTE = /^\/contracts\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(\/revert)?$/;
-export const editorialRoute = /^\/nodes\/(node-[a-f0-9]{20})\/(decisions|revisions)(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(\/restore)?)?$/;
+// Editorial sessions (D-027): a scope's named conversations. `main` is the scope's first conversation.
+const SESSION_ROUTE = /^\/scopes\/(?:book|[a-z][a-z0-9-]{5,80})\/conversations(?:\/(?:main|c-[a-f0-9]{16})(?:\/(turns|turn|summary|summary\/draft|continue))?)?$/;
+export const editorialRoute =/^\/nodes\/(node-[a-f0-9]{20})\/(decisions|revisions)(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(\/restore)?)?$/;
 
 /**
  * Methods the publishing facade allows for a route.
@@ -22,6 +24,13 @@ export const editorialRoute = /^\/nodes\/(node-[a-f0-9]{20})\/(decisions|revisio
  */
 export function publishingRoute(pathname) {
   if (fixed[pathname]) return fixed[pathname];
+  const session = SESSION_ROUTE.exec(pathname);
+  if (session) {
+    const [, action] = session;
+    // No action: the scope's list and creation, or one conversation (read, or rename/archive/transition).
+    if (!action) return pathname.endsWith('/conversations') ? ['GET', 'POST'] : ['GET', 'PATCH'];
+    return { turns: ['GET'], turn: ['POST'], summary: ['GET', 'PUT'], 'summary/draft': ['GET'], continue: ['POST'] }[action];
+  }
   // One contract in full, or the rollback of its accepted changes.
   const contract = CONTRACT_ROUTE.exec(pathname);
   if (contract) return contract[1] ? ['POST'] : ['GET'];

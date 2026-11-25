@@ -462,6 +462,137 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   until a later milestone coordinates both.
   [Contract](../../protocol/frige/README.md#editorial-history-and-decisions)
 
+## D-027 — Conversations and working sessions share one lifecycle
+
+- **Decided by:** the owner, 2026-11-25. The owner authorized milestones
+  A1, A2, S0 + K0, D1 and D2 of the
+  [persistent workspaces program](PERSISTENT-WORKSPACES.md) ("get as much as
+  you can").
+- **Decision.** Igor and Frige use the same lifecycle vocabulary, and each
+  keeps its own records.
+  - **Kinds.** An Igor conversation is a `chat` (the default) or a
+    `session`. A session is a working session with an `objective` of up to
+    500 characters. A chat has no lifecycle, so casual conversation stays
+    casual. A chat can be made into a session. Every Frige scope
+    conversation is an editorial session.
+  - **States (`lifecycle`).** `active`, `paused`, `awaiting-review`,
+    `completed` and `abandoned`. The field is named `lifecycle` so it does
+    not collide with Igor's existing reply `state`
+    (`idle`/`pending`/`failed`).
+  - **Archive.** Archive is a separate, reversible flag that hides a
+    conversation in any state. Igor's existing `archived` keeps its meaning.
+  - **Delete.** Deleting an Igor conversation is the existing hard delete.
+    Frige conversations are never deleted, because their turns are part of
+    the editorial record; they can be archived.
+  - **Transitions.**
+    - `active` → any other state.
+    - `paused` or `awaiting-review` → `active`, `completed` or `abandoned`.
+    - `completed` or `abandoned` → `active` (reopen).
+    - Every transition is appended as an event: time, from, to, actor and
+      optional reason.
+  - **Sending.**
+    - Sending to a `paused` or `awaiting-review` session resumes it, and the
+      resume is recorded as a transition.
+    - Sending to a `completed` or `abandoned` session is refused (`409
+      SESSION_CLOSED`). The interface offers reopen or continue.
+  - **Closing has no editorial effect.** Completing or abandoning never
+    accepts, rejects, applies, publishes or supersedes a proposal. Pending
+    Frige contracts stay pending and are listed in the summary.
+  - **Summary.**
+    - A structured, revisioned record: text (up to 4,000 characters),
+      decisions, open questions, outstanding proposals and sources (each a
+      list of up to 20 items of up to 300 characters), the last message it
+      covers, author and time.
+    - Saving requires the base revision, and a stale save is refused.
+    - The engine prepares a draft from its own records (Frige: contracts and
+      decisions from that conversation). A model-written draft is labelled
+      as one.
+    - Nothing becomes a summary until the user saves it.
+  - **Continue.** Continuing starts a new conversation in the same scope or
+    project, with `continuedFrom: {conversationId, summaryRevision}`. The
+    model is offered the saved summary as labelled context, never the
+    earlier transcript.
+- **Compatibility.** Every new field and route is additive under
+  `stex.igor.conversations.v1` and `stex.frige.publishing.v1`. Existing
+  records read as `chat`, or for Frige as the scope's first conversation,
+  in state `active`. No existing journal is moved or rewritten.
+
+## D-028 — A verified actor reaches the engines
+
+- **Decided by:** the owner, 2026-11-25 ("yes" to letting the signed-in
+  user reach the applications so that state can belong to each person).
+- **Decision.** Hosted Pantheon tells the engines which signed-in person
+  made a request, using [`stex.platform.actor.v1`](../../protocol/platform/README.md#platform-actor-v1).
+  - Pantheon removes any actor headers a client sent.
+  - Pantheon adds the Igor-confirmed username and role, together with a
+    shared secret that only Pantheon and the engines hold.
+  - An engine trusts the actor only when that secret matches.
+  - Igor's existing per-account conversations are unchanged.
+- **Ownership by kind of state.**
+  - **New personal state belongs to its actor**: the knowledge journal
+    and, later, preferences.
+  - **Shared project state stays shared** (D-023, D-024). Frige books and
+    their contracts stay shared, and their conversations record who
+    created them and who moved them between states.
+  - Making Frige projects private to one account is a separate decision.
+- **Grants nothing.** The actor is attribution and ownership of personal
+  state. It does not widen access: every signed-in account still has full
+  use of Pantheon and Frige.
+- **Local mode** has no secret, ignores actor headers, and acts as
+  `local`.
+- **Amended before release** (2026-11-25, after the independent review):
+  - a username that a header cannot carry, or that matches the reserved
+    actor digest format, travels as a stable `sha256-` digest of its
+    JSON string encoding;
+  - only applications that verify the actor receive it (Frige today);
+  - the legacy journal owner is matched the way Igor normalises usernames.
+
+  The contract was unreleased, so v1 was amended in place, as for D-011.
+- **Existing data.**
+  - An existing knowledge journal is never moved or deleted.
+  - The hosted journal is assigned to the account named by
+    `STEX_KNOWLEDGE_LEGACY_OWNER`. Until that is set, the journal is
+    preserved and reported, and no account can reach it.
+
+## D-029 — No shared database yet; PostgreSQL stays the M3 destination
+
+- **Basis.** D1 of the persistent workspaces program asked for a data-model
+  decision. The program's entity list was checked against the A1, A2 and
+  D2 workflows.
+- **Decision.**
+  - **Entities.** The A1, A2 and D2 workflows need only Session (a
+    lifecycle on an existing conversation), Summary, Actor and transition
+    events. Each lives with its owning service.
+  - **No new database.** No shared database, organization, membership,
+    job or connector entity is added until a workflow needs one.
+  - **Destination.** PostgreSQL with pgvector stays the destination for
+    knowledge metadata, ingestion records and jobs at M3, as the transition
+    plan already records. One store is preferred over separate graph,
+    vector and relational databases.
+  - **Before M3.** M3 needs its own authorization, and must first specify
+    a JSON-to-PostgreSQL migration with export parity and rollback.
+- **Organizations** extend individual ownership later: an organization
+  will be a further owner kind beside a person, never a precondition for
+  a single user.
+
+## D-030 — Common resource references and owner-scoped knowledge
+
+- **Status.** Wave B engineering design, 2026-11-25. The
+  [resource model](../architecture/resource-model.md) separates current
+  contracts from proposed envelopes and records the acceptance sequence.
+- **Decision.** Resolve a resource through its owning application and
+  versioned reference. Keep engine records authoritative. Shared search,
+  links and Markdown exports are derived projections. A knowledge
+  contribution carries evidence, revision, provenance, explicit audience,
+  and user approval. A relationship grants no access to its endpoints.
+- **Storage.** Retain D-029. Relational tables and rebuildable graph and
+  search projections are the first M3 candidate. Evaluate lexical retrieval
+  on an authorization-aware labelled collection before vector expansion.
+  A dedicated graph database needs a measured workload and parity evidence.
+- **Adoption.** The [reference assessment](../architecture/second-brain-reference.md)
+  applies the linked-wiki, bounded execution, and validation patterns to
+  STEX. Own code and versioned interfaces provide the runtime boundary.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#current-work).

@@ -63,6 +63,14 @@ Never report a tool result, test, review or remote action that did not occur.
    the workstation's settings menu opens (`/igor/team?app=frige`). A model
    choice never changes what a proposal may do: it is still a proposal that
    needs the author's acceptance.
+9. Frige owns D-027 editorial sessions and revisioned summaries. A close
+   records lifecycle state and leaves proposal authority with the author.
+   D-028 actors attribute mutations. Book access still follows the project
+   password boundary.
+10. Frige owns attachment originals, conversion state and excerpt approval.
+    Shared references use Frige's versioned API. Conversion output and
+    uploaded text remain untrusted evidence. Review authorizes use of the
+    selected revision as context.
 
 ## Working loop
 

@@ -194,7 +194,9 @@ book in table-of-contents order through the selected scope.
   no printer profile or PDF/X validation exists yet.
 - Staging a proof for the live build requires a compiler-verified page map,
   unchanged node sources, and an unchanged table of contents through the
-  proof's scope.
+  proof's scope. New proofs include a PDF digest. Preflight and handoff
+  check that the PDF matches its page map. Font inspection reports
+  unavailable when the subprocess exceeds five seconds.
 - The graph reports `empty-editorial-note` for a notes section with no
   reviewer comments in that form, since no footnote prints for it.
 - The sidebar is one book tree: the whole book, sections in
@@ -268,6 +270,38 @@ Hermes replies in typed parts:
   shown as line diffs (next section). Accepting writes the node only if it is
   unchanged since the suggestion (otherwise it is marked stale), refreshes
   the graph and editor, and typesets the scope again.
+
+### Editorial sessions
+
+Each scope holds several named conversations, each an editorial session
+([D-027](../../docs/program/DECISIONS.md#d-027--conversations-and-working-sessions-share-one-lifecycle),
+[contract](../../protocol/frige/README.md#editorial-sessions)). The scope's
+original thread is its first conversation, "Main conversation", read in place;
+new ones keep their own journal and a small per-scope index in
+`.texgraph/sessions/<scope>/`. In the conversation panel:
+
+- **Switch** from the conversation menu, which lists each conversation's state
+  and message count and can show archived ones. Switching reloads only the
+  thread: the open scope, the source editor and its unsaved text stay.
+- **Act** from the actions menu: rename, pause, mark awaiting review, resume
+  or reopen, complete, abandon, edit the summary, continue from the summary,
+  archive. Conversations are never deleted.
+- **Complete or abandon** opens the summary sheet, prefilled from Frige's own
+  records (the proposals made in the conversation, editorial decisions on its
+  pieces, unanswered questions). The draft is not model-written and nothing is
+  kept until you save. You can also close without a summary.
+  **Closing decides no proposal**: a pending proposal stays pending, and is
+  decided in the conversation that made it.
+- **A closed conversation** takes no message; reopen it, or **continue from the
+  summary** to start a new conversation that is offered that summary (never
+  the transcript). Sending to a paused conversation resumes it.
+- A damaged index shows "Conversations unavailable" and leaves the files as
+  they are; the first conversation still reads.
+
+With `STEX_PLATFORM_ACTOR_SECRET` set (hosted, behind Pantheon), Frige refuses
+any request that changes state without the signed-in person Pantheon verified
+(`401 ACTOR_REQUIRED`), and records that person's id as the creator, summary
+author and transition actor. Local mode records `local`.
 
 ### Change contracts
 
@@ -388,6 +422,11 @@ chat**. The exact excerpt, the first 6,000 characters of the converted text,
 can then accompany Igor turns for that book. The context limit can omit an
 excerpt on a large turn. Review again if the excerpt changes. A
 password-protected book supports this workflow in Frige after unlock.
+
+Frige records a SHA-256 digest of each new original. The workstation
+reports identical bytes from an earlier upload in the same book when
+the bounded check finds a match. Each upload keeps its own document ID,
+conversion state and approval.
 
 When `STEX_FRIGE_CONVERTER_SOCKET` names the socket of Frige's isolated
 converter (`src/document_convert.py`), every upload is converted to Markdown

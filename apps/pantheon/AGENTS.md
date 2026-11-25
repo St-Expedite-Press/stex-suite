@@ -12,6 +12,12 @@ modules or open engine files. Igor's private renderer is composed over HTTP,
 not copied into this public repository. The optional knowledge journal is
 owned by its service, not a replacement project store.
 
+Hosted identity comes from Igor's password session. Pantheon removes
+untrusted actor headers before routing and supplies a D-028 assertion
+only to an engine that verifies it. Keep project access checks with the
+engine. The admitted account selects its own knowledge journal through
+the knowledge service.
+
 Preserve the approved Blakean splash and byte-identical artwork, responsive
 composition, masthead/motion behavior, Romantic Instrumentalism, typography
 and shared design tokens. Do not regenerate art, add account flows, or redesign

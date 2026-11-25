@@ -1,5 +1,5 @@
 /** Frige publishing engine source that serves the versioned settings, uploads and review compatibility API. */
-import { mutateAttachments, readAttachmentManifest } from './attachment-manifest.mjs';
+import { mutateAttachments, readAttachmentManifest, storeAttachmentOriginal } from './attachment-manifest.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -143,19 +143,15 @@ async function addDocuments(id, payload) {
     if (typeof upload?.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Document content is missing or too large.');
     const bytes = Buffer.from(upload.contentBase64, 'base64');
     if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each document must be between 1 byte and 8 MB.');
-    const storedAs = `${Date.now()}-${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}-${safeName}`;
-    const destination = path.join(root, 'sources', storedAs);
-    await mkdir(path.dirname(destination), { recursive: true });
-    await writeFile(destination, bytes, { flag: 'wx' });
-    const documentId = createHash('sha256').update(`${storedAs}-${Date.now()}`).digest('hex').slice(0, 16);
-    const record = { id: documentId, name: safeName, storedAs, mimeType: setting(upload, 'mimeType', 'application/octet-stream', 160), bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
+    const { record, duplicateOf } = await storeAttachmentOriginal(root, manifest, safeName, bytes);
+    record.mimeType = setting(upload, 'mimeType', 'application/octet-stream', 160);
     if (directlyReadableExtensions.has(extension)) {
-      const extraction = `extractions/${documentId}.txt`;
+      const extraction = `extractions/${record.id}.txt`;
       await mkdir(path.join(root, '.texgraph', 'extractions'), { recursive: true });
       await atomic(path.join(root, '.texgraph', extraction), bytes.toString('utf8').slice(0, 200_000));
       record.extraction = extraction; record.contextState = 'pending-review'; record.extractedAt = new Date().toISOString();
     }
-    manifest.push(record); created.push(record);
+    manifest.push(record); created.push(duplicateOf ? { ...record, duplicateOf } : record);
   }
   await mkdir(path.join(root, '.texgraph'), { recursive: true });
   await atomic(path.join(root, '.texgraph', 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`);

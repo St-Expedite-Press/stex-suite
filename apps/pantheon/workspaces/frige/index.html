@@ -15,6 +15,19 @@
       <!-- Editorial conversation, exact source editor and proposal review. -->
       <section id="conversation" class="conversation" aria-label="Conversation and Markdown editor">
         <header class="panel-header"><div><p id="conversation-context" class="eyebrow">Conversation</p><h2 id="conversation-title">Choose a node</h2></div><span id="gateway-state" class="status-pill">Igor</span></header>
+        <!-- A scope's named editorial conversations (D-027): switcher, state and actions in menus; hidden when the engine has none. -->
+        <div id="session-bar" class="session-bar" hidden>
+          <details id="session-switcher" class="settings-menu session-menu"><summary id="session-current" aria-label="Choose a conversation in this scope">Main conversation</summary>
+            <div class="settings-items session-items">
+              <ul id="session-list" class="session-list" aria-label="Conversations in this scope"></ul>
+              <label class="session-archived"><input id="session-show-archived" type="checkbox">Show archived</label>
+              <button id="session-new" type="button" class="quiet-button">New conversation</button>
+            </div>
+          </details>
+          <span id="session-lifecycle" class="status-pill available" role="status">Active</span>
+          <details id="session-actions" class="settings-menu session-menu"><summary>Conversation actions</summary><div id="session-action-items" class="settings-items session-items"></div></details>
+        </div>
+        <div id="session-note" class="session-note" role="status" hidden></div>
         <div class="view-switch" role="tablist" aria-label="Conversation or source"><button id="show-thread" type="button" role="tab" aria-selected="true">Conversation</button><button id="show-source" type="button" role="tab" aria-selected="false">Source</button></div>
         <section id="source-panel" class="source-panel hidden" aria-label="Markdown source"><div class="source-meta"><span id="source-label">Canonical Markdown</span><span class="source-where"><span id="source-position" aria-live="polite"></span><span id="source-hash"></span></span></div><textarea id="source" spellcheck="false" aria-label="Canonical Markdown source" aria-describedby="passage-hint"></textarea><div id="passage-bar" class="passage-bar" role="toolbar" aria-label="Selected passage" hidden><span id="passage-label" class="passage-label"></span><span class="passage-actions"><button type="button" class="quiet-button" data-action="ask">Ask Igor</button><button type="button" class="quiet-button" data-action="revise">Revise</button><button type="button" class="quiet-button" data-action="explain">Explain</button><button type="button" class="quiet-button" data-action="alternatives">Alternatives</button><button type="button" class="quiet-button" data-action="compare">Compare</button></span></div><p id="passage-hint" class="stex-visually-hidden">Select text to ask Igor about that exact passage. Ctrl+S saves.</p><div class="source-actions"><span id="save-state"></span><span class="source-buttons"><button id="node-pages" type="button" class="quiet-button hidden"></button><button id="show-history" type="button" class="quiet-button" aria-haspopup="dialog">History</button><button id="save-source" type="button" class="quiet-button">Save Markdown</button></span></div></section>
         <dialog id="source-history" aria-labelledby="source-history-title">
@@ -35,6 +48,25 @@
           <h3>Editorial decisions</h3>
           <ol id="history-decisions" class="history-list" aria-label="Recent editorial decisions"></ol>
         </dialog>
+        <dialog id="session-name" aria-labelledby="session-name-title">
+          <form method="dialog" class="history-heading"><h2 id="session-name-title">Conversation</h2><button class="quiet-button" value="cancel" formnovalidate>Cancel</button></form>
+          <form id="session-name-form" class="session-form"><label id="session-name-label" for="session-name-input">Title</label><input id="session-name-input" maxlength="120" autocomplete="off"><p id="session-name-status" role="status"></p><button type="submit" class="quiet-button">Save</button></form>
+        </dialog>
+        <dialog id="session-summary" aria-labelledby="session-summary-title">
+          <form method="dialog" class="history-heading"><h2 id="session-summary-title">Summary</h2><button class="quiet-button" value="cancel" formnovalidate>Cancel</button></form>
+          <p id="session-summary-closing" class="session-closing-note">Completing or abandoning a conversation does not accept, reject or apply any proposal. Pending proposals stay pending, and are listed here so you can decide them afterwards.</p>
+          <p id="session-summary-source" role="status"></p>
+          <form id="session-summary-form" class="session-form">
+            <label for="summary-text">Summary</label><textarea id="summary-text" rows="5" maxlength="4000" required></textarea>
+            <label for="summary-decisions">Decisions (one per line)</label><textarea id="summary-decisions" rows="3"></textarea>
+            <label for="summary-open">Open questions (one per line)</label><textarea id="summary-open" rows="2"></textarea>
+            <label for="summary-proposals">Outstanding proposals (one per line)</label><textarea id="summary-proposals" rows="2"></textarea>
+            <label for="summary-sources">Sources (one per line)</label><textarea id="summary-sources" rows="2"></textarea>
+            <div id="summary-reason-field" class="session-form"><label for="summary-reason">Reason (optional)</label><input id="summary-reason" maxlength="500" autocomplete="off"></div>
+            <p id="session-summary-status" role="status"></p>
+            <div class="session-form-actions"><button id="summary-save" type="submit" class="quiet-button">Save summary</button><button id="summary-skip" type="button" class="quiet-button">Close without a summary</button></div>
+          </form>
+        </dialog>
         <dialog id="attachment-review" aria-labelledby="attachment-title">
           <form method="dialog" class="history-heading"><h2 id="attachment-title">Review document excerpt</h2><button class="quiet-button" autofocus>Close</button></form>
           <p>Approve this excerpt to include it in Igor’s Frige conversations for this book, subject to the turn’s context limit.</p>
@@ -43,7 +75,7 @@
           <button id="approve-excerpt" type="button" class="quiet-button">Use this excerpt in chat</button>
         </dialog>
         <div id="turns" class="thread" aria-live="polite"></div>
-        <form id="turn-form" class="composer"><div class="composer-box"><div id="passage-chip" class="passage-chip" hidden></div><textarea id="message" rows="1" aria-label="Message" placeholder="Message…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><span id="composer-scope" class="composer-scope"></span><span class="composer-actions"><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><span id="attachment-state"></span><button id="attach" type="button" class="icon-button" title="Attach files" aria-label="Attach files">+</button><button type="submit" class="send-button" aria-label="Send">Send</button></span></div></div></form>
+        <form id="turn-form" class="composer"><div class="composer-box"><div id="passage-chip" class="passage-chip" hidden></div><textarea id="message" rows="1" aria-label="Message" placeholder="Message…"></textarea><div id="attachments" class="attachments" aria-live="polite"></div><div class="composer-footer"><span id="composer-scope" class="composer-scope"></span><span class="composer-actions"><input id="attachment-input" type="file" multiple accept=".md,.txt,.tex,.csv,.json,.pdf,.docx" hidden><span id="attachment-state" role="status"></span><button id="attach" type="button" class="icon-button" title="Attach files" aria-label="Attach files">+</button><button type="submit" class="send-button" aria-label="Send">Send</button></span></div></div></form>
       </section>
       <!-- Compiler proof, layout controls and preflight. -->
       <section id="preview" class="preview" aria-label="LuaLaTeX full-book preview">

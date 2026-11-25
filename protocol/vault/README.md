@@ -24,6 +24,19 @@ Products emit stable references in the form `stex://<product>/<kind>/<id>`.
 Resolving a reference is an application operation; a vault note is never
 authority to bypass product authorization or validation.
 
+## Adapter path hardening (K0)
+
+The unexposed reader (`services/knowledge/src/local-adapter.mjs`) reads only a
+regular file whose real path is inside the real vault root and that is reached
+without a symbolic link or Windows junction in any path component. It refuses
+`..`, absolute/drive/UNC paths, alternate data streams, 8.3 short names,
+trailing dots or spaces, reserved device names, control characters and the
+`.obsidian` directory in any letter case, and its listing omits them. Negative
+tests live in `services/knowledge/test/local-adapter-negative.test.mjs`. A
+link swapped in between the checks and the read (TOCTOU) and hard links are
+not prevented; the vault must not be writable by untrusted code. This does
+not expose any vault route.
+
 ## Local-first rule
 
 The initial implementation reads a user-selected local vault directory and

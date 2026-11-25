@@ -170,9 +170,121 @@ async function main() {
     await enter();
     const renamed = await waitFor(`document.querySelector('.igor-thread-title')?.textContent === 'Renamed conversation' && [...document.querySelectorAll('.igor-conversation__title')].some((node) => node.textContent === 'Renamed conversation')`);
     check(renamed, 'Rename did not update the header and sidebar.');
-    await tab.evaluate(`window.confirm = () => true; [...document.querySelectorAll('.igor-action')].find((button) => /delete/i.test(button.textContent)).click()`);
+    // Delete asks through the in-page ConfirmDialog (not window.confirm); Cancel keeps it, Delete removes it.
+    // A scripted click does not focus the button as a real one does, so focus it first.
+    await tab.evaluate(`(() => { const button = [...document.querySelectorAll('.igor-action')].find((node) => /delete/i.test(node.textContent)); button.focus(); button.click(); })()`);
+    check(await waitFor(`document.querySelector('dialog.igor-confirm[open]')`), 'Delete did not open the confirmation dialog.');
+    check(await waitFor(`document.activeElement?.textContent === 'Cancel'`, 2000), 'The confirmation dialog did not focus the safe choice first.');
+    // Native focus can return before the queued close event updates React.
+    // Wait for that event before opening the same dialog again.
+    const cancelSettled = await tab.evaluate(`new Promise((resolve) => {
+      const dialog = document.querySelector('dialog.igor-confirm[open]');
+      if (!dialog) return resolve(false);
+      const timeout = setTimeout(() => resolve(false), 2000);
+      dialog.addEventListener('close', () => requestAnimationFrame(() => {
+        clearTimeout(timeout);
+        resolve(true);
+      }), { once: true });
+      [...dialog.querySelectorAll('button')].find((button) => button.textContent === 'Cancel').click();
+    })`);
+    check(cancelSettled, 'Cancel did not finish closing the confirmation dialog.');
+    check(await waitFor(`!document.querySelector('dialog.igor-confirm[open]') && location.pathname === ${JSON.stringify(second)} && /delete/i.test(document.activeElement?.textContent || '')`, 2000), 'Cancel did not keep the conversation and return focus to Delete.');
+    await tab.evaluate(`[...document.querySelectorAll('.igor-action')].find((button) => /delete/i.test(button.textContent)).click()`);
+    const confirmDelete = `[...document.querySelectorAll('dialog.igor-confirm[open] button')].find((button) => button.textContent === 'Delete' && !button.disabled)`;
+    if (!await waitFor(confirmDelete)) throw new Error('Delete did not reopen with an enabled confirmation.');
+    await tab.evaluate(`(${confirmDelete}).click()`);
     const deleted = await waitFor(`location.pathname !== ${JSON.stringify(second)} && ![...document.querySelectorAll('.igor-conversation__title')].some((node) => node.textContent === 'Renamed conversation')`);
     check(deleted, 'Delete did not remove the conversation.');
+
+
+    // 6b. Working sessions (D-027): make, complete with a summary, continue, search and filter, at 1440 and 390.
+    {
+      const click = (selector, text) => tab.evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].find((node) => ${text instanceof RegExp ? text.toString() + '.test(node.textContent)' : `node.textContent.trim() === ${JSON.stringify(text)}`})?.click()`);
+      const sheetOpen = `document.querySelector('dialog.igor-summary[open]')`;
+      await tab.go(`${base}/igor/new`);
+      await waitFor(`document.querySelector('.igor-composer__input')`);
+      await type('.igor-composer__input', 'EARLIER-TRANSCRIPT-MARKER plan the launch');
+      await enter();
+      const sessionRoute = await waitFor(`/^\\/igor\\/c\\/[a-z0-9]{12}$/.test(location.pathname) && location.pathname`);
+      await waitFor(`document.querySelector('.igor-message--assistant[data-status="complete"]')`);
+      check(await waitFor(`!document.querySelector('.igor-session__state') && [...document.querySelectorAll('.igor-session .igor-action')].some((node) => node.textContent === 'Make this a working session')`), 'A chat showed lifecycle controls or lacked "Make this a working session".');
+      await click('.igor-session .igor-action', 'Make this a working session');
+      check(await waitFor(`document.querySelector('dialog.igor-confirm[open] textarea')`), 'Make a working session did not ask for an objective.');
+      check(await waitFor(`[...document.querySelectorAll('dialog.igor-confirm[open] button')].find((b) => b.textContent === 'Make working session')?.disabled === true`, 1000), 'An empty objective could be confirmed.');
+      await type('dialog.igor-confirm[open] textarea', 'Plan the launch of the spring list');
+      await click('dialog.igor-confirm[open] button', 'Make working session');
+      check(await waitFor(`document.querySelector('.igor-session__state')?.textContent === 'Active' && document.querySelector('.igor-session__objective')?.textContent.includes('Plan the launch of the spring list')`), 'The chat did not become a working session with its objective.');
+      check(await waitFor(`[...document.querySelectorAll('.igor-conversation')].some((node) => node.getAttribute('aria-current') && node.querySelector('.igor-conversation__badge')?.textContent === 'Session · Active')`), 'The sidebar did not mark the session.');
+      // Pause, then sending resumes.
+      await click('.igor-session__actions .igor-action', 'Pause');
+      check(await waitFor(`document.querySelector('.igor-session__state')?.textContent === 'Paused'`), 'Pause did not show Paused.');
+      await type('.igor-composer__input', 'back to work');
+      await enter();
+      check(await waitFor(`document.querySelector('.igor-session__state')?.textContent === 'Active' && document.querySelectorAll('.igor-message--assistant[data-status="complete"]').length === 2`), 'Sending did not resume the paused session.');
+      // Complete with a summary: the sheet is prefilled with a draft, labelled, editable.
+      await click('.igor-session__actions .igor-action', 'Complete');
+      check(await waitFor(sheetOpen), 'Complete did not open the summary sheet.');
+      check(await waitFor(`document.querySelector('.igor-summary textarea')?.value.includes('Objective: Plan the launch') && /Draft from Igor/.test(document.querySelector('.igor-summary__provenance')?.textContent || '')`), 'The sheet was not prefilled with the labelled draft.');
+      check(await waitFor(`document.activeElement === document.querySelector('.igor-summary textarea')`, 2000), 'The summary sheet did not focus its text.');
+      await tab.evaluate(`document.querySelector('.igor-summary textarea').select()`);
+      await tab.send('Input.insertText', { text: 'We planned the launch and agreed the order of work.' });
+      await tab.evaluate(`document.querySelectorAll('.igor-summary textarea')[1].focus()`);
+      await tab.send('Input.insertText', { text: 'Ship on Friday' });
+      check(await waitFor(`/Edited by you/.test(document.querySelector('.igor-summary__provenance')?.textContent || '')`), 'Editing the draft did not mark it as the user\'s own text.');
+      report.flows.sessionSheet1440 = await tab.evaluate(`(() => { const r = document.querySelector('.igor-summary').getBoundingClientRect(); return { width: r.width, height: r.height, scrollWidth: document.documentElement.scrollWidth }; })()`);
+      { const { data: shot } = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(outDirectory, 'igor-session-sheet-1440.png'), Buffer.from(shot, 'base64')); }
+      await click('.igor-summary button', 'Save and complete');
+      check(await waitFor(`!document.querySelector('dialog.igor-summary[open]') && document.querySelector('.igor-session__state')?.textContent === 'Completed'`), 'Save and complete did not complete the session.');
+      check(await waitFor(`!document.querySelector('.igor-composer') && /takes no new messages/.test(document.querySelector('.igor-session__note')?.textContent || '')`), 'A completed session still offered the composer or did not say why.');
+      check(await waitFor(`/Summary \\(r1\\)/.test(document.querySelector('.igor-session__actions')?.textContent || '') && [...document.querySelectorAll('.igor-session__actions .igor-action')].some((b) => b.textContent === 'Continue from summary')`), 'The saved summary and Continue were not offered.');
+      // Layout at 390 with the sheet open.
+      await tab.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await tab.evaluate(`new Promise((resolve) => setTimeout(resolve, 300))`);
+      await click('.igor-session__actions .igor-action', /Summary/);
+      check(await waitFor(sheetOpen), 'The summary sheet did not reopen at 390 px.');
+      report.flows.sessionSheet390 = await tab.evaluate(`(() => { const r = document.querySelector('.igor-summary').getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width, scrollWidth: document.documentElement.scrollWidth }; })()`);
+      check(report.flows.sessionSheet390.left >= 0 && report.flows.sessionSheet390.right <= 390 && report.flows.sessionSheet390.scrollWidth <= 390, `The summary sheet overflows at 390 px: ${JSON.stringify(report.flows.sessionSheet390)}.`);
+      { const { data: shot } = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(outDirectory, 'igor-session-sheet-390.png'), Buffer.from(shot, 'base64')); }
+      await tab.key('Escape', 'Escape', 27);
+      check(await waitFor(`!document.querySelector('dialog.igor-summary[open]') && /Summary/.test(document.activeElement?.textContent || '')`, 2000), 'Escape did not close the sheet and restore focus to its button.');
+      report.flows.sessionBar390 = await tab.evaluate(`(() => { const buttons = [...document.querySelectorAll('.igor-session__actions .igor-action')].map((b) => { const r = b.getBoundingClientRect(); return { text: b.textContent, left: r.left, right: r.right, height: r.height }; }); return { buttons, scrollWidth: document.documentElement.scrollWidth }; })()`);
+      check(report.flows.sessionBar390.scrollWidth <= 390 && report.flows.sessionBar390.buttons.every((b) => b.left >= 0 && b.right <= 390 && b.height >= 40), `The session bar is not usable at 390 px: ${JSON.stringify(report.flows.sessionBar390)}.`);
+      { const { data: shot } = await tab.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(outDirectory, 'igor-session-bar-390.png'), Buffer.from(shot, 'base64')); }
+      await tab.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      // Continue: a new session, same objective, the summary offered to the model, never the transcript.
+      const turnsBefore = state.turns.length;
+      await click('.igor-session__actions .igor-action', 'Continue from summary');
+      const continuedRoute = await waitFor(`/^\\/igor\\/c\\/[a-z0-9]{12}$/.test(location.pathname) && location.pathname !== ${JSON.stringify(sessionRoute)} && location.pathname`);
+      check(continuedRoute, 'Continue did not open a new session.');
+      check(await waitFor(`document.querySelector('.igor-session__state')?.textContent === 'Active' && document.querySelectorAll('.igor-message').length === 0 && /Continued from/.test(document.querySelector('.igor-session__note')?.textContent || '')`), 'The continued session was not fresh and labelled.');
+      await type('.igor-composer__input', 'Where did we land?');
+      await enter();
+      await waitFor(`document.querySelector('.igor-message--assistant[data-status="complete"]')`);
+      const continued = state.turns.at(-1)?.turn;
+      const summaryBlock = continued?.context?.priorSessionSummary;
+      check(state.turns.length === turnsBefore + 1 && summaryBlock?.kind === 'prior-session-summary' && summaryBlock.text.includes('agreed the order of work') && summaryBlock.decisions?.[0] === 'Ship on Friday', `The continued turn lacked the saved summary: ${JSON.stringify(continued?.context).slice(0, 200)}.`);
+      check(!JSON.stringify(continued).includes('EARLIER-TRANSCRIPT-MARKER') && continued.conversation.messages.length === 1 && continued.conversation.id !== firstConversation, 'The continued turn carried the earlier transcript.');
+      report.flows.sessionContinue = { route: continuedRoute, summaryRevision: summaryBlock?.summaryRevision, messagesSent: continued?.conversation.messages.length };
+      // Search and filter.
+      await tab.evaluate(`document.querySelector('#igor-search').focus()`);
+      await tab.send('Input.insertText', { text: 'zzz-no-such-title' });
+      check(await waitFor(`!document.querySelector('.igor-conversations') && document.querySelector('.igor-empty-note')?.textContent === 'Nothing matches.'`), 'Search did not narrow the list.');
+      await tab.evaluate(`document.querySelector('#igor-search').select()`);
+      await tab.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      await click('.igor-filter > summary', /Show:/);
+      await click('.igor-filter__options .igor-action', 'Sessions');
+      check(await waitFor(`document.querySelectorAll('.igor-conversation').length >= 2 && [...document.querySelectorAll('.igor-conversation')].every((node) => node.querySelector('.igor-conversation__badge'))`), 'The Sessions filter showed non-sessions or no sessions.');
+      check(await waitFor(`/Show: Sessions/.test(document.querySelector('.igor-filter > summary')?.textContent || '') && document.activeElement?.tagName === 'SUMMARY'`, 2000), 'Choosing a filter did not return focus to its summary.');
+      await click('.igor-filter > summary', /Show:/);
+      await click('.igor-filter__options .igor-action', 'All');
+      await waitFor(`/Show: All/.test(document.querySelector('.igor-filter > summary')?.textContent || '')`);
+      // The closed original refuses messages server-side too (409 SESSION_CLOSED).
+      const closedId = sessionRoute.split('/').pop();
+      const refused = await tab.evaluate(`fetch('/igor/api/conversations/${closedId}/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'verify-closed-0001', content: 'still there?' }) }).then(async (r) => ({ status: r.status, code: (await r.json()).code }))`);
+      check(refused.status === 409 && refused.code === 'SESSION_CLOSED', `A closed session accepted a message: ${JSON.stringify(refused)}.`);
+      report.flows.sessionClosedRefusal = refused;
+    }
 
     // 7. Keyboard reachability and no credentials in the interface.
     report.flows.assets = await tab.evaluate(`Promise.all([...document.scripts].filter((script) => script.src).map((script) => fetch(script.src).then((response) => response.text()))).then((texts) => texts.some((text) => text.includes(${JSON.stringify(secret)})))`);

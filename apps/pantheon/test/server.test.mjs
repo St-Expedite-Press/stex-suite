@@ -9,8 +9,18 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { localProxyTarget, mountedApplication, validateRegistry } from '../src/shell.mjs';
 import { appBase, appUrl } from '../workspaces/frige/base-path.js';
+import { MAIN, turnPath, turnsPath } from '../workspaces/frige/sessions.js';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+test('the first conversation keeps the scope’s original thread routes and later ones use their own', () => {
+  assert.equal(MAIN, 'main');
+  assert.equal(turnsPath('book', MAIN), '/api/scopes/book/turns');
+  assert.equal(turnPath('book', MAIN), '/api/scopes/book/turn');
+  assert.equal(turnsPath('node-0123456789abcdef0123', 'c-0123456789abcdef'), '/api/scopes/node-0123456789abcdef0123/conversations/c-0123456789abcdef/turns');
+  assert.equal(turnPath('book', 'c-0123456789abcdef'), '/api/scopes/book/conversations/c-0123456789abcdef/turn');
+  assert.equal(appUrl(turnPath('book', 'c-0123456789abcdef'), 'http://127.0.0.1:4300/frige/'), '/frige/api/stex/publishing/v1/scopes/book/conversations/c-0123456789abcdef/turn');
+});
 
 test('publishing UI resolves versioned APIs without changing proof resources or mount selection', () => {
   assert.equal(appBase('http://127.0.0.1:4300/frige/?book=fixture'), '/frige');
@@ -100,8 +110,11 @@ test('owns the publishing library and workstation inside the platform shell even
     assert.equal((html.match(/<header class="masthead/g) || []).length, 1);
     assert.doesNotMatch(html, /masthead--full|masthead--compact|src=".*masthead\.js"/);
   }
+  // Editorial conversations: the switcher, the actions menu and the two native dialogs ship in the workspace fragment.
+  for (const id of ['session-bar', 'session-switcher', 'session-actions', 'session-name', 'session-summary', 'session-note']) assert.match(workspace, new RegExp('id="' + id + '"'), id);
+  assert.match(workspace, /does not accept, reject or apply any proposal/);
   assert.match(library, /Book projects/); assert.match(workspace, /id="source"/); assert.match(workspace, /id="proof-viewer"/);
-  for (const asset of ['app.js', 'base-path.js', 'lobby.js', 'style.css', 'proof-viewer.js', 'thread.js', 'workspace.js']) assert.equal((await fetch(base + '/frige/' + asset)).status, 200);
+  for (const asset of ['app.js', 'base-path.js', 'lobby.js', 'style.css', 'proof-viewer.js', 'sessions.js', 'thread.js', 'workspace.js']) assert.equal((await fetch(base + '/frige/' + asset)).status, 200);
   // Settings opens the shared Company screen filtered to Frige; the retired model dialog is gone.
   assert.match(workspace, /<details id="settings-menu" class="settings-menu"><summary>Settings<\/summary><div class="settings-items"><a id="company-settings" href="\/igor\/team\?app=frige">Company &amp; models<\/a><\/div><\/details>/);
   assert.doesNotMatch(workspace, /configure-models|role="menu"/);

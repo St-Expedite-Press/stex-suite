@@ -1,13 +1,27 @@
-/** Frige publishing engine source that owns book source, graph, editorial transactions and proof metadata. */
+/**
+ * Frige publishing engine source that owns book source, graph, editorial transactions and proof metadata.
+ *
+ * Editorial sessions (D-027): each scope (book, section, piece) holds several
+ * named conversations. The scope's original append-only journal
+ * (`<state>/conversations/<key>.jsonl`) is its first conversation, `main`, read
+ * in place and never moved or rewritten. Further conversations keep their own
+ * journals and a small per-scope index under `<state>/sessions/<key>/`
+ * (title, lifecycle, archive flag, summaries, transition events). Index writes
+ * are atomic and run inside `exclusive`; a damaged index fails closed. The
+ * pure rules live in `editorial-sessions.mjs`.
+ */
 import { createHash, randomUUID } from 'node:crypto';
-import { access, copyFile, mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-import { writeAtomic } from './project-store.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { renameWithRetry, writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
 import { EditorialJournal, editorialPath } from './editorial-journal.mjs';
 import { readAttachmentManifest } from './attachment-manifest.mjs';
+import { LOCAL_ACTOR } from './actor.mjs';
+import { CLOSED_LIFECYCLES, MAIN_CONVERSATION, MAX_CONVERSATIONS, MAX_LIST_ITEMS, MAX_REVISIONS, RESUMING_LIFECYCLES, clipItem, isConversationId, latestRevision, newEntry, normalizeIndex, selectSessionSummaries, sessionError, transition, validateReason, validateSummary, validateTitle } from './editorial-sessions.mjs';
 import { CONTRACT_SCHEMA_VERSION, LAYOUT_CHANGE, applyEdits, buildChange, changedOnlyWithin, buildContract, conflictsWith, hasPending, isContractId, isContractRecord, proofFor, proofStrength, sameTextIgnoringLineEndings, summarizeContract, supersede } from './change-contract.mjs';
 
 const MAX_SOURCE = 400_000;
@@ -429,6 +443,8 @@ export class ProjectStore {
     this.editorial = new EditorialJournal(this.root, this.stateDirectory);
     this.graphPath = path.join(this.stateDirectory, 'graph.json');
     this.conversationsDirectory = path.join(this.stateDirectory, 'conversations');
+    // Conversations after a scope's first: `<key>/index.json` and one `<id>.jsonl` journal each.
+    this.sessionsDirectory = path.join(this.stateDirectory, 'sessions');
     this.proposalsDirectory = path.join(this.stateDirectory, 'proposals');
     // Every change contract, one file per contract, kept after it is decided.
     this.contractsDirectory = path.join(this.stateDirectory, 'contracts');
@@ -439,7 +455,7 @@ export class ProjectStore {
     this.answering = new Set();
   }
 
-  // Manuscript writes, contract decisions, rollbacks and proof links run one at a time, so a hash check
+  // Manuscript writes, contract decisions, rollbacks and proof changes run one at a time, so a hash check
   // and the write it guards can never interleave with another write.
   /** Queues a write behind earlier operations on the same store. */
   exclusive(task) {
@@ -455,8 +471,20 @@ export class ProjectStore {
   // Book, section and page conversations are separate threads keyed by scope id.
   /** Derives the storage key for the selected conversation scope. */
   scopeKey(scopeId) { return scopeId === 'book' ? 'book' : this.nodePath(scopeId); }
-  /** Resolves the turn journal within the store's state area. */
-  conversationPath(scopeId) { return path.join(this.conversationsDirectory, `${this.scopeKey(scopeId)}.jsonl`); }
+  /**
+   * Resolves a conversation's turn journal within the store's state area.
+   *
+   * @param {string} scopeId
+   * @param {string} [conversationId]  `main` (the default) is the scope's original journal.
+   * @returns {string}
+   */
+  conversationPath(scopeId, conversationId = MAIN_CONVERSATION) {
+    if (conversationId === MAIN_CONVERSATION) return path.join(this.conversationsDirectory, `${this.scopeKey(scopeId)}.jsonl`);
+    if (!isConversationId(conversationId)) throw sessionError('CONVERSATION_NOT_FOUND', 'Conversation not found.');
+    return path.join(this.sessionsDirectory, this.scopeKey(scopeId), `${conversationId}.jsonl`);
+  }
+  /** Resolves a scope's conversation index file (see {@link ProjectStore#readIndex}). */
+  sessionIndexPath(scopeId) { return path.join(this.sessionsDirectory, this.scopeKey(scopeId), 'index.json'); }
   /** Resolves the change-set journal within the store's state area. */
   changeSetPath(scopeId) { return path.join(this.proposalsDirectory, `${this.scopeKey(scopeId)}.json`); }
 
@@ -541,7 +569,7 @@ export class ProjectStore {
     record.status = hasPending(record) ? 'pending' : 'resolved';
     await this.#saveContract(record);
     const scopeExists = await this.scope(record.scopeId).then(() => true, () => false);
-    if (outcomes.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-decided', changeSetId: record.id, decisions: outcomes.map(decisionOf) });
+    if (outcomes.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-decided', changeSetId: record.id, decisions: outcomes.map(decisionOf) }, record.conversationId);
   }
 
   /** Rebuilds the source graph under the store's serialization rules. */
@@ -816,26 +844,52 @@ export class ProjectStore {
    */
   static aliasesOf(scope) { return [scope.id, ...(Array.isArray(scope.legacyIds) ? scope.legacyIds : [])]; }
 
-  /** Appends the accepted turn to the local conversation history. */
-  async appendTurn(scopeId, turn) {
+  /**
+   * Appends the accepted turn to a conversation's journal.
+   *
+   * @param {string} scopeId
+   * @param {object} turn  The turn's fields; `id`, `at`, `scopeId` and `conversationId` are set here.
+   * @param {string} [conversationId]  The conversation it belongs to; `main` is the scope's original journal.
+   *   The caller has already checked the conversation exists (see `beginTurn`).
+   * @returns {Promise<object>}  The stored record.
+   */
+  async appendTurn(scopeId, turn, conversationId = MAIN_CONVERSATION) {
     // Always recorded under the scope's current id, even when addressed by an earlier one.
     const { id } = await this.scope(scopeId);
-    const record = { id: randomUUID(), at: new Date().toISOString(), ...turn, scopeId: id };
-    await writeFile(this.conversationPath(id), `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
+    const record = { id: randomUUID(), at: new Date().toISOString(), ...turn, scopeId: id, conversationId };
+    const file = this.conversationPath(id, conversationId);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
     return record;
   }
-  /** Reads the conversation history for the requested target. */
-  async turns(scopeId, limit = 40) {
+  /**
+   * Reads one conversation's history, oldest first. Other conversations of the
+   * scope are never mixed in: a turn is offered the model only its own thread.
+   *
+   * @param {string} scopeId
+   * @param {number} [limit]  Most recent turns to return.
+   * @param {string} [conversationId]  Defaults to the scope's first conversation.
+   * @returns {Promise<object[]>}
+   */
+  async turns(scopeId, limit = 40, conversationId = MAIN_CONVERSATION) {
     const scope = await this.scope(scopeId);
     const aliases = ProjectStore.aliasesOf(scope);
     // `tolerant` skips lines that do not parse. It is used for other pieces' own
     // files, read only for old section turns, so damage there cannot break this thread.
     /** Decodes one stored turn record from the journal. */
     const parse = (line, tolerant) => { try { return JSON.parse(line); } catch (error) { if (tolerant) return null; throw error; } };
-    /** Reads the appropriate stored conversation log. */
-    const read = async (key, tolerant = false) => {
-      try { return (await readFile(this.conversationPath(key), 'utf8')).trim().split('\n').filter(Boolean).map((line) => parse(line, tolerant)).filter(Boolean); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    /** Reads a journal file, one record per line. */
+    const readFileTurns = async (file, tolerant) => {
+      try { return (await readFile(file, 'utf8')).trim().split('\n').filter(Boolean).map((line) => parse(line, tolerant)).filter(Boolean); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
     };
+    /** Reads the appropriate stored conversation log. */
+    const read = (key, tolerant = false) => readFileTurns(this.conversationPath(key), tolerant);
+    if (conversationId !== MAIN_CONVERSATION) {
+      // A later conversation's journal may sit under any id the section has had.
+      const own = [];
+      for (const key of aliases) own.push(...(await readFileTurns(this.conversationPath(key, conversationId), false)));
+      return own.sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
+    }
     // A section's turns may be filed under any id it has had (see `canonicalBook`).
     const own = [];
     for (const key of aliases) own.push(...(await read(key)).filter((turn) => !turn.scopeId || aliases.includes(turn.scopeId)));
@@ -845,6 +899,381 @@ export class ProjectStore {
     for (const anchor of anchorFiles) legacy.push(...(await read(anchor, true)).filter((turn) => aliases.includes(turn?.scopeId)));
     const unique = new Map([...legacy, ...own].map((turn) => [turn.id ?? `${turn.at}${turn.message ?? ''}`, turn]));
     return [...unique.values()].sort((left, right) => left.at.localeCompare(right.at)).slice(-limit);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Editorial sessions (D-027). The index is read before and written inside
+  // `exclusive`; it holds only metadata, never turn text.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reads a scope's conversation index, merged across every id the scope has had
+   * (the current id's file wins). A missing file is an empty index; a file that
+   * cannot be read, parsed or validated fails closed with `SESSIONS_UNAVAILABLE`
+   * (503), because treating damage as "no conversations" would hide history and
+   * let a second index overwrite it.
+   *
+   * @param {{ id: string, legacyIds?: string[] }} scope
+   * @returns {Promise<Record<string, import('./editorial-sessions.mjs').IndexEntry>>}  Persisted entries by id.
+   *   The first conversation (`main`) appears only once it has been changed.
+   * @throws `SESSIONS_UNAVAILABLE`.
+   */
+  async #readIndex(scope) {
+    const merged = {};
+    for (const key of ProjectStore.aliasesOf(scope)) {
+      let raw;
+      try { raw = JSON.parse(await readFile(this.sessionIndexPath(key), 'utf8')); }
+      catch (error) {
+        if (error.code === 'ENOENT') continue;
+        throw sessionError('SESSIONS_UNAVAILABLE', 'This scope’s conversation index could not be read or is damaged, so its conversations cannot be listed. Nothing was changed.');
+      }
+      for (const [id, entry] of Object.entries(normalizeIndex(raw))) if (!Object.hasOwn(merged, id)) merged[id] = entry;
+    }
+    return merged;
+  }
+
+  /**
+   * Writes the scope's index atomically under its current id.
+   *
+   * @param {{ id: string }} scope
+   * @param {Record<string, import('./editorial-sessions.mjs').IndexEntry>} entries
+   */
+  async #writeIndex(scope, entries) {
+    await writeAtomic(this.sessionIndexPath(scope.id), `${JSON.stringify({ schemaVersion: 1, scopeId: scope.id, conversations: entries }, null, 2)}\n`);
+  }
+
+  /**
+   * Finds a conversation's index entry. The first conversation, which predates
+   * the index, is synthesized (active, titled "Main conversation") until it is
+   * first changed; its creation time is its first turn.
+   *
+   * @param {{ id: string }} scope
+   * @param {Record<string, import('./editorial-sessions.mjs').IndexEntry>} entries
+   * @param {string} id
+   * @returns {Promise<import('./editorial-sessions.mjs').IndexEntry>}  A stored entry, or a synthesized `main`
+   *   that is not yet in `entries`.
+   * @throws `CONVERSATION_NOT_FOUND` (404).
+   */
+  async #entry(scope, entries, id) {
+    if (!isConversationId(id)) throw sessionError('CONVERSATION_NOT_FOUND', 'Conversation not found.');
+    if (Object.hasOwn(entries, id)) return entries[id];
+    if (id !== MAIN_CONVERSATION) throw sessionError('CONVERSATION_NOT_FOUND', 'Conversation not found.');
+    const first = (await this.turns(scope.id, 100_000))[0];
+    return newEntry({ id: MAIN_CONVERSATION, title: 'Main conversation', createdAt: first?.at ?? null, createdBy: null });
+  }
+
+  /**
+   * The conversation as the API returns it.
+   *
+   * @param {{ id: string }} scope
+   * @param {import('./editorial-sessions.mjs').IndexEntry} entry
+   * @param {{ detail?: boolean }} [options]  `detail` adds the transition events.
+   * @returns {Promise<object>}
+   */
+  async #view(scope, entry, { detail = false } = {}) {
+    const turns = await this.turns(scope.id, 1_000_000, entry.id);
+    const spoken = turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant');
+    return {
+      id: entry.id, scopeId: scope.id, main: entry.id === MAIN_CONVERSATION, title: entry.title, lifecycle: entry.lifecycle, archived: entry.archived,
+      createdAt: entry.createdAt, createdBy: entry.createdBy, continuedFrom: entry.continuedFrom,
+      summaryRevision: latestRevision(entry) || null, turnCount: spoken.length, lastTurnAt: turns.at(-1)?.at ?? null,
+      ...(detail ? { transitions: entry.transitions } : {}),
+    };
+  }
+
+  /**
+   * Lists a scope's conversations: the first, then the others oldest first.
+   * Archived ones are included and flagged; hiding them is the reader's choice.
+   *
+   * @param {string} scopeId
+   * @returns {Promise<{ scopeId: string, conversations: object[] }>}
+   * @throws `SESSIONS_UNAVAILABLE` when the index is damaged.
+   */
+  async conversations(scopeId) {
+    const scope = await this.scope(scopeId);
+    const entries = await this.#readIndex(scope);
+    const first = await this.#entry(scope, entries, MAIN_CONVERSATION);
+    const rest = Object.values(entries).filter((entry) => entry.id !== MAIN_CONVERSATION).sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+    return { scopeId: scope.id, conversations: await Promise.all([first, ...rest].map((entry) => this.#view(scope, entry))) };
+  }
+
+  /**
+   * Reads one conversation with its transition events.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId
+   * @returns {Promise<object>}
+   * @throws `CONVERSATION_NOT_FOUND`, `SESSIONS_UNAVAILABLE`.
+   */
+  async conversation(scopeId, conversationId) {
+    const scope = await this.scope(scopeId);
+    const entries = await this.#readIndex(scope);
+    return this.#view(scope, await this.#entry(scope, entries, conversationId), { detail: true });
+  }
+
+  /**
+   * Starts a new, empty conversation in the scope.
+   *
+   * @param {string} scopeId
+   * @param {{ title?: unknown }} [input]  Optional title; "Conversation N" by default.
+   * @param {import('./actor.mjs').Actor} [actor]  Recorded as `createdBy` (its `id`).
+   * @returns {Promise<object>}  The conversation (detail view).
+   * @throws `INVALID_SESSION_REQUEST`, `SESSION_HISTORY_FULL`, `SESSIONS_UNAVAILABLE`.
+   */
+  createConversation(scopeId, input = {}, actor = LOCAL_ACTOR) {
+    return this.exclusive(async () => {
+      const scope = await this.scope(scopeId);
+      const entries = await this.#readIndex(scope);
+      const count = new Set([...Object.keys(entries), MAIN_CONVERSATION]).size;
+      return this.#create(scope, entries, input?.title === undefined ? `Conversation ${count + 1}` : validateTitle(input.title), actor, null);
+    });
+  }
+
+  /** Adds a new entry to the index and writes it. Runs inside `exclusive`. */
+  async #create(scope, entries, title, actor, continuedFrom) {
+    if (Object.keys(entries).length >= MAX_CONVERSATIONS) throw sessionError('SESSION_HISTORY_FULL', 'This scope holds as many conversations as Frige keeps. Continue in an existing one.');
+    const id = `c-${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    const entry = newEntry({ id, title, createdAt: new Date().toISOString(), createdBy: actor.id, continuedFrom });
+    // The first conversation is persisted alongside so that its title and creation time are fixed from now on.
+    const first = Object.hasOwn(entries, MAIN_CONVERSATION) ? {} : { [MAIN_CONVERSATION]: await this.#entry(scope, entries, MAIN_CONVERSATION) };
+    await this.#writeIndex(scope, { ...entries, ...first, [id]: entry });
+    return this.#view(scope, entry, { detail: true });
+  }
+
+  /**
+   * Renames, archives or moves a conversation between states. Everything in
+   * one request is validated before anything is written.
+   *
+   * Closing (`completed`, `abandoned`) is bookkeeping only: it never accepts,
+   * rejects, applies or supersedes a change contract, so pending proposals stay pending.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId
+   * @param {{ title?: unknown, archived?: unknown, lifecycle?: unknown, reason?: unknown }} patch
+   * @param {import('./actor.mjs').Actor} [actor]  Recorded on the transition event.
+   * @returns {Promise<object>}  The conversation (detail view).
+   * @throws `CONVERSATION_NOT_FOUND`, `INVALID_SESSION_REQUEST`, `INVALID_TRANSITION`, `SESSION_HISTORY_FULL`, `SESSIONS_UNAVAILABLE`.
+   */
+  updateConversation(scopeId, conversationId, patch, actor = LOCAL_ACTOR) {
+    return this.exclusive(async () => {
+      const body = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
+      if (body.title === undefined && body.archived === undefined && body.lifecycle === undefined) throw sessionError('INVALID_SESSION_REQUEST', 'Send a title, an archived flag or a lifecycle to change.');
+      if (body.archived !== undefined && typeof body.archived !== 'boolean') throw sessionError('INVALID_SESSION_REQUEST', 'archived is true or false.');
+      if (body.reason !== undefined && body.lifecycle === undefined) throw sessionError('INVALID_SESSION_REQUEST', 'A reason accompanies a lifecycle change.');
+      const scope = await this.scope(scopeId);
+      const entries = await this.#readIndex(scope);
+      const next = structuredClone(await this.#entry(scope, entries, conversationId));
+      const at = new Date().toISOString();
+      if (body.title !== undefined) next.title = validateTitle(body.title);
+      if (body.archived !== undefined) next.archived = body.archived;
+      if (body.lifecycle !== undefined) transition(next, body.lifecycle, actor.id, validateReason(body.reason), at);
+      await this.#writeIndex(scope, { ...entries, [conversationId]: next });
+      return this.#view(scope, next, { detail: true });
+    });
+  }
+
+  /**
+   * Admits a message to a conversation: refuses a closed one, and resumes a
+   * paused or awaiting-review one, recording the resume as a transition.
+   * Called before the message is stored, so a refusal leaves the thread untouched.
+   *
+   * When `turn` is given it is appended inside the same exclusive section as
+   * the lifecycle check, so a concurrent close cannot slip in between the
+   * check and the write and leave a message in a conversation that had just
+   * been completed or abandoned (independent review finding, 2026-11-25).
+   *
+   * @param {string} scopeId
+   * @param {string} [conversationId]
+   * @param {import('./actor.mjs').Actor} [actor]
+   * @param {object | null} [turn]  The user turn to record once admitted, as for `appendTurn`.
+   * @returns {Promise<{ id: string, lifecycle: string, turn: object | null }>}  `turn` is the stored record, or null when none was given.
+   * @throws `SESSION_CLOSED` (409), `CONVERSATION_NOT_FOUND`, `SESSIONS_UNAVAILABLE`.
+   */
+  beginTurn(scopeId, conversationId = MAIN_CONVERSATION, actor = LOCAL_ACTOR, turn = null) {
+    return this.exclusive(async () => {
+      const scope = await this.scope(scopeId);
+      const entries = await this.#readIndex(scope);
+      const entry = await this.#entry(scope, entries, conversationId);
+      if (CLOSED_LIFECYCLES.includes(entry.lifecycle)) throw sessionError('SESSION_CLOSED', `This conversation is ${entry.lifecycle}. Reopen it, or continue from its summary in a new conversation.`);
+      let lifecycle = entry.lifecycle;
+      if (RESUMING_LIFECYCLES.includes(entry.lifecycle)) {
+        const next = structuredClone(entry);
+        transition(next, 'active', actor.id, 'Resumed by sending a message.', new Date().toISOString());
+        await this.#writeIndex(scope, { ...entries, [conversationId]: next });
+        lifecycle = next.lifecycle;
+      }
+      const stored = turn ? await this.appendTurn(scopeId, turn, conversationId) : null;
+      return { id: conversationId, lifecycle, turn: stored };
+    });
+  }
+
+  /**
+   * A conversation's saved summary revisions.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId
+   * @returns {Promise<{ conversationId: string, latest: object | null, revisions: object[] }>}  `latest` is `null` before the first save.
+   */
+  async summary(scopeId, conversationId) {
+    const scope = await this.scope(scopeId);
+    const entry = await this.#entry(scope, await this.#readIndex(scope), conversationId);
+    return { conversationId, latest: entry.summaries.at(-1) ?? null, revisions: entry.summaries };
+  }
+
+  /**
+   * Saves the author's summary as the next revision. The save names the
+   * revision it was made from; any other base is stale. Only what the author
+   * sends is stored, never an unsaved draft.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId
+   * @param {Record<string, unknown>} body  `baseRevision` (integer, 0 before the first save), the summary fields,
+   *   and optionally `throughTurnId` (a turn of this conversation; the latest turn when omitted).
+   * @param {import('./actor.mjs').Actor} [actor]  Recorded as the summary's author.
+   * @returns {Promise<object>}  The saved revision.
+   * @throws `INVALID_SUMMARY` (400), `STALE_SUMMARY` (409), `SESSION_HISTORY_FULL`, `CONVERSATION_NOT_FOUND`.
+   */
+  saveSummary(scopeId, conversationId, body, actor = LOCAL_ACTOR) {
+    return this.exclusive(async () => {
+      const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+      const fields = validateSummary(input);
+      if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) throw sessionError('INVALID_SUMMARY', 'A save names the revision it was made from (0 before the first save).');
+      const scope = await this.scope(scopeId);
+      const entries = await this.#readIndex(scope);
+      const next = structuredClone(await this.#entry(scope, entries, conversationId));
+      if (input.baseRevision !== latestRevision(next)) throw sessionError('STALE_SUMMARY', 'This summary changed after you opened it. Reload it before saving again.');
+      if (next.summaries.length >= MAX_REVISIONS) throw sessionError('SESSION_HISTORY_FULL', 'This conversation has as many summary revisions as Frige keeps.');
+      const turns = await this.turns(scope.id, 1_000_000, conversationId);
+      const through = input.throughTurnId === undefined ? (turns.at(-1)?.id ?? null) : input.throughTurnId;
+      if (through !== null && !turns.some((turn) => turn.id === through)) throw sessionError('INVALID_SUMMARY', 'throughTurnId is not a turn of this conversation.');
+      const saved = { revision: latestRevision(next) + 1, ...fields, throughTurnId: through, author: actor.id, updatedAt: new Date().toISOString() };
+      next.summaries.push(saved);
+      await this.#writeIndex(scope, { ...entries, [conversationId]: next });
+      return { conversationId, ...saved };
+    });
+  }
+
+  /**
+   * Prepares a summary draft from Frige's own records; no model is called and
+   * nothing is stored. It holds the change contracts produced in this
+   * conversation (decided ones as decisions, pending ones as outstanding
+   * proposals), the editorial decisions (D-026) recorded on the scope's pieces
+   * since the conversation began (by time, so a decision made in another
+   * conversation of the same piece in that window is included), unanswered
+   * questions from the director, and approved excerpts its contracts offered.
+   * A contract recorded before conversations carries no `conversationId` and
+   * belongs to the first conversation.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId
+   * @returns {Promise<object>}  A draft: `{ conversationId, draft: true, generatedBy, baseRevision, throughTurnId,
+   *   text, decisions, openQuestions, outstandingProposals, sources, pendingContractIds }`.
+   * @throws `CONVERSATION_NOT_FOUND`, `SESSIONS_UNAVAILABLE`, or `EDITORIAL_UNAVAILABLE` when the decision journal is damaged.
+   */
+  summaryDraft(scopeId, conversationId) {
+    return this.exclusive(async () => {
+      const scope = await this.scope(scopeId);
+      const entry = await this.#entry(scope, await this.#readIndex(scope), conversationId);
+      const turns = await this.turns(scope.id, 1_000_000, conversationId);
+      const aliases = ProjectStore.aliasesOf(scope);
+      const owns = (record) => (record.conversationId ?? MAIN_CONVERSATION) === conversationId;
+      const records = (await this.#journal()).filter((record) => aliases.includes(record.scopeId) && owns(record));
+      // A scope's current change set from before contracts is not in the journal.
+      const current = await this.changeSet(scope.id);
+      if (current && aliases.includes(current.scopeId) && owns(current) && !records.some((record) => record.id === current.id)) records.push(current);
+      records.sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+
+      const verbs = { accepted: 'Accepted', rejected: 'Rejected', reverted: 'Reverted', pending: 'Pending', superseded: 'Superseded', stale: 'Stale', failed: 'Failed' };
+      const decided = []; const outstanding = []; const pendingIds = new Set(); const counts = {};
+      for (const record of records) {
+        for (const change of record.changes) {
+          const verb = verbs[change.status] ?? String(change.status);
+          counts[change.status] = (counts[change.status] ?? 0) + 1;
+          const line = clipItem(`${verb} change to “${change.title ?? change.nodeId}”: ${change.summary || record.request || 'no summary recorded'}`);
+          if (change.status === 'pending') { outstanding.push(line); pendingIds.add(record.id); } else decided.push(line);
+        }
+      }
+
+      // Editorial decisions on the scope's pieces while the conversation was open.
+      const opened = entry.createdAt ?? turns[0]?.at ?? null;
+      const graph = await this.graph();
+      const pieces = scope.kind === 'book' ? graph.readingOrder : scope.nodeIds;
+      const journal = opened ? await this.#editorialState() : null;
+      const editorial = [];
+      for (const nodeId of pieces) {
+        const title = graph.nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
+        for (const decision of journal?.pieces?.[nodeId]?.decisions ?? []) {
+          if (decision.at >= opened) editorial.push({ at: decision.at, line: clipItem(`Editorial decision on “${title}”: ${decision.reason}`) });
+        }
+      }
+      editorial.sort((left, right) => left.at.localeCompare(right.at));
+
+      const answered = new Set(turns.filter((turn) => turn.kind === 'answer').map((turn) => turn.promptId));
+      const questions = turns.flatMap((turn) => (turn.parts ?? []).filter((part) => (part.type === 'choice' || part.type === 'form') && !answered.has(part.promptId))
+        .map((part) => clipItem(`Igor asked, and no answer was recorded: ${part.prompt ?? part.title ?? 'a question'}`)));
+      const excerpts = [...new Map(records.flatMap((record) => record.context?.references ?? []).map((reference) => [reference.id, clipItem(`Approved excerpt offered: ${reference.name}`)])).values()];
+
+      const all = [...decided, ...editorial.map((item) => item.line)];
+      const clipped = all.length > MAX_LIST_ITEMS || outstanding.length > MAX_LIST_ITEMS || questions.length > MAX_LIST_ITEMS;
+      const said = turns.filter((turn) => turn.role === 'user').length;
+      const text = [
+        `Editorial session “${entry.title}”: ${said} message${said === 1 ? '' : 's'} from the author.`,
+        `Proposals produced in it: ${records.length}; changes accepted ${counts.accepted ?? 0}, rejected ${counts.rejected ?? 0}, reverted ${counts.reverted ?? 0}, still pending ${counts.pending ?? 0}.`,
+        `Editorial decisions recorded on the scope’s pieces while it was open: ${editorial.length}.`,
+        clipped ? `Only the first ${MAX_LIST_ITEMS} of each list are shown.` : '',
+        'Prepared from Frige’s records, not by a model. Edit it, then save.',
+      ].filter(Boolean).join(' ');
+      return {
+        conversationId, draft: true, generatedBy: 'frige-records', baseRevision: latestRevision(entry), throughTurnId: turns.at(-1)?.id ?? null, text,
+        decisions: all.slice(0, MAX_LIST_ITEMS), openQuestions: questions.slice(0, MAX_LIST_ITEMS), outstandingProposals: outstanding.slice(0, MAX_LIST_ITEMS),
+        sources: excerpts.slice(0, MAX_LIST_ITEMS), pendingContractIds: [...pendingIds],
+      };
+    });
+  }
+
+  /**
+   * Starts a new conversation in the same scope that continues from a saved
+   * summary of this one (D-027). The new conversation offers the model that
+   * summary as labelled context, never the earlier transcript.
+   *
+   * @param {string} scopeId
+   * @param {string} conversationId  The conversation to continue; it need not be closed.
+   * @param {{ title?: unknown }} [input]  Optional title; "Continued: <title>" by default.
+   * @param {import('./actor.mjs').Actor} [actor]
+   * @returns {Promise<object>}  The new conversation (detail view).
+   * @throws `SUMMARY_REQUIRED` (409) when no summary was saved, plus the errors of `createConversation`.
+   */
+  continueConversation(scopeId, conversationId, input = {}, actor = LOCAL_ACTOR) {
+    return this.exclusive(async () => {
+      const scope = await this.scope(scopeId);
+      const entries = await this.#readIndex(scope);
+      const source = await this.#entry(scope, entries, conversationId);
+      if (!latestRevision(source)) throw sessionError('SUMMARY_REQUIRED', 'Save a summary of this conversation before continuing from it.');
+      const summaryRevision = latestRevision(source);
+      // The title is validated first, so a bad request is refused even when it would otherwise replay.
+      const title = input?.title === undefined ? [...`Continued: ${source.title}`].slice(0, 120).join('') : validateTitle(input.title);
+      // Idempotent by what it continues from: a double submit, or a retry after a lost reply, returns the
+      // conversation already continued from this summary revision instead of creating a second one
+      // (independent review finding, 2026-11-25; Igor's continue is idempotent by key).
+      const existing = Object.values(entries).find((entry) => entry.continuedFrom?.conversationId === conversationId && entry.continuedFrom?.summaryRevision === summaryRevision);
+      if (existing) return { ...(await this.#view(scope, existing, { detail: true })), replayed: true };
+      return this.#create(scope, entries, title, actor, { conversationId, summaryRevision });
+    });
+  }
+
+  /**
+   * The saved summaries a turn in this conversation offers the model: the one
+   * it continued from, then the most recent completed sessions of the scope,
+   * within the byte budget (see `selectSessionSummaries`).
+   *
+   * @param {string} scopeId
+   * @param {string} [conversationId]
+   * @returns {Promise<ReturnType<typeof selectSessionSummaries>>}
+   * @throws `SESSIONS_UNAVAILABLE`.
+   */
+  async sessionSummariesFor(scopeId, conversationId = MAIN_CONVERSATION) {
+    const scope = await this.scope(scopeId);
+    return selectSessionSummaries(Object.values(await this.#readIndex(scope)), conversationId);
   }
   // Artifacts from Hermes replies are product state: metadata and content under
   // .texgraph/artifacts, referenced from turns by id so threads stay small.
@@ -889,17 +1318,25 @@ export class ProjectStore {
   // An answer must match a stored prompt in this scope's thread, once, with valid values.
   // It is reserved while Hermes replies and recorded only once Hermes has it, so a
   // failed turn leaves the question open to answer again.
-  /** Reserves a reviewed answer before issuing its turn. */
-  reserveAnswer(scopeId, promptId, values) {
+  /**
+   * Reserves a reviewed answer before issuing its turn. A prompt belongs to the
+   * conversation it was asked in, so only that conversation's thread is searched.
+   *
+   * @param {string} scopeId
+   * @param {string} promptId
+   * @param {unknown} values  Untrusted answer values, validated against the stored prompt.
+   * @param {string} [conversationId]
+   */
+  reserveAnswer(scopeId, promptId, values, conversationId = MAIN_CONVERSATION) {
     return this.exclusive(async () => {
-      const thread = await this.turns(scopeId, 100_000);
+      const thread = await this.turns(scopeId, 100_000, conversationId);
       const prompt = thread.flatMap((turn) => turn.parts || []).find((part) => part.promptId === promptId);
       if (!prompt) throw Object.assign(new Error('This question is not part of the conversation.'), { code: 'UNKNOWN_PROMPT' });
-      const key = `${(await this.scope(scopeId)).id}::${promptId}`;
+      const key = `${(await this.scope(scopeId)).id}::${conversationId}::${promptId}`;
       if (this.answering.has(key) || thread.some((turn) => turn.kind === 'answer' && turn.promptId === promptId)) throw Object.assign(new Error('This question has already been answered.'), { code: 'ALREADY_ANSWERED' });
       const { normalized, summary } = answerFor(prompt, values);
       this.answering.add(key);
-      return { scopeId, promptId, key, partId: prompt.id, values: normalized, message: summary };
+      return { scopeId, conversationId, promptId, key, partId: prompt.id, values: normalized, message: summary };
     });
   }
   // Committing runs under the same lock as reserving, so a concurrent reservation always
@@ -907,14 +1344,14 @@ export class ProjectStore {
   /** Finalizes a reserved answer after the turn is accepted. */
   commitAnswer(reservation) {
     return this.exclusive(async () => {
-      try { return await this.appendTurn(reservation.scopeId, { role: 'user', kind: 'answer', promptId: reservation.promptId, partId: reservation.partId, values: reservation.values, message: reservation.message }); }
+      try { return await this.appendTurn(reservation.scopeId, { role: 'user', kind: 'answer', promptId: reservation.promptId, partId: reservation.partId, values: reservation.values, message: reservation.message }, reservation.conversationId); }
       finally { this.answering.delete(reservation.key); }
     });
   }
   /** Clears a reserved answer when the turn cannot finish. */
   releaseAnswer(reservation) { this.answering.delete(reservation.key); }
   /** Records the answer to a reviewed prompt. */
-  async recordAnswer(scopeId, promptId, values) { return this.commitAnswer(await this.reserveAnswer(scopeId, promptId, values)); }
+  async recordAnswer(scopeId, promptId, values, conversationId = MAIN_CONVERSATION) { return this.commitAnswer(await this.reserveAnswer(scopeId, promptId, values, conversationId)); }
   // What the director is shown for a scope: the book offers its table of contents,
   // a section or page each of its nodes, within a size budget.
   /** Builds the bounded source and design context for a turn. */
@@ -1233,7 +1670,7 @@ export class ProjectStore {
       if (prior.applying) await this.#settleInterrupted(prior);
       const replaced = supersede(prior, id, createdAt);
       await this.#saveContract(prior);
-      await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId: prior.id, decisions: replaced.map(decisionOf) });
+      await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId: prior.id, decisions: replaced.map(decisionOf) }, prior.conversationId);
     }
 
     const record = buildContract({
@@ -1405,7 +1842,7 @@ export class ProjectStore {
       await this.#saveContract(record, { current: true });
       if (!record.applying) this.#legacyRecoveryNeeded = false;
     }
-    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: decided.map(decisionOf) });
+    await this.appendTurn(scopeId, { role: 'system', kind: 'changes-decided', changeSetId, decisions: decided.map(decisionOf) }, record.conversationId);
     return record;
   }
 
@@ -1588,7 +2025,7 @@ export class ProjectStore {
       // The thread note is a convenience; the contract is the record. A section
       // conversation can disappear when its first piece changes, so do not fail on it.
       const scopeExists = await this.scope(record.scopeId).then(() => true, () => false);
-      if (reverted.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-reverted', changeSetId: record.id, decisions: reverted.map(decisionOf) });
+      if (reverted.length && scopeExists) await this.appendTurn(record.scopeId, { role: 'system', kind: 'changes-reverted', changeSetId: record.id, decisions: reverted.map(decisionOf) }, record.conversationId);
     }
     return record;
   }
@@ -1673,7 +2110,42 @@ export class ProjectStore {
   /** Reads the current proof status and its revision markers. */
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   /** Promotes an accepted proof result to the current preview. */
-  async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
+  async activateBuild(directory, manifest) {
+    return this.exclusive(async () => {
+      const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`);
+      const stagedPdf = `${staged}.pdf`;
+      const stagedMap = `${staged}.json`;
+      const backup = `${staged}.previous.json`;
+      const preview = this.previewPath();
+      const pageMap = path.join(this.buildsDirectory, 'page-map.json');
+      let retainBackup = false;
+      try {
+        await copyFile(path.join(directory, 'document.pdf'), stagedPdf);
+        await writeAtomic(stagedMap, `${JSON.stringify(manifest, null, 2)}\n`);
+        const hadPageMap = await copyFile(pageMap, backup).then(() => true, (error) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        });
+        // A map replacement failure leaves the previous PDF in place.
+        await renameWithRetry(stagedMap, pageMap);
+        try {
+          await renameWithRetry(stagedPdf, preview);
+        } catch (promotionError) {
+          try {
+            if (hadPageMap) await renameWithRetry(backup, pageMap);
+            else await renameWithRetry(pageMap, stagedMap);
+          } catch (rollbackError) {
+            retainBackup = hadPageMap;
+            throw new AggregateError([promotionError, rollbackError], 'Could not finish proof promotion or restore the previous page map.');
+          }
+          throw promotionError;
+        }
+      } finally {
+        const files = retainBackup ? [stagedPdf, stagedMap] : [stagedPdf, stagedMap, backup];
+        await Promise.all(files.map((file) => rm(file, { force: true }).catch(() => {})));
+      }
+    });
+  }
   /**
    * Records the outcome of a build as the project's latest, and links a
    * successful one to the change contracts it proves.
@@ -1766,40 +2238,54 @@ export class ProjectStore {
   async liveBuildStatus() { try { return JSON.parse(await readFile(path.join(this.liveBuildsDirectory, 'latest.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   /** Schedules a proof build using the submitted revision and settings. */
   async queueLiveBuild(scopeId = 'book') {
-    const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
-    const scope = scopeFromGraph(graph, scopeId);
-    if (!proof?.ok || !ProjectStore.aliasesOf(scope).includes(proof.targetScope?.id)) {
-      const error = new Error('Create a successful proof for this exact scope before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
-    }
-    for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
-      if (graph.nodes.find((node) => node.id === nodeId)?.hash !== hash) {
-        const error = new Error('The manuscript changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
+    return this.exclusive(async () => {
+      const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
+      const scope = scopeFromGraph(graph, scopeId);
+      if (!proof?.ok || !ProjectStore.aliasesOf(scope).includes(proof.targetScope?.id)) {
+        throw codedError('Create a successful proof for this exact scope before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_PROOF');
       }
-    }
-    if (!Object.keys(proof.sourceHashes || {}).length) {
-      const error = new Error('This proof has no source manifest. Typeset it again before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
-    }
-    if (proof.pageMap?.mode === 'isolated') {
-      const error = new Error('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_BOOK_ORDER'; throw error;
-    }
-    if ((proof.pageMap?.designHash ?? designHash({})) !== designHash(await this.design())) {
-      const error = new Error('The design profile changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
-    }
-    // The table of contents is source too: an added, removed or reordered node changes the book.
-    const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);
-    if (JSON.stringify(current) !== JSON.stringify(proof.includedNodeIds || [])) {
-      const error = new Error('The table of contents changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
-    }
-    if (!(proof.pageMap?.schemaVersion >= 3 && proof.pageMap.pagination?.verified === true)) {
-      const error = new Error('This proof has no compiler-verified page map. Resolve the pagination warnings and typeset it again.'); error.code = 'PAGINATION_UNVERIFIED'; throw error;
-    }
-    const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
-    const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };
-    await copyFile(this.previewPath(), path.join(this.liveBuildsDirectory, artifact.pdf));
-    await writeAtomic(path.join(this.liveBuildsDirectory, artifact.pageMap), `${JSON.stringify(proof.pageMap || {}, null, 2)}\n`);
-    const record = { schemaVersion: 1, id, status: 'queued-locally', queuedAt: new Date().toISOString(), targetScope: scope, sourceHashes: proof.sourceHashes, proofCompletedAt: proof.completedAt, artifact, note: 'A verified local proof is staged for the configured live-build delivery adapter. No remote build was claimed or started.' };
-    await writeAtomic(path.join(this.liveBuildsDirectory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`);
-    await writeAtomic(path.join(this.liveBuildsDirectory, 'latest.json'), `${JSON.stringify(record, null, 2)}\n`);
-    return record;
+      for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
+        if (graph.nodes.find((node) => node.id === nodeId)?.hash !== hash) {
+          throw codedError('The manuscript changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+        }
+      }
+      if (!Object.keys(proof.sourceHashes || {}).length) {
+        throw codedError('This proof has no source manifest. Typeset it again before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_PROOF');
+      }
+      if (proof.pageMap?.mode === 'isolated') {
+        throw codedError('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_BOOK_ORDER');
+      }
+      if ((proof.pageMap?.designHash ?? designHash({})) !== designHash(await this.design())) {
+        throw codedError('The design profile changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      // The table of contents is source too: an added, removed or reordered node changes the book.
+      const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);
+      if (JSON.stringify(current) !== JSON.stringify(proof.includedNodeIds || [])) {
+        throw codedError('The table of contents changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      if (!(proof.pageMap?.schemaVersion >= 3 && proof.pageMap.pagination?.verified === true)) {
+        throw codedError('This proof has no compiler-verified page map. Resolve the pagination warnings and typeset it again.', 'PAGINATION_UNVERIFIED');
+      }
+      const pageMap = await readJsonIfUsable(path.join(this.buildsDirectory, 'page-map.json'));
+      if (!isDeepStrictEqual(pageMap, proof.pageMap)) {
+        throw codedError('The current proof files do not match the recorded build. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
+      const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };
+      const artifactPdf = path.join(this.liveBuildsDirectory, artifact.pdf);
+      await copyFile(this.previewPath(), artifactPdf);
+      if (pageMap.pdfSha256 !== undefined) {
+        const copiedHash = await readFile(artifactPdf).then((bytes) => createHash('sha256').update(bytes).digest('hex'), () => null);
+        if (copiedHash !== pageMap.pdfSha256) {
+          await rm(artifactPdf, { force: true });
+          throw codedError('The preview PDF differs from the compiler page map. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+        }
+      }
+      await writeAtomic(path.join(this.liveBuildsDirectory, artifact.pageMap), `${JSON.stringify(pageMap, null, 2)}\n`);
+      const record = { schemaVersion: 1, id, status: 'queued-locally', queuedAt: new Date().toISOString(), targetScope: scope, sourceHashes: proof.sourceHashes, proofCompletedAt: proof.completedAt, artifact, note: 'A verified local proof is staged for the configured live-build delivery adapter. No remote build was claimed or started.' };
+      await writeAtomic(path.join(this.liveBuildsDirectory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`);
+      await writeAtomic(path.join(this.liveBuildsDirectory, 'latest.json'), `${JSON.stringify(record, null, 2)}\n`);
+      return record;
+    });
   }
 }

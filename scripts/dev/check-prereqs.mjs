@@ -2,11 +2,13 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { checkIgorPin, checkRuntimeMedia } from './checkout-prereqs.mjs';
 
 // Read-only check of the local toolchain STEX shells out to. Required tools
 // fail the run; recommended and optional tools only report what is missing.
 const root = process.cwd();
 const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+const ciNode = readFileSync(path.join(root, '.node-version'), 'utf8').trim();
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
 
 /** Runs a tool probe and returns its first captured output. */
@@ -37,9 +39,9 @@ const pnpmExpected = manifest.packageManager.split('@')[1];
 
 const checks = [
   {
-    level: 'required', name: 'Node.js', need: `${manifest.engines.node}, 22 or 24 LTS`,
+    level: 'required', name: 'Node.js', need: `${manifest.engines.node} (CI baseline ${ciNode})`,
     /** Executes the requested local operation and reports its result. */
-    run: () => atLeast(version(process.versions.node), nodeMinimum) ? `v${process.versions.node}` : null,
+    run: () => atLeast(version(process.versions.node), nodeMinimum) ? `v${process.versions.node} (CI baseline ${ciNode})` : null,
   },
   {
     level: 'required', name: 'Corepack', need: 'bundled with Node (removed in Node 25+)',
@@ -69,6 +71,18 @@ const checks = [
     level: 'required', name: 'Git LFS', need: 'brand masters and splash media (then run: git lfs install)',
     /** Executes the requested local operation and reports its result. */
     run: () => { const found = probe('git', ['lfs', 'version']); return found && firstLine(found); },
+  },
+  {
+    level: 'required', name: 'Igor revision',
+    run: () => checkIgorPin(root),
+  },
+  {
+    level: 'required', name: 'Suite media',
+    run: () => checkRuntimeMedia(root, 'git lfs pull'),
+  },
+  {
+    level: 'required', name: 'Igor media',
+    run: () => checkRuntimeMedia(path.join(root, 'stex-igor'), 'git -C stex-igor lfs pull'),
   },
   {
     level: 'required', name: 'uv', need: 'Python platform API (test:platform); uv provisions the pinned Python 3.12',
@@ -109,12 +123,13 @@ const checks = [
 
 let failed = false;
 for (const check of checks) {
-  const found = check.run();
+  const result = check.run();
+  const found = typeof result === 'object' && result !== null ? result.ok : result;
   if (!found && check.level === 'required') failed = true;
   const status = found ? 'ok  ' : check.level === 'required' ? 'FAIL' : 'miss';
-  console.log(`${status}  ${check.name.padEnd(18)} ${found || `missing (${check.level}): ${check.need}`}`);
+  console.log(`${status}  ${check.name.padEnd(18)} ${found || result?.problem || `missing (${check.level}): ${check.need}`}`);
 }
 if (failed) {
-  console.log('\nA required tool is missing; see "Prerequisites" in README.md.');
+  console.log('\nSee "Prerequisites" and "Authorized checkout" in docs/DEVELOPER-GUIDE.md.');
   process.exit(1);
 }
