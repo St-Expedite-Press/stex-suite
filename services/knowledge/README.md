@@ -40,6 +40,20 @@ source access before offering references. Access checks cover at most 40
 sources, four concurrently, within six seconds; unchecked references remain
 unavailable. This is deliberate bounded access checking, not automatic indexing.
 
+Hosted Pantheon serves knowledge as personal state
+([D-028](../../docs/program/DECISIONS.md#d-028--a-verified-actor-reaches-the-engines)).
+`src/library.mjs` (`openKnowledgeLibrary`) chooses the journal for the
+signed-in username the host admitted: `STEX_KNOWLEDGE_DATA_DIR/people/<first
+32 hex of sha256(username)>/`, each with its own writer lock, opened lazily,
+at most 32 open at once (least-recently-used idle journals are closed first,
+releasing their locks; none is closed while in use). A journal that cannot
+open (lock held, corrupt) fails closed with `503` for that person only. In
+local mode the library opens the single configured journal as before and
+ignores the user. The pre-existing root journal of a hosted data directory is
+never moved, rewritten or deleted: `STEX_KNOWLEDGE_LEGACY_OWNER` names the one
+username whose requests use it; otherwise it is unreachable and the host
+reports `legacyJournal: "unassigned"` (presence only).
+
 The Graph UI supports explicit source acceptance, user assertions,
 evidence-backed inferences, correction/rejection, withdrawal and renewed
 consent, export and erasure. Project selection uses real engine summaries;

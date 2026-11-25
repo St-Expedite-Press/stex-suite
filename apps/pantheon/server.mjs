@@ -8,7 +8,8 @@ import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage, directorPage, graphPage } from './src/pages.mjs';
 import { isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
-import { openKnowledge } from '../../services/knowledge/src/projections.mjs';
+import { openKnowledgeLibrary } from '../../services/knowledge/src/library.mjs';
+import { actorHeaders, actorSecret, stripActorHeaders } from './src/actor.mjs';
 import { knowledgeApi } from './src/knowledge-api.mjs';
 import { createHostedGate, createIgorSessionCheck, hostedConfig, HostedRefusal, withoutIgorSession } from './src/hosted.mjs';
 
@@ -42,13 +43,20 @@ const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://1
 // session Igor confirms. An invalid public origin stops startup.
 const hosted = hostedConfig(process.env);
 const admitHosted = hosted ? createHostedGate(hosted, { port, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
+// stex.platform.actor.v1 sender (D-028). The secret is validated here so a short
+// one refuses startup. Hosted without it sends no actor, so engines cannot
+// attribute requests to a person: that is allowed but warned about.
+const platformActorSecret = actorSecret(process.env);
+if (hosted && !platformActorSecret) console.warn('STEX_PLATFORM_ACTOR_SECRET is not set: hosted Pantheon will not tell the engines who is signed in, so they cannot attribute requests to a person.');
 const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
 };
-const knowledge = await openKnowledge({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '' });
+// Knowledge is personal state (D-028): hosted, one journal per signed-in person
+// (services/knowledge/src/library.mjs); local, the single journal exactly as before.
+const knowledge = await openKnowledgeLibrary({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '', hosted: Boolean(hosted), legacyOwner: process.env.STEX_KNOWLEDGE_LEGACY_OWNER || '' });
 // Deferred studios get no target, so the knowledge API never contacts them.
-const knowledgeRoute = knowledgeApi({ knowledge, targets: Object.fromEntries(Object.entries(proxyTargets).filter(([id]) => !deferredHere.has(id))) });
+const knowledgeRoute = knowledgeApi({ library: knowledge, targets: Object.fromEntries(Object.entries(proxyTargets).filter(([id]) => !deferredHere.has(id))) });
 // The shared design system is served from its own package; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
@@ -105,17 +113,22 @@ function designSystemFile(pathname) {
 }
 
 http.createServer(async (request, response) => {
+  // The actor headers are Pantheon's alone to set: drop any a client sent, in every mode, before routing.
+  stripActorHeaders(request.headers);
+  let user = null;
   // Refused before routing: the proxy would otherwise lend a rebound page a loopback Host.
   if (admitHosted) {
-    try { await admitHosted(request); }
+    try { ({ user } = await admitHosted(request)); }
     catch (error) {
       if (error instanceof HostedRefusal && error.location) { response.writeHead(error.status, { location: error.location, 'cache-control': 'no-store' }); response.end(); return; }
       send(response, error instanceof HostedRefusal ? error.status : 403, { error: error instanceof HostedRefusal ? error.message : 'Request refused.' }); return;
     }
   } else if (!isLoopbackHost(request.headers.host)) { send(response, 403, { error: 'Pantheon answers only on its local address.' }); return; }
   const url = new URL(request.url, `http://${request.headers.host}`);
+  // Set only on requests proxied to an engine (never Igor), only for an admitted signed-in user, only with the secret.
+  const actor = hosted ? actorHeaders(user, platformActorSecret) : null;
   try {
-    if (url.pathname === '/api/knowledge/v1' || url.pathname.startsWith('/api/knowledge/v1/')) return await knowledgeRoute(request, response, url);
+    if (url.pathname === '/api/knowledge/v1' || url.pathname.startsWith('/api/knowledge/v1/')) return await knowledgeRoute(request, response, url, { user: hosted ? user : null, actor });
     if (url.pathname === '/api/platform/v1' || url.pathname.startsWith('/api/platform/v1/')) {
       const upstreamPath = platformPath(url.pathname);
       if (!upstreamPath) return send(response, 404, { error: 'Not found.' });
@@ -176,6 +189,7 @@ http.createServer(async (request, response) => {
       if (cookie === undefined) delete request.headers.cookie; else request.headers.cookie = cookie;
     }
     if (application) {
+      if (actor && application.id !== 'igor') Object.assign(request.headers, actor);
       try { await proxyApplication(request, response, proxyTargets[application.id], url, application.route); }
       catch (error) { if (!response.headersSent) send(response, error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? 400 : 502, { error: error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? error.message : `${application.name} is not available locally.` }); }
       return;
@@ -184,6 +198,7 @@ http.createServer(async (request, response) => {
     if (url.pathname === '/api/books' || url.pathname.startsWith('/api/books/')) {
       const upstream = new URL(url);
       upstream.pathname = '/frige/api/stex/legacy-books/v1' + url.pathname.slice('/api/books'.length);
+      if (actor) Object.assign(request.headers, actor);
       try { await proxyApplication(request, response, proxyTargets.frige, upstream, '/frige/'); }
       catch { if (!response.headersSent) send(response, 502, { error: 'Frige is not available locally.' }); }
       return;
