@@ -4,8 +4,8 @@
 
 | Tool | Use |
 | --- | --- |
-| Node.js 22.13+ and Corepack | Use Node 22 or 24 LTS with the pinned pnpm 9.15.9. |
-| uv and Python | uv installs Python 3.12 from the repository pin and uses the frozen lockfile. |
+| Node.js and Corepack | Use [.node-version](../.node-version) to reproduce CI. Node 24 LTS also works for local development. Corepack selects pnpm 9.15.9 from [package.json](../package.json). |
+| uv and Python | CI uses uv 0.11.26. [The Python pin](../.python-version) selects the 3.12 series and [uv.lock](../uv.lock) records the locked dependencies. |
 | Git and Git LFS | Git records Seaxneat revisions. LFS retrieves approved media. |
 | LuaLaTeX and pdffonts | Install fontspec, microtype and geometry for Frige proof checks. Use pdffonts for font preflight. |
 | Chrome or Edge | Browser acceptance. Set STEX_BROWSER to the executable when discovery fails. |
@@ -20,10 +20,13 @@ Igor pin. Initialize Igor and fetch the required LFS media in both repositories.
 ```powershell
 git clone https://github.com/St-Expedite-Press/stex-suite.git
 Set-Location stex-suite
+git lfs install --local
 git submodule update --init stex-igor
+git -C stex-igor lfs install --local
 git lfs pull
 git -C stex-igor lfs pull
 corepack pnpm install --frozen-lockfile
+uv sync --frozen
 corepack pnpm check:prereqs
 corepack pnpm dev:alpha
 ```
@@ -32,7 +35,10 @@ Open http://127.0.0.1:4300/. The launcher builds the workspaces and Igor,
 starts the loopback services and selects simulated inference. It starts the
 FastAPI platform when the locked Python environment is available. Stop the
 stack with Ctrl+C. The nested Hermes source is needed for work on the
-native runtime itself.
+native runtime itself. Preflight checks that the Igor checkout matches the
+suite's committed pin and that both repositories have their application
+media locally. Preserve local Igor changes before correcting a mismatched
+checkout.
 
 ### Connect an existing inference gateway
 
@@ -50,6 +56,22 @@ Igor conversations through that service. Keep upstream Hermes and model
 provider credentials in their owning processes.
 
 Regular `corepack pnpm dev:alpha` still uses simulated inference.
+
+## Version and release records
+
+The suite's `stex-igor` gitlink selects the exact private source revision
+for integrated builds. Each checkout uses its own `.node-version` for
+standalone CI. Verify both workspaces on the intended Node patch before
+updating those files. Corepack resolves each workspace's package manager
+and each lockfile defines its dependencies. HTTP and stored-data contract
+versions are defined under [protocol/](../protocol/README.md).
+
+The hosted Igor and Pantheon releases each have a Git SHA and a separate
+generation sequence. Their active records on the VM are
+`/opt/stex/ACTIVE.json` and `/opt/stex-pantheon/ACTIVE.json`.
+The `0.1.0` values in the private package manifests are package metadata.
+See [Status](STATUS.md) for the current deployment and
+[verification evidence](verification/README.md) for what ran.
 
 ## Configuration
 
@@ -96,6 +118,7 @@ runtime toolsets are empty.
 | --- | --- |
 | `corepack pnpm test` | Full deterministic suite including charter, platform, asset and private-pin checks |
 | `corepack pnpm test:<suite>` | Owning suite for a scoped change |
+| `corepack pnpm check:prereqs` and `test:setup` | Check the actual checkout and exercise the missing and mismatched setup cases |
 | `corepack pnpm build:pantheon` | TypeScript check and build of the Seaxneat workspace |
 | `corepack pnpm build:igor` | Build the private Igor renderer before its browser checks |
 | `corepack pnpm verify:splash` and `verify:home` | Public entrance and project pages. Set STEX_VERIFY_PLATFORM=off to exercise project fallback. |

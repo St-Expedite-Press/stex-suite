@@ -15,10 +15,10 @@ then use a report here to inspect the command output and limits behind it.
 | Frige history interface and Igor document excerpts | [Release evidence](frige-editorial-release.md) | Verified source and attachment workflows with synthetic documents. |
 | Igor document search, read and MarkItDown MCP | [VM staging evidence](igor-document-tools-stage.md) | Native Hermes staging used a synthetic model and disposable documents. |
 | Frige uploads through MarkItDown | [Conversion evidence](frige-markitdown-uploads.md) | Synthetic VM acceptance; real conversions of synthetic PDF and DOCX |
-| Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Integrated locally on `docs/program-persistent-workspaces`; synthetic books, fake and stub transports; Chrome only; not pushed or deployed |
-| Igor working sessions (program A2) | [Sessions evidence](igor-working-sessions-a2.md) | stex-igor local branch `feat/igor-working-sessions`; fake transport and stub inference; not released |
+| Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Suite PR 23 is the candidate. Chrome used synthetic books and fake or stub transport. |
+| Igor working sessions (program A2) | [Sessions evidence](igor-working-sessions-a2.md) | Hosted generation 24 read back from the VM. Browser workflow used stub inference locally. |
 | Seaxneat preview and vault adapter hardening (program S0 + K0) | [Hardening evidence](security-hardening-s0-k0.md) | No OS isolation for builds (S1); two symlink tests skipped where symlinks cannot be created |
-| Platform actor and personal knowledge (program D2) | [Actor evidence](platform-actor-d2.md) | Verified over HTTP with stub engines; no hosted browser run; needs the secret in both env files at release |
+| Platform actor and personal knowledge (program D2) | [Actor evidence](platform-actor-d2.md) | Verified over HTTP with stub engines. The host configuration is staged for the Pantheon and Frige upgrade. |
 | Igor document runtime in production | [Activation evidence](igor-document-runtime-activation.md) | Synthetic VM acceptance (31 checks) before activation; no paid verification turn |
 | Public source release | [Preparation and approval gates](public-source-release.md) | Local candidate for source reading |
 | Igor free mode, model prices and descriptions | [Free mode evidence](igor-free-mode-pricing.md) | Generation 15 read-back and profile verification; feature checks use stub catalog and fake transport |
@@ -48,6 +48,27 @@ then use a report here to inspect the command output and limits behind it.
 | Igor application (I1) | [Igor I1 report](igor-i1-application.md) | Browser evidence on stub inference; five live turns on a local Windows gateway |
 | Command center | [Command-center report](command-center-report.md) | Browser evidence uses the fake transport |
 | Splash and identity | [Identity and splash](identity-splash-report.md) | Chrome coverage; Safari and Firefox remain unrun |
+
+## Developer setup and release identity
+
+Read back on 2026-11-25, hosted Igor was generation 24 at `8b7a789` and
+hosted Pantheon and Frige were generation 2 at `1350391`. Suite PR 23 pins
+that Igor release. The VM's Hermes checkout matched Igor's runtime pin
+`e76fbd80`. CI used Node 22.23.5 for both repositories, while the VM was on
+22.23.4. The developer setup selects 22.23.5 for reproducible local checks.
+
+- The suite preflight checked the committed Igor revision and 55 runtime
+  media files across both checkouts. `test:setup` exercised mismatched and
+  missing Igor checkouts and unresolved and missing LFS media.
+- The full suite and standalone Igor tests ran locally on Node 22.23.5.
+  The suite had the three existing Windows skips. Standalone Igor had
+  twelve platform-dependent document tests skipped and one upstream
+  auxiliary-task check skipped without the nested Hermes source.
+- The standalone type check and build passed. A disposable HTTP smoke
+  check started the built renderer and completed a simulated reply.
+- Independent review reran preflight and checked both release command
+  blocks. The steps now verify the approved SHA against freshly fetched
+  main before packaging. The pinned installer archive had the expected layout.
 
 ## Historical records
 
