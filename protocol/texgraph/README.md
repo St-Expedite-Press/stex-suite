@@ -138,12 +138,37 @@ summaryRevision, text, decisions, openQuestions, outstandingProposals}]`.
   it beside `turns` and `message`, never inside them, and never an earlier
   conversation's transcript. A gateway should present it to the director as
   data under its own label.
-- Status: Frige sends the field. The deployed gateway ignores fields it does
-  not know, so it has no effect until the stex-igor adapter forwards it
-  (being added separately), and the reply's `meta.forwardedContext` does not
-  yet report it. Frige therefore records what it sent, unconfirmed, on the
-  turn (`offered.sessionSummaries`) and in the contract
+- Status: Frige sends the field. The **deployed** gateway ignores fields it
+  does not know, so the field has no effect there yet. Frige therefore
+  records what it sent, unconfirmed, on the turn
+  (`offered.sessionSummaries`) and in the contract
   (`context.sessionSummaries`, category `session-summary`).
+- **Gateway behaviour** (stex-igor `feat/igor-working-sessions`, `c5f3da3`;
+  local branch, not released). The field is read for `scope-turn` requests
+  only.
+  - **Input.** It must be an array, and at most the first three items are
+    read, in order.
+  - **Dropped items.** An item is dropped without notice if:
+    - it is not an object;
+    - `conversationId` does not match `[A-Za-z0-9_-]{1,64}`;
+    - `lifecycle` is not a D-027 state;
+    - `summaryRevision` is not an integer of at least 1;
+    - `text` is empty or not a well-formed string.
+  - **Clipping.** `text` is clipped to 4,000 characters and `title` to 120.
+    Each list keeps at most 20 non-empty string items of up to 300
+    characters each. Unknown fields are not forwarded.
+  - **Size.** Items are added while the total stays at or under 12,000
+    UTF-8 bytes.
+  - **Forwarding.** They go forward as `context.legacy.sessionSummaries =
+    {category: "session-summary", entries}`.
+  - **Trimming.** Over the 90,000-byte target, trimming takes outline
+    entries first, then session summaries from the end, then approved
+    contracts, then excerpts. Summaries are advisory context from other
+    conversations; contracts are decisions on this book.
+  - **Meta.** `meta.forwardedContext.sessionSummaries` is the count
+    forwarded, and is absent when none were forwarded.
+  - **Instructions.** The adapter's trusted instructions do not yet mention
+    the category.
 
 **Reply `layout`** (optional, added 2026-11-17) — one proposed change to the
 layout override of the conversation's own section or piece:

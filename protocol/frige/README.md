@@ -335,7 +335,7 @@ above. A `conversationId` is `main` or `c-` and sixteen hex digits.
   are the [platform actor](../platform/README.md#platform-actor-v1)'s id, or
   `local` in local mode. With `STEX_PLATFORM_ACTOR_SECRET` set, every request
   that changes state (any POST, PUT, PATCH or DELETE, on these routes and all
-  others except the server-to-server knowledge observation checkpoint) needs a
+  others, including the knowledge observation checkpoint) needs a
   verified actor or is refused `401 ACTOR_REQUIRED`; reads are unchanged.
 - **Access.** The project password applies to every route above exactly as
   to the other scope routes.

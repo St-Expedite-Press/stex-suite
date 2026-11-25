@@ -104,9 +104,9 @@ test('with the secret set, every state-changing Frige route refuses a request wi
     const refusal = await fetch(`${base}${route}`, { method, headers: json, body: '{}' });
     assert.equal(refusal.status, 401, `${method} ${route}`); assert.equal((await refusal.json()).code, 'ACTOR_REQUIRED', `${method} ${route}`);
   }
-  // The knowledge observation checkpoint is a server-to-server call that carries no actor: it is not refused for that reason.
+  // The knowledge observation checkpoint has no exemption: Pantheon forwards the actor on it (D-028), so a bare call is refused.
   const observation = await fetch(`${base}/api/stex/context/v1/projects/none/observation`, { method: 'POST', headers: json, body: '{"sources":[]}' });
-  assert.notEqual((await observation.json().catch(() => ({}))).code, 'ACTOR_REQUIRED');
+  assert.equal(observation.status, 401); assert.equal((await observation.json()).code, 'ACTOR_REQUIRED');
 
   // Reads keep today's behaviour without an actor.
   assert.equal((await fetch(`${base}/api/stex/publishing/v1/books`)).status, 200);

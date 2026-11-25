@@ -141,7 +141,7 @@ initialized in this worktree, so Igor's own calls were not read.
 | Caller | Route | Through Pantheon? | Effect of enforcement |
 | --- | --- | --- | --- |
 | The browser workspace and library | Publishing v1, `/api/books`, legacy-books, unlock and lock | Yes (`/frige/…`, `/api/books`) | Needs Pantheon to send the actor (its part of D-028) |
-| Pantheon's knowledge API | `POST /api/stex/context/v1/projects/<id>/observation` (`apps/pantheon/src/knowledge-api.mjs`) | No: server to server | **Exempted** from `ACTOR_REQUIRED`, because it sends no actor and refusing it would break accepting knowledge sources. It writes only Frige's own checkpoint file, never manuscript source |
+| Pantheon's knowledge API | `POST /api/stex/context/v1/projects/<id>/observation` (`apps/pantheon/src/knowledge-api.mjs`) | No: server to server | Exempted on the A1 branch. At integration, D2 made Pantheon forward the signed-in actor on this call, so the coordinator **removed the exemption**. A bare call is now refused, and `apps/frige/test/actor.test.mjs` asserts that |
 | The Python platform API | `GET /frige/api/stex/projects` | No | Read; unchanged |
 | The knowledge page in the browser | `GET /<studio>/api/stex/projects` | Yes | Read; unchanged |
 | Igor (`stex-igor`) | Project-context reads | No | Reads, as the contract says; not verified here for any POST |

@@ -674,8 +674,6 @@ const STATUS_BY_CODE = {
   CONVERSATION_NOT_FOUND: 404, SESSIONS_UNAVAILABLE: 503, INVALID_SESSION_REQUEST: 400, INVALID_SUMMARY: 400, ACTOR_REQUIRED: 401,
 };
 
-/** The context-v1 observation route, a server-to-server checkpoint that carries no actor. */
-const KNOWLEDGE_OBSERVATION = /^\/api\/stex\/context\/v1\/projects\/[a-z0-9][a-z0-9-]{0,62}\/observation$/;
 const legacyBooks = legacyBooksApi(booksDirectory, { isProtected: (id) => projectAccess.isProtected('book', id) });
 await defaultStore.initialize();
 http.createServer(async (request, response) => {
@@ -692,11 +690,11 @@ http.createServer(async (request, response) => {
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
     // The platform actor (D-028, stex.platform.actor.v1). Local mode (no secret) ignores actor headers and acts as `local`.
-    // With the secret set, every state-changing request needs a verified actor, except the knowledge observation checkpoint:
-    // Pantheon's knowledge API calls it server to server and sends no actor (reported in docs/verification/frige-sessions-a1.md).
+    // With the secret set, every state-changing request needs a verified actor, with no exceptions. Pantheon's knowledge API
+    // forwards the signed-in actor on its server-to-server observation POST (D-028), so that checkpoint is covered too.
     const actor = resolveActor(request.headers);
     request.actor = actor;
-    if (actorRefused(request.method, actor) && !KNOWLEDGE_OBSERVATION.test(url.pathname)) return json(response, 401, { error: 'A signed-in person is required to change this.', code: 'ACTOR_REQUIRED' });
+    if (actorRefused(request.method, actor)) return json(response, 401, { error: 'A signed-in person is required to change this.', code: 'ACTOR_REQUIRED' });
     if (url.pathname.startsWith('/api/stex/context/v1/')) {
       // Server-to-server readers carry no unlock cookie, so a protected project is unavailable to them.
       const contextId = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/|$)/.exec(url.pathname)?.[1];
