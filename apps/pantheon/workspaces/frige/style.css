@@ -103,8 +103,8 @@ h1, h2, h3, p { margin-top: 0; }
 .view-switch button[aria-selected="true"] { background: var(--stex-surface-raised); color: var(--stex-text); box-shadow: inset 0 -2px 0 var(--stex-accent); }
 .view-switch button:focus-visible { outline: 2px solid var(--stex-focus); outline-offset: -2px; }
 .source-panel { flex: 1; display: flex; flex-direction: column; gap: var(--stex-space-2); min-height: 0; }
-:is(#source-history, #attachment-review) { box-sizing: border-box; width: min(46rem, calc(100% - 2rem)); max-height: 88dvh; overflow: auto; padding: var(--stex-space-4); background: var(--stex-surface); color: var(--stex-text); border: var(--frige-rule); }
-:is(#source-history, #attachment-review)::backdrop { background: color-mix(in srgb, var(--stex-bg) 80%, transparent); }
+:is(#source-history, #attachment-review, #session-name, #session-summary) { box-sizing: border-box; width: min(46rem, calc(100% - 2rem)); max-height: 88dvh; overflow: auto; padding: var(--stex-space-4); background: var(--stex-surface); color: var(--stex-text); border: var(--frige-rule); }
+:is(#source-history, #attachment-review, #session-name, #session-summary)::backdrop { background: color-mix(in srgb, var(--stex-bg) 80%, transparent); }
 .history-heading { display: flex; justify-content: space-between; align-items: start; gap: var(--stex-space-2); }
 .history-list { display: grid; gap: var(--stex-space-2); padding-inline-start: var(--stex-space-4); }
 .history-list button { text-align: start; }
@@ -404,3 +404,31 @@ h1, h2, h3, p { margin-top: 0; }
 .unlock-actions { display: flex; flex-wrap: wrap; gap: var(--stex-space-2); }
 .unlock-state:empty { display: none; }
 .unlock-state.failed { color: var(--stex-error); }
+
+/* ---- Editorial conversations: switcher, actions and sheets (D-027) ------------
+   Same bold boxed menus as Settings; the lists and notices reuse the thread's tokens. */
+.session-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--stex-space-2); padding-block: var(--stex-space-2); border-bottom: var(--frige-rule); }
+.session-bar[hidden], .session-note[hidden] { display: none; }
+.session-menu summary { max-width: min(22rem, calc(100vw - 2 * var(--stex-space-4))); overflow: hidden; text-overflow: ellipsis; }
+.session-menu .settings-items { left: 0; right: auto; width: max-content; min-width: 14rem; max-width: calc(100vw - 2 * var(--stex-space-4)); max-height: 60dvh; overflow: auto; white-space: normal; }
+.session-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.session-choice { display: grid; justify-items: start; gap: 2px; width: 100%; min-height: 44px; padding-block: 6px; text-align: start; border-color: transparent; }
+.session-choice[aria-current="true"] { border-color: var(--stex-accent); }
+.session-choice-title { color: var(--stex-text); font: 500 14px/1.25 var(--stex-font-sans); overflow-wrap: anywhere; }
+.session-choice-meta { color: var(--stex-text-secondary); font: 400 12px/1.3 var(--stex-font-sans); }
+.session-archived { display: flex; align-items: center; gap: var(--stex-space-2); min-height: 40px; padding: 0 var(--stex-space-3); color: var(--stex-text-secondary); font: 400 13px/1.2 var(--stex-font-sans); }
+.session-items > .quiet-button, .session-action { width: 100%; justify-content: flex-start; border-color: transparent; }
+.session-action:is(:hover, :focus-visible), .session-choice:is(:hover, :focus-visible) { background: var(--stex-surface-hover); }
+.session-note { display: grid; gap: var(--stex-space-2); justify-items: start; margin: var(--stex-space-2) 0 0; padding: var(--stex-space-2) var(--stex-space-3); border: var(--frige-rule); color: var(--stex-text-secondary); font: 400 13px/1.45 var(--stex-font-sans); }
+.session-note p { margin: 0; }
+.session-note-actions { display: flex; flex-wrap: wrap; gap: var(--stex-space-2); }
+.session-error { color: var(--stex-error); }
+.session-form { display: grid; gap: var(--stex-space-2); }
+.session-form label { color: var(--stex-text-secondary); font: 600 12px/1.2 var(--stex-font-sans); }
+.session-form[hidden], .session-closing-note[hidden] { display: none; }
+.session-form-actions { display: flex; flex-wrap: wrap; gap: var(--stex-space-2); }
+.session-closing-note { margin: 0 0 var(--stex-space-2); padding: var(--stex-space-2) var(--stex-space-3); border: var(--stex-hairline) solid var(--stex-accent); font: 400 13px/1.45 var(--stex-font-sans); }
+#session-name-status, #session-summary-status, #session-summary-source { min-height: 1.3em; margin: 0; color: var(--stex-text-secondary); font: 400 13px/1.4 var(--stex-font-sans); }
+#session-name-status.failed, #session-summary-status.failed { color: var(--stex-error); }
+#session-name-form button, .session-form-actions button { justify-self: start; }
+#message:disabled { cursor: not-allowed; opacity: .6; }

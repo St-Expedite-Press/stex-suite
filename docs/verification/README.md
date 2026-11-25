@@ -15,6 +15,7 @@ then use a report here to inspect the command output and limits behind it.
 | Frige history interface and Igor document excerpts | [Release evidence](frige-editorial-release.md) | Verified source and attachment workflows with synthetic documents. |
 | Igor document search, read and MarkItDown MCP | [VM staging evidence](igor-document-tools-stage.md) | Native Hermes staging used a synthetic model and disposable documents. |
 | Frige uploads through MarkItDown | [Conversion evidence](frige-markitdown-uploads.md) | Synthetic VM acceptance; real conversions of synthetic PDF and DOCX |
+| Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Branch `feat/frige-sessions-a1`; synthetic books, fake and stub transports; Chrome only; not merged or deployed |
 | Igor document runtime in production | [Activation evidence](igor-document-runtime-activation.md) | Synthetic VM acceptance (31 checks) before activation; no paid verification turn |
 | Public source release | [Preparation and approval gates](public-source-release.md) | Local candidate for source reading |
 | Igor free mode, model prices and descriptions | [Free mode evidence](igor-free-mode-pricing.md) | Generation 15 read-back and profile verification; feature checks use stub catalog and fake transport |
