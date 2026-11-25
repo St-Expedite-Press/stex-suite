@@ -13,6 +13,12 @@ text, transcripts, credentials, locks for engine operations, or a second
 canonical manuscript/workspace. An accepted reference is not current access;
 the host must recheck owner access/revisions before display or context use.
 
+D-028 selects personal journals from the account admitted by the host.
+The legacy journal stays in place and is assigned explicitly. Future
+shared relations and contributions require their own audience and
+provenance. A project connection or an actor assertion grants no access
+to another person's knowledge.
+
 The User Graph and Pantheon Knowledge Base must be co-extensional in relevant
 entities, interoperable through stable references/contracts/provenance and
 co-evolutionary through authorized updates. Explicit assertions remain

@@ -8,6 +8,7 @@ then use a report here to inspect the command output and limits behind it.
 
 | Area | Report | Current limit |
 | --- | --- | --- |
+| Next-wave reconciliation | [Three-repository baseline](next-wave-a-reconciliation.md) | Exact release readback, local workflow evidence, separate Press identities and pending hosted suite acceptance |
 | Hosted Pantheon and Frige behind Igor sign-in | [Hosted Pantheon evidence](hosted-pantheon.md) | Suite PR 13, stex-igor PR 6; hand-installed build of `main` (no CI deploy); Seaxneat and the platform API not hosted; no live model turn |
 | Frige and Igor shared gateway launch | [Gateway verification](frige-igor-gateway.md) | Disposable local services, simulated transport and no live model calls |
 | Frige editorial systems foundations | [Phase A evidence](frige-editorial-foundations.md) | Source-save safety and baseline checks on disposable manuscripts |

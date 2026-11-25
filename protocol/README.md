@@ -21,6 +21,11 @@ runtime memory or implementation modules as an integration API.
 Contracts are versioned before two products rely on them. They describe data
 ownership and failure behavior; they do not grant authority.
 
+The [resource model](../docs/architecture/resource-model.md) records current
+record owners and candidate envelopes for knowledge, retrieval, connectors
+and bounded runs. It identifies the proof needed before those interfaces
+are added here.
+
 The [platform transition](../docs/PLATFORM-TRANSITION.md) records the implemented
 publishing, contextual Igor, and optional metadata knowledge boundaries.
 Existing registry, project, Igor and Hermes versions keep their meaning.

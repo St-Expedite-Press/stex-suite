@@ -79,8 +79,9 @@ and authorization.
 ### The stex-igor submodule
 
 `stex-igor/` is the separate repository `St-Expedite-Press/stex-igor`. It
-holds everything that runs on the hosted VM: Igor, the inference service, and
-the Hermes profile specifications, skills, and runtime pin.
+owns hosted Igor, the inference service, Hermes configuration and runtime
+pin, and VM release tooling. Pantheon and Frige are built from suite source
+and ship through their own hosted release process.
 
 - **Get it** with `git clone --recursive` or
   `git submodule update --init`. Git LFS is required for the masthead media.
@@ -146,6 +147,16 @@ references where useful; resolving one is an operation of the owning app.
 Pantheon lists projects only through each studio's read-only
 `stex.projects.summary.v1` endpoint (`protocol/projects`); it never reads a
 studio's files.
+
+Igor owns hosted accounts and private working sessions. Pantheon admits
+the Igor-authenticated request and sends the D-028 actor assertion to
+Frige. Frige owns its shared editorial sessions and project unlock
+checks. D-027 aligns lifecycle semantics across those session stores.
+The Press publishing and commercial stack has an independent authority
+and does not share suite accounts, uploads, or operational state.
+
+See the [resource model](docs/architecture/resource-model.md) for proposed
+cross-application references and the gates for new persistent stores.
 
 The target User Graph is a persistent digital twin and second brain grounded
 in explicit assertions, provenance, and revisable inferences. It and the
@@ -215,7 +226,7 @@ The company (team) configuration is one shared capability, hosted on the VM
   (`/team` hosted, `/igor/team` in Pantheon). Pantheon's shell links to it
   as a global setting, and each application's menu opens it filtered to its
   own tasks (`?app=`). Product servers relay with the shared secret and the
-  signed-in actor. Pantheon and browsers hold no secret.
+  signed-in actor. Pantheon and browsers hold no inference secret.
 - **Grok by default; never Claude.** Defaults are xAI Grok models through
   OpenRouter. A user may choose any model in OpenRouter's catalog for a task,
   but Anthropic and Claude models, and routers that choose a model for
@@ -252,6 +263,9 @@ The company (team) configuration is one shared capability, hosted on the VM
   press-readiness claim.
 - AI edits are proposals with a target, base revision, visible diff, and
   explicit author acceptance. Stale writes fail safely.
+- Frige owns uploaded originals, conversion receipts, excerpt approval,
+  and the editorial session record. Completing a session leaves the
+  author's proposal decisions intact.
 
 ### Seaxneat
 
@@ -276,6 +290,9 @@ The company (team) configuration is one shared capability, hosted on the VM
 - Legacy `/api/books` routes are compatibility proxies to Frige's
   `/api/stex/legacy-books/v1` boundary. Pantheon must never implement their
   storage operations or use a books-directory setting to access engine files.
+- Under D-028, strip client-supplied actor headers before routing. Keep the
+  platform actor secret server-side and assert the admitted actor only to
+  registered receivers. This boundary grants no project privilege.
 
 ## Operating loops
 

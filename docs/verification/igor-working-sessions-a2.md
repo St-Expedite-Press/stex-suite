@@ -1,8 +1,8 @@
 # Igor working sessions (program A2)
 
-**Date:** 2026-11-25. **State:** local branches only. Nothing is pushed,
-released or deployed. Tests used the fake transport or a stub inference
-service; no provider was called.
+Development and release evidence from 2026-11-25. Igor generation 24
+includes working sessions. Development workflow checks used fake or
+stub inference. See the hosted release section for the production readback.
 
 | Repository | Branch | Commits |
 | --- | --- | --- |

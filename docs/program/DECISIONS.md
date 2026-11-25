@@ -575,6 +575,24 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   will be a further owner kind beside a person, never a precondition for
   a single user.
 
+## D-030 — Common resource references and owner-scoped knowledge
+
+- **Status.** Wave B engineering design, 2026-11-25. The
+  [resource model](../architecture/resource-model.md) separates current
+  contracts from proposed envelopes and records the acceptance sequence.
+- **Decision.** Resolve a resource through its owning application and
+  versioned reference. Keep engine records authoritative. Shared search,
+  links and Markdown exports are derived projections. A knowledge
+  contribution carries evidence, revision, provenance, explicit audience,
+  and user approval. A relationship grants no access to its endpoints.
+- **Storage.** Retain D-029. Relational tables and rebuildable graph and
+  search projections are the first M3 candidate. Evaluate lexical retrieval
+  on an authorization-aware labelled collection before vector expansion.
+  A dedicated graph database needs a measured workload and parity evidence.
+- **Adoption.** The [reference assessment](../architecture/second-brain-reference.md)
+  applies the linked-wiki, bounded execution, and validation patterns to
+  STEX. Own code and versioned interfaces provide the runtime boundary.
+
 ## Open decisions for the owner
 
 See [the handoff](HANDOFF.md#current-work).

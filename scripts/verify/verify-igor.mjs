@@ -175,11 +175,24 @@ async function main() {
     await tab.evaluate(`(() => { const button = [...document.querySelectorAll('.igor-action')].find((node) => /delete/i.test(node.textContent)); button.focus(); button.click(); })()`);
     check(await waitFor(`document.querySelector('dialog.igor-confirm[open]')`), 'Delete did not open the confirmation dialog.');
     check(await waitFor(`document.activeElement?.textContent === 'Cancel'`, 2000), 'The confirmation dialog did not focus the safe choice first.');
-    await tab.evaluate(`[...document.querySelectorAll('dialog.igor-confirm[open] button')].find((button) => button.textContent === 'Cancel').click()`);
+    // Native focus can return before the queued close event updates React.
+    // Wait for that event before opening the same dialog again.
+    const cancelSettled = await tab.evaluate(`new Promise((resolve) => {
+      const dialog = document.querySelector('dialog.igor-confirm[open]');
+      if (!dialog) return resolve(false);
+      const timeout = setTimeout(() => resolve(false), 2000);
+      dialog.addEventListener('close', () => requestAnimationFrame(() => {
+        clearTimeout(timeout);
+        resolve(true);
+      }), { once: true });
+      [...dialog.querySelectorAll('button')].find((button) => button.textContent === 'Cancel').click();
+    })`);
+    check(cancelSettled, 'Cancel did not finish closing the confirmation dialog.');
     check(await waitFor(`!document.querySelector('dialog.igor-confirm[open]') && location.pathname === ${JSON.stringify(second)} && /delete/i.test(document.activeElement?.textContent || '')`, 2000), 'Cancel did not keep the conversation and return focus to Delete.');
     await tab.evaluate(`[...document.querySelectorAll('.igor-action')].find((button) => /delete/i.test(button.textContent)).click()`);
-    await waitFor(`document.querySelector('dialog.igor-confirm[open]')`);
-    await tab.evaluate(`[...document.querySelectorAll('dialog.igor-confirm[open] button')].find((button) => button.textContent === 'Delete').click()`);
+    const confirmDelete = `[...document.querySelectorAll('dialog.igor-confirm[open] button')].find((button) => button.textContent === 'Delete' && !button.disabled)`;
+    if (!await waitFor(confirmDelete)) throw new Error('Delete did not reopen with an enabled confirmation.');
+    await tab.evaluate(`(${confirmDelete}).click()`);
     const deleted = await waitFor(`location.pathname !== ${JSON.stringify(second)} && ![...document.querySelectorAll('.igor-conversation__title')].some((node) => node.textContent === 'Renamed conversation')`);
     check(deleted, 'Delete did not remove the conversation.');
 

@@ -14,12 +14,13 @@
 | Frige and Igor shared gateway launch | Implemented and tested locally with simulated transport | The opt-in launcher checks a separately started inference service and routes both interfaces through it. Frige's handoff preserves source preview and consent. [Gateway verification](verification/frige-igor-gateway.md) |
 | Optional Graph | Implemented and tested locally | Opt-in local metadata journal, consent, provenance, reviewed relationships, export and erasure. [Knowledge evidence](verification/platform-transition-p3-p4.md) |
 | Shared interface and approved media | Implemented and tested | Design roles, tokens, fonts and asset lineage. [Design system](DESIGN-SYSTEM.md), [asset book](../assets/README.md) |
-| FastAPI migration | M1 and M2a implemented and tested | Read-only project aggregation beside Node. M2b awaits the identity decision. [Foundation](verification/platform-m1-python-foundation.md), [roadmap](PLATFORM-TRANSITION.md#milestone-roadmap) |
+| FastAPI migration | M1 and M2a implemented and tested locally | D-023 resolved hosted sign-in for M2b. Generalized platform identity and project ACLs are future work. D-028 is a separate attribution and personal-journal candidate. [Foundation](verification/platform-m1-python-foundation.md), [roadmap](PLATFORM-TRANSITION.md#milestone-roadmap) |
 | Ēostre, Woden, Activity, local accounts | Deferred or unimplemented | The shell shows honest availability. Hosted Igor has its own sign-in. |
 | Igor document tools | Active in production since 2026-11-23 (generation 20), carried forward in generation 24 (`8b7a789`) | Turns with an approved project context search and read approved excerpts through an isolated native-Hermes worker and a bounded model relay. Synthetic VM acceptance passed before activation; no paid verification turn was made. PDF and DOCX conversion still needs a binary approval flow. [Activation evidence](verification/igor-document-runtime-activation.md), [staging](verification/igor-document-tools-stage.md) |
 | Editorial and working sessions | Igor working sessions are live in generation 24 (`8b7a789`). Frige sessions are tested locally. | Frige scopes hold several conversations with the D-027 lifecycle, summaries and continue. Igor has working sessions alongside chats. Workflow tests used fake or stub transport. [Frige A1](verification/frige-sessions-a1.md), [Igor A2](verification/igor-working-sessions-a2.md) |
 | Signed-in actor and personal knowledge | Local acceptance passed. Hosted configuration is staged. | The matching actor secret and legacy-owner assignment are staged on the VM. Activation requires the Pantheon and Frige release that implements D2. [D2 evidence](verification/platform-actor-d2.md) |
 | Direct Obsidian and engine execution | Future work | The existing journal and unexposed read-only vault adapter are foundations. [Obsidian gate](PLATFORM-TRANSITION.md#direct-obsidian-integration), [platform transition](PLATFORM-TRANSITION.md) |
+| Next-wave knowledge architecture | Resource ownership and candidate envelopes specified locally | D-030 keeps canonical records with their owners and retains D-029's M3 storage gate. [Resource model](architecture/resource-model.md), [reference assessment](architecture/second-brain-reference.md) |
 
 ## Hosted Igor and integration
 
@@ -36,3 +37,5 @@
 
 See the [verification index](verification/README.md) for dated reports and
 the [program records](program/HANDOFF.md) for maintainer progress and decisions.
+The [next-wave baseline](verification/next-wave-a-reconciliation.md) records
+the separate Press repositories and current deployed revisions.

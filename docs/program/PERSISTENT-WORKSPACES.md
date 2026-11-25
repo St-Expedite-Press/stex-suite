@@ -228,11 +228,14 @@ in Pantheon, the knowledge journal and Frige.
     Igor.
   - One independent review found no High findings. The confirmed Medium
     and Low findings were fixed and re-tested.
-  - Nothing is pushed or released.
-- **Next executable tasks**, each needing the owner's authorization:
-  - **Release.** Push both branches. Merging the stex-igor branch deploys
-    Igor. Set `STEX_PLATFORM_ACTOR_SECRET` on the VM, and decide
-    `STEX_KNOWLEDGE_LEGACY_OWNER`.
+  - At that checkpoint, branches and release were local.
+- Later on 2026-11-25, Igor PR 14 merged and generation 24 was verified on
+  the VM. Suite PR 23 is open with passing checks. The actor settings and
+  legacy-owner selection are staged for the Pantheon and Frige release.
+  See the [next-wave baseline](../verification/next-wave-a-reconciliation.md).
+- **Remaining work:**
+  - **Release.** Merge and deploy the suite candidate after release
+    authorization and verify signed-in attribution and journal isolation.
   - **R1.** Frige font resolution: list the fonts LuaLaTeX can load.
   - **G1.** Content identity and withdrawal for attachments.
   - **H1/I1.** Shared dialog components and mobile composer work.

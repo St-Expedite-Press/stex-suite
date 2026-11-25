@@ -153,9 +153,9 @@ so the secret must be set only together with Pantheon's sender.
 
 ## Limits
 
-- The deployed gateway ignores `sessionSummaries` until the stex-igor adapter
-  forwards it, and does not report it in `meta.forwardedContext`; the record of
-  what was offered is Frige's, unconfirmed.
+- Frige's offer record remains unconfirmed. Igor generation 24 contains
+  the adapter that reports a forwarded count. The hosted Frige sender is
+  part of the suite release candidate.
 - The draft attributes editorial decisions to a conversation by time window
   only.
 - A screenshot at 390 px of the conversation sheets was not taken (the harness

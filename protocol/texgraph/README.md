@@ -138,14 +138,13 @@ summaryRevision, text, decisions, openQuestions, outstandingProposals}]`.
   it beside `turns` and `message`, never inside them, and never an earlier
   conversation's transcript. A gateway should present it to the director as
   data under its own label.
-- Status: Frige sends the field. The **deployed** gateway ignores fields it
-  does not know, so the field has no effect there yet. Frige therefore
-  records what it sent, unconfirmed, on the turn
+- Frige records what it offered, unconfirmed, on the turn
   (`offered.sessionSummaries`) and in the contract
-  (`context.sessionSummaries`, category `session-summary`).
-- **Gateway behaviour** (stex-igor `feat/igor-working-sessions`, `c5f3da3`;
-  local branch, not released). The field is read for `scope-turn` requests
-  only.
+  (`context.sessionSummaries`, category `session-summary`). The gateway's
+  reply metadata describes what it forwarded.
+- **Gateway behaviour.** Igor generation 24 (`8b7a789`) includes the
+  adapter. It reads the field for `scope-turn` requests only. Hosted Frige
+  starts sending it after the editorial-session release.
   - **Input.** It must be an array, and at most the first three items are
     read, in order.
   - **Dropped items.** An item is dropped without notice if:
