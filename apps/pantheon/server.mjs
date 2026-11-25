@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage, directorPage, graphPage } from './src/pages.mjs';
 import { isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
 import { openKnowledgeLibrary } from '../../services/knowledge/src/library.mjs';
-import { actorHeaders, actorSecret, stripActorHeaders } from './src/actor.mjs';
+import { ACTOR_RECEIVERS, actorHeaders, actorSecret, stripActorHeaders } from './src/actor.mjs';
 import { knowledgeApi } from './src/knowledge-api.mjs';
 import { createHostedGate, createIgorSessionCheck, hostedConfig, HostedRefusal, withoutIgorSession } from './src/hosted.mjs';
 
@@ -189,7 +189,8 @@ http.createServer(async (request, response) => {
       if (cookie === undefined) delete request.headers.cookie; else request.headers.cookie = cookie;
     }
     if (application) {
-      if (actor && application.id !== 'igor') Object.assign(request.headers, actor);
+      // Only an application that verifies the actor receives it: never Igor, never an engine that would ignore the token.
+      if (actor && ACTOR_RECEIVERS.has(application.id)) Object.assign(request.headers, actor);
       try { await proxyApplication(request, response, proxyTargets[application.id], url, application.route); }
       catch (error) { if (!response.headersSent) send(response, error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? 400 : 502, { error: error.message === 'Invalid application path.' || error.message?.startsWith('Invalid encoded') ? error.message : `${application.name} is not available locally.` }); }
       return;

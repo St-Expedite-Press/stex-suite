@@ -1,7 +1,7 @@
 /**
  * Platform actor sender (stex.platform.actor.v1, D-028).
  *
- * Purpose: tell the engines (Frige, Seaxneat) which signed-in person made a
+ * Purpose: tell the engines that verify it (Frige; see ACTOR_RECEIVERS) which signed-in person made a
  * request that came through hosted Pantheon, for attribution and personal
  * state. Ownership: Pantheon is the ONLY sender; engines are receivers.
  * Security boundary: the three headers are authenticated by a shared secret,
@@ -10,6 +10,8 @@
  * an engine for a user its hosted gate admitted. They are never sent to Igor
  * (its own session) and the token is never logged. This grants no access.
  */
+
+import { createHash } from 'node:crypto';
 
 /** Header carrying the Igor username. */
 export const ACTOR_HEADER = 'x-stex-actor';
@@ -45,14 +47,44 @@ export function stripActorHeaders(headers) {
 }
 
 /**
+ * Applications that verify the actor. Others never receive the token, which
+ * they could not check (independent review finding, 2026-11-25). Igor is never
+ * one: it has its own session.
+ */
+export const ACTOR_RECEIVERS = new Set(['frige']);
+
+/** Usernames that can travel in the header as they are: visible ASCII, 1 to 128 characters. */
+const HEADER_SAFE = /^[\x21-\x7e]{1,128}$/;
+
+/**
+ * The actor id sent for a username.
+ *
+ * Igor accepts usernames of up to 254 characters that may hold spaces or
+ * non-ASCII letters. Those cannot travel in a header, but sending no actor
+ * would leave that person unable to change anything in an engine that
+ * requires one. So such a username travels as a stable digest instead:
+ * `sha256-` and the 64 hex digits of its UTF-8 bytes. Every change is still
+ * attributed to the same person.
+ *
+ * @param {string} username  The username Igor confirmed (Igor has already trimmed and lower-cased it).
+ * @returns {string | null}  The id to send, or null for an empty or oversized username.
+ */
+export function actorId(username) {
+  if (HEADER_SAFE.test(username)) return username;
+  if (!username || username.length > 1024) return null;
+  return `sha256-${createHash('sha256').update(username, 'utf8').digest('hex')}`;
+}
+
+/**
  * Builds the actor headers for one admitted user.
  *
  * @param {{ username?: unknown, role?: unknown } | null | undefined} user  The user the hosted gate admitted.
  * @param {string | null} secret  The configured secret, or null.
- * @returns {Record<string, string> | null}  The three headers, or null when nothing may be sent (no user, no secret, or an invalid username: visible ASCII 0x21-0x7e, 1 to 128 characters). A role other than `owner` becomes `member`.
+ * @returns {Record<string, string> | null}  The three headers, or null when nothing may be sent (no user, no secret, or an empty or oversized username; see `actorId`). A role other than `owner` becomes `member`.
  */
 export function actorHeaders(user, secret) {
   if (!secret || !user || typeof user.username !== 'string') return null;
-  if (!/^[\x21-\x7e]{1,128}$/.test(user.username)) return null;
-  return { [ACTOR_HEADER]: user.username, [ACTOR_ROLE_HEADER]: user.role === 'owner' ? 'owner' : 'member', [ACTOR_TOKEN_HEADER]: secret };
+  const id = actorId(user.username);
+  if (!id) return null;
+  return { [ACTOR_HEADER]: id, [ACTOR_ROLE_HEADER]: user.role === 'owner' ? 'owner' : 'member', [ACTOR_TOKEN_HEADER]: secret };
 }

@@ -88,7 +88,9 @@ export async function openKnowledgeLibrary({ directory = '', hosted = false, leg
   /** @type {Map<string, { promise: Promise<object>, leases: number }>}  Insertion order doubles as least-recently-used order. */
   const cache = new Map();
   let closed = false;
-  const legacyName = String(legacyOwner || '').trim();
+  // Igor trims and lower-cases every username before reporting it, so the configured owner is normalised
+  // the same way; otherwise `Alice` in the env file would silently match nobody (independent review finding).
+  const legacyName = String(legacyOwner || '').trim().toLowerCase();
 
   /** Journal directory for a person: the legacy root for its named owner, otherwise a hashed people/ folder. */
   const directoryFor = (username) => (legacyName && username === legacyName ? root : path.join(root, 'people', personDirectoryName(username)));

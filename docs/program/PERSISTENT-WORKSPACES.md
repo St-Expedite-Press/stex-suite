@@ -220,3 +220,20 @@ in Pantheon, the knowledge journal and Frige.
 
 - 2026-11-25: reconnaissance, baseline and graph recorded.
 - 2026-11-25: A1, A2, S0 + K0, D1 and D2 authorized; D-027 to D-029 recorded.
+- 2026-11-25: A1, A2, S0 + K0 and D2 integrated on the local branch
+  `docs/program-persistent-workspaces`. stex-igor work is on the local branch
+  `feat/igor-working-sessions`.
+  - `corepack pnpm test` passes.
+  - All five browser workflows pass: Frige, home, knowledge, platform and
+    Igor.
+  - One independent review found no High findings. The confirmed Medium
+    and Low findings were fixed and re-tested.
+  - Nothing is pushed or released.
+- **Next executable tasks**, each needing the owner's authorization:
+  - **Release.** Push both branches. Merging the stex-igor branch deploys
+    Igor. Set `STEX_PLATFORM_ACTOR_SECRET` on the VM, and decide
+    `STEX_KNOWLEDGE_LEGACY_OWNER`.
+  - **R1.** Frige font resolution: list the fonts LuaLaTeX can load.
+  - **G1.** Content identity and withdrawal for attachments.
+  - **H1/I1.** Shared dialog components and mobile composer work.
+  - **S1.** An OS isolation design for Seaxneat builds.

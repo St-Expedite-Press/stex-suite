@@ -55,3 +55,29 @@ eviction releases locks and busy journals are not evicted.
 - Engine receivers (Frige) are separate work; this evidence covers the
   sender and knowledge only. No browser check of hosted multi-user knowledge
   was run; HTTP-level tests stand in for it.
+
+## Changes after the independent review (2026-11-25)
+
+The coordinator ran one independent review over the integrated program
+diff. It found no High findings. These were fixed afterwards:
+
+- **Usernames a header cannot carry** (Medium). Igor accepts usernames of up
+  to 254 characters, and they may contain spaces or non-ASCII letters.
+  Before the fix, such a user got no actor headers, so with the secret set
+  Frige refused every change they made. Such a username now travels as
+  `sha256-` and the 64 hex digits of its UTF-8 bytes. That id is stable, so
+  every change is still attributed to the same person. Only an empty
+  username, or one longer than 1,024 characters, sends nothing.
+  The residual risk above about usernames that are not visible ASCII no
+  longer applies.
+- **Receivers only** (Low). Pantheon now sends the actor headers only to
+  applications that verify them (`ACTOR_RECEIVERS`, which is Frige alone).
+  That covers the proxy, `/api/books` and the knowledge API's engine calls.
+  Seaxneat no longer receives the token.
+- **Legacy journal owner** (Low). `STEX_KNOWLEDGE_LEGACY_OWNER` is trimmed
+  and lower-cased, as Igor reports usernames, so `Alice` matches the account
+  `alice`.
+
+After these changes, `test:pantheon` passed 37 of 37, and `test:knowledge`
+passed 26 of 28 with 2 symlink cases skipped. The updated assertions fail
+against the code from before the fix.

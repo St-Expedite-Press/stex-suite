@@ -280,7 +280,11 @@ above. A `conversationId` is `main` or `c-` and sixteen hex digits.
   scope's small index in `.texgraph/sessions/<scope>/`. Index writes are
   atomic and serialized with the store's other writes. An index that cannot
   be read or does not validate fails closed with `503 SESSIONS_UNAVAILABLE`:
-  it is never read as "no conversations", and is left untouched.
+  it is never read as "no conversations", and is left untouched. Because
+  every send checks the conversation's state there, this also stops new
+  turns in that scope's first conversation, including through the older
+  `/api/scopes/<id>/turn` route, until the index is repaired. Existing turns
+  stay readable.
 - **Lifecycle.** States are `active`, `paused`, `awaiting-review`, `completed`
   and `abandoned`. Allowed: `active` to any other; `paused` or
   `awaiting-review` to `active`, `completed` or `abandoned`; a closed state
@@ -323,6 +327,10 @@ above. A `conversationId` is `main` or `c-` and sixteen hex digits.
 - **Continue.** The new conversation records `continuedFrom:
   {conversationId, summaryRevision}`. Without a saved summary the request is
   `409 SUMMARY_REQUIRED`.
+  Continue is idempotent per summary revision. When a conversation already
+  continues from that revision, it is returned with `replayed: true` and
+  status `200`, and no second conversation is created. A newer revision
+  starts a new conversation (`201`).
 - **Context for a turn.** The model is offered only the conversation's own
   recent turns. It is also offered up to three saved summaries as the
   scope-turn request field

@@ -1076,25 +1076,33 @@ export class ProjectStore {
    * paused or awaiting-review one, recording the resume as a transition.
    * Called before the message is stored, so a refusal leaves the thread untouched.
    *
+   * When `turn` is given it is appended inside the same exclusive section as
+   * the lifecycle check, so a concurrent close cannot slip in between the
+   * check and the write and leave a message in a conversation that had just
+   * been completed or abandoned (independent review finding, 2026-11-25).
+   *
    * @param {string} scopeId
    * @param {string} [conversationId]
    * @param {import('./actor.mjs').Actor} [actor]
-   * @returns {Promise<{ id: string, lifecycle: string }>}
+   * @param {object | null} [turn]  The user turn to record once admitted, as for `appendTurn`.
+   * @returns {Promise<{ id: string, lifecycle: string, turn: object | null }>}  `turn` is the stored record, or null when none was given.
    * @throws `SESSION_CLOSED` (409), `CONVERSATION_NOT_FOUND`, `SESSIONS_UNAVAILABLE`.
    */
-  beginTurn(scopeId, conversationId = MAIN_CONVERSATION, actor = LOCAL_ACTOR) {
+  beginTurn(scopeId, conversationId = MAIN_CONVERSATION, actor = LOCAL_ACTOR, turn = null) {
     return this.exclusive(async () => {
       const scope = await this.scope(scopeId);
       const entries = await this.#readIndex(scope);
       const entry = await this.#entry(scope, entries, conversationId);
       if (CLOSED_LIFECYCLES.includes(entry.lifecycle)) throw sessionError('SESSION_CLOSED', `This conversation is ${entry.lifecycle}. Reopen it, or continue from its summary in a new conversation.`);
+      let lifecycle = entry.lifecycle;
       if (RESUMING_LIFECYCLES.includes(entry.lifecycle)) {
         const next = structuredClone(entry);
         transition(next, 'active', actor.id, 'Resumed by sending a message.', new Date().toISOString());
         await this.#writeIndex(scope, { ...entries, [conversationId]: next });
-        return { id: conversationId, lifecycle: next.lifecycle };
+        lifecycle = next.lifecycle;
       }
-      return { id: conversationId, lifecycle: entry.lifecycle };
+      const stored = turn ? await this.appendTurn(scopeId, turn, conversationId) : null;
+      return { id: conversationId, lifecycle, turn: stored };
     });
   }
 
@@ -1240,8 +1248,15 @@ export class ProjectStore {
       const entries = await this.#readIndex(scope);
       const source = await this.#entry(scope, entries, conversationId);
       if (!latestRevision(source)) throw sessionError('SUMMARY_REQUIRED', 'Save a summary of this conversation before continuing from it.');
+      const summaryRevision = latestRevision(source);
+      // The title is validated first, so a bad request is refused even when it would otherwise replay.
       const title = input?.title === undefined ? [...`Continued: ${source.title}`].slice(0, 120).join('') : validateTitle(input.title);
-      return this.#create(scope, entries, title, actor, { conversationId, summaryRevision: latestRevision(source) });
+      // Idempotent by what it continues from: a double submit, or a retry after a lost reply, returns the
+      // conversation already continued from this summary revision instead of creating a second one
+      // (independent review finding, 2026-11-25; Igor's continue is idempotent by key).
+      const existing = Object.values(entries).find((entry) => entry.continuedFrom?.conversationId === conversationId && entry.continuedFrom?.summaryRevision === summaryRevision);
+      if (existing) return { ...(await this.#view(scope, existing, { detail: true })), replayed: true };
+      return this.#create(scope, entries, title, actor, { conversationId, summaryRevision });
     });
   }
 

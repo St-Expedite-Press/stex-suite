@@ -178,20 +178,25 @@ test('sending resumes a paused or awaiting-review conversation (recorded) and is
   for (const state of ['paused', 'awaiting-review']) {
     const { id } = await store.createConversation(first, { title: state });
     await store.updateConversation(first, id, { lifecycle: state }, actor('ada'));
-    assert.deepEqual(await store.beginTurn(first, id, actor('grace')), { id, lifecycle: 'active' });
+    assert.deepEqual(await store.beginTurn(first, id, actor('grace')), { id, lifecycle: 'active', turn: null });
     const resumed = await store.conversation(first, id);
     assert.equal(resumed.lifecycle, 'active');
     assert.deepEqual({ ...resumed.transitions.at(-1), at: 'T' }, { at: 'T', from: state, to: 'active', actor: 'grace', reason: 'Resumed by sending a message.' });
-    assert.deepEqual(await store.beginTurn(first, id, actor('grace')), { id, lifecycle: 'active' });
+    assert.deepEqual(await store.beginTurn(first, id, actor('grace')), { id, lifecycle: 'active', turn: null });
     assert.equal((await store.conversation(first, id)).transitions.length, 2, 'an active conversation records nothing');
   }
   for (const state of ['completed', 'abandoned']) {
     const { id } = await store.createConversation(first, { title: state });
     await store.updateConversation(first, id, { lifecycle: state });
-    await assert.rejects(store.beginTurn(first, id), { code: 'SESSION_CLOSED' });
+    // A message offered with the refused admission is never stored: check and write share one store lock.
+    await assert.rejects(store.beginTurn(first, id, actor('grace'), { role: 'user', message: 'too late' }), { code: 'SESSION_CLOSED' });
+    assert.equal((await store.turns(first, 100, id)).length, 0, 'a refused message is not stored');
     assert.equal((await store.conversation(first, id)).lifecycle, state, 'a refusal changes nothing');
     await store.updateConversation(first, id, { lifecycle: 'active' });
     assert.equal((await store.beginTurn(first, id)).lifecycle, 'active', 'reopened');
+    const admitted = await store.beginTurn(first, id, actor('grace'), { role: 'user', message: 'back again' });
+    assert.deepEqual([admitted.turn.message, admitted.turn.conversationId], ['back again', id]);
+    assert.deepEqual((await store.turns(first, 100, id)).map((turn) => turn.message), ['back again'], 'an admitted message is stored once');
   }
   // The first conversation follows the same rules once it is materialized.
   await store.updateConversation(first, 'main', { lifecycle: 'completed' });
@@ -315,8 +320,16 @@ test('continue needs a saved summary and links the new conversation to that revi
   await store.saveSummary(first, id, summaryBody({ baseRevision: 1, text: 'Second revision.' }));
   const next = await store.continueConversation(first, id, {}, actor('ada'));
   assert.deepEqual([next.title, next.continuedFrom, next.createdBy, next.lifecycle, next.turnCount], ['Continued: Source', { conversationId: id, summaryRevision: 2 }, 'ada', 'active', 0]);
-  assert.equal((await store.continueConversation(first, id, { title: 'Chosen' })).title, 'Chosen');
+  // A repeat for the same summary revision (double submit, lost reply) returns that conversation instead of a second one.
+  const count = (await store.conversations(first)).length;
+  const again = await store.continueConversation(first, id, { title: 'Chosen' });
+  assert.deepEqual([again.id, again.title, again.replayed], [next.id, 'Continued: Source', true]);
+  assert.equal((await store.conversations(first)).length, count, 'a replay creates nothing');
   await assert.rejects(store.continueConversation(first, id, { title: '' }), { code: 'INVALID_SESSION_REQUEST' });
+  // A newer summary revision is a new starting point, so it continues into a new conversation.
+  await store.saveSummary(first, id, summaryBody({ baseRevision: 2, text: 'Third revision.' }));
+  const later = await store.continueConversation(first, id, { title: 'Chosen' });
+  assert.deepEqual([later.title, later.continuedFrom.summaryRevision, later.replayed], ['Chosen', 3, undefined]);
   await assert.rejects(store.continueConversation(first, 'main'), { code: 'SUMMARY_REQUIRED' });
   // A conversation that is not closed can be continued from too; the source is unchanged.
   assert.equal((await store.conversation(first, id)).lifecycle, 'active');

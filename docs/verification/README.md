@@ -15,7 +15,10 @@ then use a report here to inspect the command output and limits behind it.
 | Frige history interface and Igor document excerpts | [Release evidence](frige-editorial-release.md) | Verified source and attachment workflows with synthetic documents. |
 | Igor document search, read and MarkItDown MCP | [VM staging evidence](igor-document-tools-stage.md) | Native Hermes staging used a synthetic model and disposable documents. |
 | Frige uploads through MarkItDown | [Conversion evidence](frige-markitdown-uploads.md) | Synthetic VM acceptance; real conversions of synthetic PDF and DOCX |
-| Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Branch `feat/frige-sessions-a1`; synthetic books, fake and stub transports; Chrome only; not merged or deployed |
+| Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Integrated locally on `docs/program-persistent-workspaces`; synthetic books, fake and stub transports; Chrome only; not pushed or deployed |
+| Igor working sessions (program A2) | [Sessions evidence](igor-working-sessions-a2.md) | stex-igor local branch `feat/igor-working-sessions`; fake transport and stub inference; not released |
+| Seaxneat preview and vault adapter hardening (program S0 + K0) | [Hardening evidence](security-hardening-s0-k0.md) | No OS isolation for builds (S1); two symlink tests skipped where symlinks cannot be created |
+| Platform actor and personal knowledge (program D2) | [Actor evidence](platform-actor-d2.md) | Verified over HTTP with stub engines; no hosted browser run; needs the secret in both env files at release |
 | Igor document runtime in production | [Activation evidence](igor-document-runtime-activation.md) | Synthetic VM acceptance (31 checks) before activation; no paid verification turn |
 | Public source release | [Preparation and approval gates](public-source-release.md) | Local candidate for source reading |
 | Igor free mode, model prices and descriptions | [Free mode evidence](igor-free-mode-pricing.md) | Generation 15 read-back and profile verification; feature checks use stub catalog and fake transport |

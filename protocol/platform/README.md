@@ -95,7 +95,7 @@ that the engine did not already allow.
 
 | Header | Value |
 | --- | --- |
-| `x-stex-actor` | The Igor username: visible ASCII (0x21–0x7e), 1 to 128 characters |
+| `x-stex-actor` | The actor id: visible ASCII (0x21–0x7e), 1 to 128 characters. It is the Igor username when the username fits those rules. Otherwise (a space, non-ASCII letters, or more than 128 characters) it is `sha256-` followed by the 64 hex digits of the username's UTF-8 bytes, so the same person always has the same id |
 | `x-stex-actor-role` | `owner` or `member` |
 | `x-stex-platform-token` | The shared secret `STEX_PLATFORM_ACTOR_SECRET` (at least 32 characters) |
 
@@ -104,8 +104,11 @@ that the engine did not already allow.
 - It deletes all three headers from **every** incoming request, in every
   mode, before routing. A browser can never supply them.
 - In hosted mode, for a request its gate admitted with a signed-in user, it
-  sets all three headers on requests proxied to an engine. These include
-  the legacy `/api/books` proxy.
+  sets all three headers on requests to engines that verify them. Today that
+  is Frige alone, including the legacy `/api/books` proxy and the knowledge
+  API's server-to-server calls to Frige.
+- An engine that does not verify the actor (Seaxneat today) never receives
+  the token.
 - It never sends them to Igor, which has its own session, or to generated
   preview content.
 - With no secret configured, it sends none.

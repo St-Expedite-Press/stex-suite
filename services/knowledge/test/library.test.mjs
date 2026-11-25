@@ -79,6 +79,12 @@ test('the hosted root journal is untouched, unassigned by default and reached on
   assert.equal(await sources(assigned, 'bob'), 0);
   await assigned.close();
 
+  // Igor reports usernames lower-cased and trimmed, so a configured ` Alice ` still names alice.
+  const cased = await openKnowledgeLibrary({ directory, hosted: true, legacyOwner: ' Alice ' });
+  assert.equal(await sources(cased, 'alice'), 1);
+  await cased.close();
+  assert.equal(await readFile(path.join(directory, 'knowledge.v1.json'), 'utf8'), bytes, 'still never rewritten');
+
   const fresh = await temporary(); const empty = await openKnowledgeLibrary({ directory: fresh, hosted: true });
   assert.equal(await empty.legacyState(), 'none'); await empty.close();
 });

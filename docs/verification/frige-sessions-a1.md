@@ -162,3 +162,33 @@ so the secret must be set only together with Pantheon's sender.
   captures evidence at 1440 px); the 390 px checks are assertions on layout,
   focus and behaviour.
 - Chrome only; the hosted VM and a live gateway were not exercised.
+
+## Changes after the independent review (2026-11-25)
+
+The coordinator ran one independent review over the integrated program diff.
+It found no High findings. The Frige items were fixed afterwards:
+
+- **Send and close race** (Low). The lifecycle check and the message append
+  could be separated by a concurrent close. `beginTurn` now takes the user
+  turn and appends it under the same store lock, so a refused send stores
+  nothing.
+- **Continue idempotency** (Low). A repeat continue from the same summary
+  revision returns the existing conversation with `replayed: true` and
+  `200`, and creates nothing. A newer revision still starts a new
+  conversation.
+- **Damaged index** (Low, documented). A damaged session index stops new
+  turns in the scope's first conversation too, including through the older
+  `/turn` route. This is fail-closed by design; the protocol now says so.
+- **Annotation** (Low). The session route pattern now has a comment
+  explaining its security role.
+- **Exemption removed.** Since D2 forwards the actor on the knowledge
+  observation POST, that route is no longer exempt (see the caller table
+  above).
+
+Not fixed, recorded as a limitation: before the first conversation is
+written to the index, it re-reads its whole journal to compute its creation
+time, and the conversation list reads every journal to count turns. This is
+a performance cost only.
+
+After these changes, `test:frige` passed 188 of 189 with 1 skip. Each new
+assertion fails against the code from before the fix.

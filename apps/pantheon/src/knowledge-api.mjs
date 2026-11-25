@@ -5,9 +5,11 @@
  * Knowledge is personal state (D-028): each request is served from the journal
  * of the person the hosted gate admitted (passed in `context.user` by the
  * server, never read from a header or body). Engine fetches carry the
- * stex.platform.actor.v1 headers (`context.actor`) so engines can attribute
- * them; they are set by the server only when hosted with the secret.
+ * stex.platform.actor.v1 headers (`context.actor`) to engines that verify them
+ * (ACTOR_RECEIVERS) so they can attribute them; they are set by the server only when hosted with the secret.
  */
+
+import { ACTOR_RECEIVERS } from './actor.mjs';
 
 /** Reports an invalid value using this boundary's failure shape. */
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -35,7 +37,7 @@ export function knowledgeApi({ library, knowledge: fixed, targets, fetchImpl = f
     if (!target) throw fail(503, 'The source engine is unavailable.');
     const url = new URL(`/${project.application}/api/stex/context/v1/projects/${project.id}${suffix}`, target);
     let response;
-    try { response = await fetchImpl(url, { method: payload ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]), headers: { 'content-type': 'application/json', ...(actor || {}) }, ...(payload ? { body: JSON.stringify(payload) } : {}) }); }
+    try { response = await fetchImpl(url, { method: payload ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]), headers: { 'content-type': 'application/json', ...(actor && ACTOR_RECEIVERS.has(project.application) ? actor : {}) }, ...(payload ? { body: JSON.stringify(payload) } : {}) }); }
     catch { throw fail(503, 'The source engine is unavailable.'); }
     let text = ''; let size = 0; const decoder = new TextDecoder('utf-8', { fatal: true });
     for await (const part of response.body) { size += part.length; if (size > 65536) throw fail(502, 'The source response is too large.'); text += decoder.decode(part, { stream: true }); }

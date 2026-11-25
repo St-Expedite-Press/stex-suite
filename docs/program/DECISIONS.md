@@ -540,6 +540,13 @@ the coordinating agent's defaults and stand until the owner says otherwise.
   use of Pantheon and Frige.
 - **Local mode** has no secret, ignores actor headers, and acts as
   `local`.
+- **Amended before release** (2026-11-25, after the independent review):
+  - a username that a header cannot carry travels as a stable `sha256-`
+    digest, instead of sending no actor;
+  - only applications that verify the actor receive it (Frige today);
+  - the legacy journal owner is matched the way Igor normalises usernames.
+
+  The contract was unreleased, so v1 was amended in place, as for D-011.
 - **Existing data.**
   - An existing knowledge journal is never moved or deleted.
   - The hosted journal is assigned to the account named by

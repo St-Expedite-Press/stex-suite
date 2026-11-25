@@ -446,11 +446,11 @@ async function scopeTurn(store, scopeId, payload, { conversationId = MAIN_CONVER
     try { await store.beginTurn(scopeId, conversationId, actor); } catch (error) { store.releaseAnswer(reservation); throw error; }
   } else {
     if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
-    // Refuses a completed or abandoned session, and resumes a paused or awaiting-review one (recorded), before anything is stored.
-    await store.beginTurn(scopeId, conversationId, actor);
+    // Refuses a completed or abandoned session, resumes a paused or awaiting-review one (recorded), and only then
+    // stores the message, all under one store lock so a concurrent close cannot land in between.
     // The passage is kept with the author's message, so the thread and the contract's
     // `origin.userTurnId` show exactly which text, at which revision, the turn was about.
-    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) }, conversationId);
+    ({ turn: userTurn } = await store.beginTurn(scopeId, conversationId, actor, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) }));
   }
   try {
     const [priorTurns, approvedSourceExcerpts, settings, sessionSummaries] = await Promise.all([store.turns(scopeId, 12, conversationId), store.approvedSourceExcerpts(), store.settingsTicket(), store.sessionSummariesFor(scopeId, conversationId)]);
@@ -563,7 +563,11 @@ async function vaultApi(request, response, url, store) {
   }
   if (contractRoute && request.method === 'POST' && contractRoute[2]) { const payload = await body(request); return json(response, 200, await store.revertChanges(contractRoute[1], { nodeId: payload?.nodeId || null })); }
   // Editorial sessions: a scope's named conversations (D-027), under the same scope ids as the routes below.
-  const session = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/conversations(?:\/(main|c-[a-f0-9]{16})(?:\/(turns|turn|summary|summary\/draft|continue))?)?$/);
+  // The pattern admits only `main` (the scope's original journal) or a generated `c-` id of 16 hex digits,
+  // so a conversation id can never name a path outside the scope's session folder. The actor has already
+  // been checked for state-changing methods at the top of the handler (D-028); project passwords apply
+  // here as on every scope route. Closing a conversation never decides a proposal.
+  const session =url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/conversations(?:\/(main|c-[a-f0-9]{16})(?:\/(turns|turn|summary|summary\/draft|continue))?)?$/);
   if (session) {
     const [, scopeId, conversationId, action] = session;
     const actor = request.actor ?? LOCAL_ACTOR;
@@ -583,7 +587,11 @@ async function vaultApi(request, response, url, store) {
       if (request.method === 'GET') return json(response, 200, await store.summary(scopeId, conversationId));
       if (request.method === 'PUT') return json(response, 200, await store.saveSummary(scopeId, conversationId, await body(request), actor));
     } else if (action === 'summary/draft' && request.method === 'GET') return json(response, 200, await store.summaryDraft(scopeId, conversationId));
-    else if (action === 'continue' && request.method === 'POST') return json(response, 201, await store.continueConversation(scopeId, conversationId, await body(request), actor));
+    else if (action === 'continue' && request.method === 'POST') {
+      // 201 for a new conversation; 200 when the same summary revision was already continued (a replay).
+      const continued = await store.continueConversation(scopeId, conversationId, await body(request), actor);
+      return json(response, continued.replayed ? 200 : 201, continued);
+    }
     return json(response, 405, { error: 'Method not allowed.' });
   }
   const scoped = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/);

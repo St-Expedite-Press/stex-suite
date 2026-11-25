@@ -18,7 +18,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { actorHeaders, actorSecret, stripActorHeaders } from '../src/actor.mjs';
+import { actorHeaders, actorId, actorSecret, stripActorHeaders } from '../src/actor.mjs';
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SECRET = 's'.repeat(40);
@@ -104,7 +104,16 @@ test('actor helpers validate the secret, strip all three headers and refuse unsa
   assert.equal(actorHeaders({ username: 'bob', role: 'admin' }, SECRET)['x-stex-actor-role'], 'member');
   assert.equal(actorHeaders({ username: 'alice', role: 'owner' }, null), null);
   assert.equal(actorHeaders(null, SECRET), null);
-  for (const username of ['', 'has space', 'tab\t', 'new\nline', 'café', 'x'.repeat(129), 7]) assert.equal(actorHeaders({ username, role: 'owner' }, SECRET), null, String(username));
+  // Empty, oversized or non-string usernames send nothing.
+  for (const username of ['', 'x'.repeat(1025), 7]) assert.equal(actorHeaders({ username, role: 'owner' }, SECRET), null, String(username));
+  // A username Igor accepts but a header cannot carry travels as a stable digest,
+  // so that person can still change things in Frige (independent review finding).
+  for (const username of ['has space', 'tab\t', 'new\nline', 'café', 'x'.repeat(129)]) {
+    const id = actorHeaders({ username, role: 'owner' }, SECRET)['x-stex-actor'];
+    assert.equal(id, `sha256-${createHash('sha256').update(username, 'utf8').digest('hex')}`, JSON.stringify(username));
+    assert.equal(actorId(username), id);
+    assert.match(id, /^[\x21-\x7e]{1,128}$/);
+  }
   assert.ok(actorHeaders({ username: 'x'.repeat(128), role: 'owner' }, SECRET));
 });
 
@@ -118,7 +127,7 @@ test('a secret shorter than 32 characters refuses startup, in any mode', async (
   }
 });
 
-test('hosted with the secret sends the actor to engines only, strips forged headers and drops invalid usernames', async (context) => {
+test('hosted with the secret sends the actor to Frige only, strips forged headers and digests unsendable usernames', async (context) => {
   const seen = await stubs(context, { igor: 4510, frige: 4511, seaxneat: 4512 });
   await pantheon(context, { STEX_PANTHEON_PORT: '4513', STEX_PANTHEON_PUBLIC_ORIGIN: PUBLIC.origin, STEX_PLATFORM_ACTOR_SECRET: SECRET, STEX_IGOR_URL: 'http://127.0.0.1:4510', STEX_FRIGE_URL: 'http://127.0.0.1:4511', STEX_SEAXNEAT_URL: 'http://127.0.0.1:4512' });
   const call = caller(4513, true);
@@ -136,10 +145,10 @@ test('hosted with the secret sends the actor to engines only, strips forged head
   assert.deepEqual(seen.frige.at(-1).actor, expected('alice', 'owner'), 'legacy /api/books carries the actor');
 
   await call('/seaxneat/api/projects', { headers: { cookie: cookie('bob'), ...FORGED } });
-  assert.deepEqual(seen.seaxneat.at(-1).actor, expected('bob', 'member'), 'Seaxneat (and its preview proxy) is an engine target too');
+  assert.deepEqual(seen.seaxneat.at(-1).actor, {}, 'Seaxneat verifies no actor, so it never receives the token (and the forged headers are gone)');
 
   await call('/frige/api/health', { headers: { cookie: cookie('spaced'), ...FORGED } });
-  assert.deepEqual(seen.frige.at(-1).actor, {}, 'an invalid username forwards nothing, and the forged headers are gone');
+  assert.deepEqual(seen.frige.at(-1).actor, expected(`sha256-${createHash('sha256').update('has space', 'utf8').digest('hex')}`, 'member'), 'a username a header cannot carry travels as its digest, and the forged headers are gone');
 
   await call('/igor/api/conversations', { headers: { cookie: cookie('alice'), ...FORGED }, method: 'POST' });
   for (const entry of seen.igor) assert.deepEqual(actorOf(entry), {}, `Igor never receives actor headers: ${entry.path}`);
