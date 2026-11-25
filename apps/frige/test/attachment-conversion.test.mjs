@@ -6,8 +6,8 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -51,10 +51,15 @@ async function startFrige(context, root, port, extra = {}) {
     child.on('error', reject);
   });
   const base = `http://127.0.0.1:${port}/frige`;
-  const book = await (await fetch(`${base}/api/stex/publishing/v1/books`, { method: 'POST', headers: json, body: JSON.stringify({ title: 'Conversion Fixture', author: 'A. Author' }) })).json();
+  const createBook = async (title) => {
+    const response = await fetch(`${base}/api/stex/publishing/v1/books`, { method: 'POST', headers: json, body: JSON.stringify({ title, author: 'A. Author' }) });
+    assert.equal(response.status, 201);
+    return response.json();
+  };
+  const book = await createBook('Conversion Fixture');
   const api = (route) => `${base}/api/stex/publishing/v1/project/attachments${route}?book=${book.id}`;
   const upload = async (files) => fetch(api(''), { method: 'POST', headers: json, body: JSON.stringify({ attachments: files.map(([name, content]) => ({ name, contentBase64: Buffer.from(content).toString('base64') })) }) });
-  return { api, upload };
+  return { api, upload, base, book, createBook };
 }
 
 test('with a converter, every upload is converted to reviewable Markdown and failures are recorded', async (context) => {
@@ -122,6 +127,162 @@ test('without a converter, text files are decoded and PDF or Word files wait for
   assert.deepEqual([pdf.contextState, pdf.extraction], ['conversion-unavailable', undefined]);
   const refused = await fetch(api(`/${pdf.id}/convert`), { method: 'POST' });
   assert.deepEqual([refused.status, (await refused.json()).code], [503, 'CONVERTER_UNAVAILABLE']);
+});
+
+test('both upload APIs identify identical available source bytes without sharing approval or crossing book boundaries', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-source-identity-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { api, upload, base, book, createBook } = await startFrige(context, root, 4546);
+  const bookRoot = path.join(root, 'books', book.id);
+  const manifestPath = path.join(bookRoot, '.texgraph', 'documents.json');
+  const legacyUrl = `${base}/api/stex/legacy-books/v1/${book.id}/documents`;
+  const file = (name, content) => ({ name, contentBase64: Buffer.from(content).toString('base64') });
+  const legacy = (name, content) => fetch(legacyUrl, { method: 'POST', headers: json, body: JSON.stringify({ documents: [file(name, content)] }) });
+  const created = async (response) => {
+    const result = await response;
+    assert.equal(result.status, 201);
+    return result.json();
+  };
+  const onDisk = async () => JSON.parse(await readFile(manifestPath, 'utf8'));
+
+  const original = Buffer.from('Synthetic café\r\n');
+  const originalHash = createHash('sha256').update(original).digest('hex');
+  const [older] = await created(legacy('old.md', original));
+  assert.equal(older.sourceSha256, originalHash);
+  const earlier = await onDisk();
+  delete earlier[0].sourceSha256; // Model a manifest from before source hashes were recorded.
+  await writeFile(manifestPath, JSON.stringify(earlier), 'utf8');
+  const preview = await (await fetch(api(`/${older.id}/excerpt`))).json();
+  const approved = await fetch(api(`/${older.id}/approve`), { method: 'POST', headers: json, body: JSON.stringify({ hash: preview.hash }) });
+  assert.equal(approved.status, 200);
+
+  const different = Buffer.from(original);
+  different[0] = 0x73;
+  const [same, sameLength] = await created(upload([['copy.txt', original], ['different.txt', different]]));
+  assert.equal(same.sourceSha256, originalHash);
+  assert.equal(same.duplicateOf, older.id);
+  assert.notEqual(same.id, older.id);
+  assert.notEqual(same.storedAs, older.storedAs);
+  assert.equal(same.contextState, 'pending-review');
+  assert.equal(same.approvalHash, undefined);
+  assert.equal(sameLength.duplicateOf, undefined);
+  assert.notEqual(sameLength.sourceSha256, originalHash);
+  const manifest = await onDisk();
+  assert.equal(manifest[0].contextState, 'approved');
+  assert.equal(manifest[0].sourceSha256, undefined);
+  assert.ok(manifest.every((entry) => !Object.hasOwn(entry, 'duplicateOf')));
+  assert.deepEqual(await readFile(path.join(bookRoot, 'sources', same.storedAs)), original);
+
+  const [first, repeated] = await created(upload([['repeat.md', 'A batch match'], ['repeat.md', 'A batch match']]));
+  assert.notEqual(first.id, repeated.id);
+  assert.notEqual(first.storedAs, repeated.storedAs);
+  assert.equal(repeated.duplicateOf, first.id);
+  const [fromPublishing] = await created(legacy('from-publishing.txt', 'A batch match'));
+  assert.equal(fromPublishing.duplicateOf, first.id);
+  assert.equal(fromPublishing.sourceSha256, first.sourceSha256);
+
+  const concurrent = await Promise.all([
+    created(legacy('first-simultaneous.txt', 'Concurrent original')),
+    created(upload([['second-simultaneous.md', 'Concurrent original']])),
+  ]);
+  const [winner, follower] = concurrent.flat().sort((a, b) => Number(Boolean(a.duplicateOf)) - Number(Boolean(b.duplicateOf)));
+  assert.equal(winner.duplicateOf, undefined);
+  assert.equal(follower.duplicateOf, winner.id);
+
+  // A stored hash is only a hint. An unavailable, changed or outside original cannot match.
+  await rm(path.join(bookRoot, 'sources', sameLength.storedAs));
+  const [replacement] = await created(upload([['replacement.txt', different]]));
+  assert.equal(replacement.duplicateOf, undefined);
+  const edited = Buffer.from(different);
+  edited[1] = 0x59;
+  await writeFile(path.join(bookRoot, 'sources', replacement.storedAs), edited);
+  const [fresh] = await created(legacy('fresh.txt', different));
+  assert.equal(fresh.duplicateOf, undefined);
+
+  const outside = 'Outside the sources directory';
+  await writeFile(path.join(bookRoot, 'outside.txt'), outside);
+  const withOutside = await onDisk();
+  withOutside.push({ id: '1111111111111111', storedAs: '../outside.txt', bytes: Buffer.byteLength(outside) });
+  await writeFile(manifestPath, JSON.stringify(withOutside), 'utf8');
+  const [contained] = await created(legacy('contained.txt', outside));
+  assert.equal(contained.duplicateOf, undefined);
+
+  const other = await createBook('Another Conversion Fixture');
+  const [isolated] = await created(fetch(`${base}/api/stex/publishing/v1/project/attachments?book=${other.id}`, {
+    method: 'POST', headers: json, body: JSON.stringify({ attachments: [file('isolated.md', original)] }),
+  }));
+  assert.equal(isolated.sourceSha256, originalHash);
+  assert.equal(isolated.duplicateOf, undefined);
+});
+
+test('attachments refuse a linked sources directory before writing originals', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-linked-sources-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { upload, book } = await startFrige(context, root, 4547);
+  const outside = path.join(root, 'outside');
+  await mkdir(outside);
+  const bookRoot = path.join(root, 'books', book.id);
+  await symlink(outside, path.join(bookRoot, 'sources'), process.platform === 'win32' ? 'junction' : 'dir');
+
+  const response = await upload([['linked-upload.txt', 'Synthetic original']]);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, 'ATTACHMENTS_UNAVAILABLE');
+  assert.deepEqual(await readdir(outside), []);
+  await assert.rejects(readFile(path.join(bookRoot, '.texgraph', 'documents.json'), 'utf8'), { code: 'ENOENT' });
+});
+
+test('duplicate detection accepts an exact digestless legacy original whose stored name ends in a space', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-legacy-source-name-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { upload, base, book } = await startFrige(context, root, 4548);
+  const data = Buffer.from('Synthetic content for an exact legacy original');
+  const legacyUrl = `${base}/api/stex/legacy-books/v1/${book.id}/documents`;
+  // The legacy API truncated the whole sanitized name at 160 characters.
+  const legacy = await fetch(legacyUrl, {
+    method: 'POST', headers: json,
+    body: JSON.stringify({ documents: [{ name: `${'a'.repeat(159)} notes.md`, contentBase64: data.toString('base64') }] }),
+  });
+  assert.equal(legacy.status, 201);
+  const [earlier] = await legacy.json();
+  assert.ok(earlier.storedAs.endsWith(' '));
+  const bookRoot = path.join(root, 'books', book.id);
+  assert.ok((await readdir(path.join(bookRoot, 'sources'))).includes(earlier.storedAs));
+  const manifest = path.join(bookRoot, '.texgraph', 'documents.json');
+  delete earlier.sourceSha256;
+  await writeFile(manifest, JSON.stringify([earlier]), 'utf8');
+
+  const repeated = await upload([['new-name.md', data]]);
+  assert.equal(repeated.status, 201);
+  const [record] = await repeated.json();
+  assert.equal(record.duplicateOf, earlier.id);
+});
+
+test('deferred conversion rejects a changed upload receipt and accepts digestless legacy originals', async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'stex-frige-convert-receipt-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const converter = await fakeConverter(root);
+  context.after(() => converter.close());
+  const { api, upload, book } = await startFrige(context, root, 4549, { STEX_FRIGE_CONVERTER_SOCKET: converter.where });
+  const [modern, legacy] = await (await upload([['modern.pdf', '%PDF original'], ['legacy.pdf', '%PDF historical']])).json();
+  const bookRoot = path.join(root, 'books', book.id);
+  const manifest = path.join(bookRoot, '.texgraph', 'documents.json');
+  const accepted = await readFile(manifest, 'utf8');
+  await writeFile(path.join(bookRoot, 'sources', modern.storedAs), '%PDF adjusted');
+
+  const convert = (id) => fetch(api(`/${id}/convert`), { method: 'POST' });
+  const denied = await convert(modern.id);
+  assert.deepEqual([denied.status, (await denied.json()).code], [409, 'ATTACHMENT_CHANGED']);
+  assert.deepEqual(converter.seen, []);
+  assert.equal(await readFile(manifest, 'utf8'), accepted);
+  await assert.rejects(readFile(path.join(bookRoot, '.texgraph', 'extractions', `${modern.id}.txt`)), { code: 'ENOENT' });
+
+  const records = JSON.parse(accepted);
+  delete records.find((entry) => entry.id === legacy.id).sourceSha256;
+  await writeFile(manifest, JSON.stringify(records), 'utf8');
+  const converted = await convert(legacy.id);
+  assert.equal(converted.status, 200);
+  assert.equal((await converted.json()).contextState, 'pending-review');
+  assert.deepEqual(converter.seen, ['legacy.pdf']);
 });
 
 // The service itself needs Python's Unix sockets, so it runs on Linux and macOS (CI), not on Windows.

@@ -41,6 +41,9 @@ only. Frige owns source, hashes, proposals, builds, attachments and preflight.
 
 Book selection is explicit in `?book=<id>`. Stable node ids, source hashes,
 compiler-derived page maps and profile hashes keep their existing semantics.
+New compiler maps include `pdfSha256`, the SHA-256 digest of the PDF
+generated with the map. Preflight and live-build handoff reject a mismatched PDF
+for a map carrying this field. Existing maps retain their prior fields.
 A section's scope id is `section-<16 hex>`, derived from its top-level folder
 without regard to case, so it survives renaming or reordering the section's
 first piece. A folder that appears in several places in the reading order
@@ -167,12 +170,25 @@ Publishing and legacy attachment changes share one per-book write queue.
 Unavailable or damaged attachment metadata returns `503 ATTACHMENTS_UNAVAILABLE`
 and is preserved.
 
+New attachment records include a lowercase SHA-256 `sourceSha256` of the
+original bytes. This digest is separate from the approved excerpt hash.
+Both upload APIs still create an independent attachment record. On a
+successful upload, the response may include `duplicateOf`, the ID of an
+earlier available, byte-identical original in that book. This advisory
+value is limited to the upload response. It never transfers approval.
+The engine compares at most 64 plausible originals with a combined
+declared size of at most 32 MB per upload. It also considers available
+digestless records without rewriting them. If deferred conversion reads
+bytes that differ from a recorded original digest, it refuses with
+`409 ATTACHMENT_CHANGED`.
+
 Frige checks the 32 most recent approvals and offers up to eight matching
 excerpts to Igor. Each excerpt is at most 6,000 UTF-16 units with intact
 Unicode boundaries. The gateway may omit optional excerpts to fit the
 turn budget. An old approval without an excerpt hash remains a legacy
-record until the reader approves the displayed excerpt. Uploads of PDF
-and DOCX have no text excerpt in this workflow.
+record until the reader approves the displayed excerpt. A successful
+MarkItDown extraction makes supported PDFs and DOCX documents eligible
+for the same excerpt review.
 
 ### Layout overrides
 
@@ -548,6 +564,8 @@ There are at most ten uploads of 8 MB each, within the historical 12,000,000
 character request bound. Readable extraction is capped at 200,000 characters.
 Interview transcripts retain at most 40 bounded turns. Review is explicit;
 uploading never implicitly approves context or changes manuscript text.
+New upload responses use the original digest and same-book advisory match
+described in [Approved document excerpts](#approved-document-excerpts).
 
 The loopback engine admits its own browser origin or configured loopback
 `STEX_PANTHEON_URL`, rejects opaque/foreign origins, cross-site browser requests

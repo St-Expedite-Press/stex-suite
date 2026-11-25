@@ -61,6 +61,8 @@ release source remains a separate decision.
   browser workflow also passed. Platform acceptance passed across five
   widths and exercised a built and mounted Next.js workspace, a validated
   edit and a restored revision.
+- Igor's disposable password sign-in browser workflow passed at 15
+  viewports, including 320 px and landscape mobile dimensions.
 
 The responsive checks cover the existing Chrome workflows, including
 session summary and continuation at 390 px and the knowledge views at

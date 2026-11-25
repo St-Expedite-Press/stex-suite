@@ -16,6 +16,7 @@ then use a report here to inspect the command output and limits behind it.
 | Frige history interface and Igor document excerpts | [Release evidence](frige-editorial-release.md) | Verified source and attachment workflows with synthetic documents. |
 | Igor document search, read and MarkItDown MCP | [VM staging evidence](igor-document-tools-stage.md) | Native Hermes staging used a synthetic model and disposable documents. |
 | Frige uploads through MarkItDown | [Conversion evidence](frige-markitdown-uploads.md) | Synthetic VM acceptance; real conversions of synthetic PDF and DOCX |
+| Frige original-byte identity | [Upload evidence](frige-source-identity.md) | Synthetic books, local HTTP/browser checks, and independent review |
 | Frige editorial sessions (program A1) | [Sessions evidence](frige-sessions-a1.md) | Suite PR 23 is the candidate. Chrome used synthetic books and fake or stub transport. |
 | Igor working sessions (program A2) | [Sessions evidence](igor-working-sessions-a2.md) | Hosted generation 24 read back from the VM. Browser workflow used stub inference locally. |
 | Seaxneat preview and vault adapter hardening (program S0 + K0) | [Hardening evidence](security-hardening-s0-k0.md) | No OS isolation for builds (S1); two symlink tests skipped where symlinks cannot be created |

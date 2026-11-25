@@ -513,6 +513,20 @@ try {
   assert.equal(await evaluate(`document.querySelector('#attachment-excerpt').textContent`), referenceBefore);
   await click('#approve-excerpt');
   await until(() => evaluate(`!document.querySelector('#attachment-review').open`), 'exemplar approved');
+  await evaluate(`(() => {
+    const input = document.querySelector('#attachment-input');
+    const selection = new DataTransfer();
+    selection.items.add(new File([${JSON.stringify(referenceBefore)}], 'reference-copy.md', { type: 'text/markdown' }));
+    input.files = selection.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await until(() => evaluate(`document.querySelector('#attachment-state').textContent.includes('matches an earlier upload')`), 'the workstation reports an identical upload');
+  const copies = (await api('/project/attachments?book=fixture-book')).filter(({ name }) => name === 'reference-copy.md');
+  assert.equal(copies.length, 1);
+  assert.equal(copies[0].sourceSha256, reference.sourceSha256);
+  assert.notEqual(copies[0].id, reference.id);
+  assert.equal(copies[0].contextState, 'pending-review');
+  report.workflow.push('Frige reports identical source bytes and keeps the new upload separately reviewable');
   await input('#message', 'Inspect reference fixture.'); await click('#turn-form [type="submit"]');
   await until(() => Boolean(documentTurn), 'the stub has the document turn');
   assert.deepEqual(documentTurn.map(({ id, excerpt }) => ({ id, excerpt })), [{ id: reference.id, excerpt: referenceBefore }]);

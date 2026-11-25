@@ -11,8 +11,9 @@ surface needs implementation and acceptance evidence.
 Use the owning application's stable reference and opaque native ID.
 Keep existing `stex://` references and their versioned resolvers.
 Cross-application consumers need the owner, kind, and reference, plus
-an owner-issued revision for any pinned evidence. Names and paths are
-display data. A reference grants no access. A canonical record carries
+an owner-issued revision for any pinned evidence. Include project scope
+when an ID is issued within a project, as with Frige attachments. Names
+and paths are display data. A reference grants no access. A canonical record carries
 its owner, appropriate actor and scope, creation and update times,
 revision, provenance, and retirement status where the lifecycle needs it.
 Project summaries, search hits, and graph edges are rebuildable views.

@@ -11,10 +11,11 @@
  * pure rules live in `editorial-sessions.mjs`.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { access, copyFile, mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-import { writeAtomic } from './project-store.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { renameWithRetry, writeAtomic } from './project-store.mjs';
 import { parseManuscript } from './document/parser.mjs';
 import { designHash, normalizeDesign, resolveLayout, validateDesign } from './design-settings.mjs';
 import { EditorialJournal, editorialPath } from './editorial-journal.mjs';
@@ -454,7 +455,7 @@ export class ProjectStore {
     this.answering = new Set();
   }
 
-  // Manuscript writes, contract decisions, rollbacks and proof links run one at a time, so a hash check
+  // Manuscript writes, contract decisions, rollbacks and proof changes run one at a time, so a hash check
   // and the write it guards can never interleave with another write.
   /** Queues a write behind earlier operations on the same store. */
   exclusive(task) {
@@ -2109,7 +2110,42 @@ export class ProjectStore {
   /** Reads the current proof status and its revision markers. */
   async buildStatus() { try { return JSON.parse(await readFile(path.join(this.buildsDirectory, 'last.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   /** Promotes an accepted proof result to the current preview. */
-  async activateBuild(directory, manifest) { const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`); await copyFile(path.join(directory, 'document.pdf'), `${staged}.pdf`); await writeAtomic(`${staged}.json`, `${JSON.stringify(manifest, null, 2)}\n`); await rename(`${staged}.pdf`, this.previewPath()); await rename(`${staged}.json`, path.join(this.buildsDirectory, 'page-map.json')); }
+  async activateBuild(directory, manifest) {
+    return this.exclusive(async () => {
+      const staged = path.join(this.buildsDirectory, `current-${randomUUID()}`);
+      const stagedPdf = `${staged}.pdf`;
+      const stagedMap = `${staged}.json`;
+      const backup = `${staged}.previous.json`;
+      const preview = this.previewPath();
+      const pageMap = path.join(this.buildsDirectory, 'page-map.json');
+      let retainBackup = false;
+      try {
+        await copyFile(path.join(directory, 'document.pdf'), stagedPdf);
+        await writeAtomic(stagedMap, `${JSON.stringify(manifest, null, 2)}\n`);
+        const hadPageMap = await copyFile(pageMap, backup).then(() => true, (error) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        });
+        // A map replacement failure leaves the previous PDF in place.
+        await renameWithRetry(stagedMap, pageMap);
+        try {
+          await renameWithRetry(stagedPdf, preview);
+        } catch (promotionError) {
+          try {
+            if (hadPageMap) await renameWithRetry(backup, pageMap);
+            else await renameWithRetry(pageMap, stagedMap);
+          } catch (rollbackError) {
+            retainBackup = hadPageMap;
+            throw new AggregateError([promotionError, rollbackError], 'Could not finish proof promotion or restore the previous page map.');
+          }
+          throw promotionError;
+        }
+      } finally {
+        const files = retainBackup ? [stagedPdf, stagedMap] : [stagedPdf, stagedMap, backup];
+        await Promise.all(files.map((file) => rm(file, { force: true }).catch(() => {})));
+      }
+    });
+  }
   /**
    * Records the outcome of a build as the project's latest, and links a
    * successful one to the change contracts it proves.
@@ -2202,40 +2238,54 @@ export class ProjectStore {
   async liveBuildStatus() { try { return JSON.parse(await readFile(path.join(this.liveBuildsDirectory, 'latest.json'), 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
   /** Schedules a proof build using the submitted revision and settings. */
   async queueLiveBuild(scopeId = 'book') {
-    const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
-    const scope = scopeFromGraph(graph, scopeId);
-    if (!proof?.ok || !ProjectStore.aliasesOf(scope).includes(proof.targetScope?.id)) {
-      const error = new Error('Create a successful proof for this exact scope before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
-    }
-    for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
-      if (graph.nodes.find((node) => node.id === nodeId)?.hash !== hash) {
-        const error = new Error('The manuscript changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
+    return this.exclusive(async () => {
+      const [proof, graph] = await Promise.all([this.buildStatus(), this.graph({ refresh: true })]);
+      const scope = scopeFromGraph(graph, scopeId);
+      if (!proof?.ok || !ProjectStore.aliasesOf(scope).includes(proof.targetScope?.id)) {
+        throw codedError('Create a successful proof for this exact scope before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_PROOF');
       }
-    }
-    if (!Object.keys(proof.sourceHashes || {}).length) {
-      const error = new Error('This proof has no source manifest. Typeset it again before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_PROOF'; throw error;
-    }
-    if (proof.pageMap?.mode === 'isolated') {
-      const error = new Error('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.'); error.code = 'LIVE_BUILD_REQUIRES_BOOK_ORDER'; throw error;
-    }
-    if ((proof.pageMap?.designHash ?? designHash({})) !== designHash(await this.design())) {
-      const error = new Error('The design profile changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
-    }
-    // The table of contents is source too: an added, removed or reordered node changes the book.
-    const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);
-    if (JSON.stringify(current) !== JSON.stringify(proof.includedNodeIds || [])) {
-      const error = new Error('The table of contents changed after this proof. Typeset it again before sending it to the live-build queue.'); error.code = 'STALE_BUILD'; throw error;
-    }
-    if (!(proof.pageMap?.schemaVersion >= 3 && proof.pageMap.pagination?.verified === true)) {
-      const error = new Error('This proof has no compiler-verified page map. Resolve the pagination warnings and typeset it again.'); error.code = 'PAGINATION_UNVERIFIED'; throw error;
-    }
-    const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
-    const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };
-    await copyFile(this.previewPath(), path.join(this.liveBuildsDirectory, artifact.pdf));
-    await writeAtomic(path.join(this.liveBuildsDirectory, artifact.pageMap), `${JSON.stringify(proof.pageMap || {}, null, 2)}\n`);
-    const record = { schemaVersion: 1, id, status: 'queued-locally', queuedAt: new Date().toISOString(), targetScope: scope, sourceHashes: proof.sourceHashes, proofCompletedAt: proof.completedAt, artifact, note: 'A verified local proof is staged for the configured live-build delivery adapter. No remote build was claimed or started.' };
-    await writeAtomic(path.join(this.liveBuildsDirectory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`);
-    await writeAtomic(path.join(this.liveBuildsDirectory, 'latest.json'), `${JSON.stringify(record, null, 2)}\n`);
-    return record;
+      for (const [nodeId, hash] of Object.entries(proof.sourceHashes || {})) {
+        if (graph.nodes.find((node) => node.id === nodeId)?.hash !== hash) {
+          throw codedError('The manuscript changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+        }
+      }
+      if (!Object.keys(proof.sourceHashes || {}).length) {
+        throw codedError('This proof has no source manifest. Typeset it again before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_PROOF');
+      }
+      if (proof.pageMap?.mode === 'isolated') {
+        throw codedError('This is a proof of the section alone. Typeset it in book order before sending it to the live-build queue.', 'LIVE_BUILD_REQUIRES_BOOK_ORDER');
+      }
+      if ((proof.pageMap?.designHash ?? designHash({})) !== designHash(await this.design())) {
+        throw codedError('The design profile changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      // The table of contents is source too: an added, removed or reordered node changes the book.
+      const current = graph.readingOrder.slice(0, graph.readingOrder.indexOf(scope.buildThroughNodeId) + 1);
+      if (JSON.stringify(current) !== JSON.stringify(proof.includedNodeIds || [])) {
+        throw codedError('The table of contents changed after this proof. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      if (!(proof.pageMap?.schemaVersion >= 3 && proof.pageMap.pagination?.verified === true)) {
+        throw codedError('This proof has no compiler-verified page map. Resolve the pagination warnings and typeset it again.', 'PAGINATION_UNVERIFIED');
+      }
+      const pageMap = await readJsonIfUsable(path.join(this.buildsDirectory, 'page-map.json'));
+      if (!isDeepStrictEqual(pageMap, proof.pageMap)) {
+        throw codedError('The current proof files do not match the recorded build. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+      }
+      const id = `handoff-${Date.now()}-${randomUUID().slice(0, 8)}`;
+      const artifact = { pdf: `${id}.pdf`, pageMap: `${id}.page-map.json` };
+      const artifactPdf = path.join(this.liveBuildsDirectory, artifact.pdf);
+      await copyFile(this.previewPath(), artifactPdf);
+      if (pageMap.pdfSha256 !== undefined) {
+        const copiedHash = await readFile(artifactPdf).then((bytes) => createHash('sha256').update(bytes).digest('hex'), () => null);
+        if (copiedHash !== pageMap.pdfSha256) {
+          await rm(artifactPdf, { force: true });
+          throw codedError('The preview PDF differs from the compiler page map. Typeset it again before sending it to the live-build queue.', 'STALE_BUILD');
+        }
+      }
+      await writeAtomic(path.join(this.liveBuildsDirectory, artifact.pageMap), `${JSON.stringify(pageMap, null, 2)}\n`);
+      const record = { schemaVersion: 1, id, status: 'queued-locally', queuedAt: new Date().toISOString(), targetScope: scope, sourceHashes: proof.sourceHashes, proofCompletedAt: proof.completedAt, artifact, note: 'A verified local proof is staged for the configured live-build delivery adapter. No remote build was claimed or started.' };
+      await writeAtomic(path.join(this.liveBuildsDirectory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`);
+      await writeAtomic(path.join(this.liveBuildsDirectory, 'latest.json'), `${JSON.stringify(record, null, 2)}\n`);
+      return record;
+    });
   }
 }

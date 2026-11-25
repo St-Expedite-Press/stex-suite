@@ -13,7 +13,7 @@ import { editorialRoute, publishingRoute } from './src/publishing-contract.mjs';
 import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
-import { mutateAttachments, readAttachmentManifest } from './src/attachment-manifest.mjs';
+import { mutateAttachments, readAttachmentManifest, storeAttachmentOriginal } from './src/attachment-manifest.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { LOCAL_ACTOR, actorRefused, resolveActor } from './src/actor.mjs';
 import { MAIN_CONVERSATION } from './src/editorial-sessions.mjs';
@@ -329,23 +329,20 @@ async function saveAttachments(store, payload) {
     if (!name || name !== upload.name || !attachmentExtensions.has(extension)) throw new Error('Unsupported attachment type or filename.');
     if (typeof upload.contentBase64 !== 'string' || upload.contentBase64.length > 11_200_000) throw new Error('Attachment is missing or too large.');
     const bytes = Buffer.from(upload.contentBase64, 'base64'); if (!bytes.length || bytes.length > 8_000_000) throw new Error('Each attachment must be between 1 byte and 8 MB.');
-    const id = createHash('sha256').update(`${Date.now()}-${name}-${bytes.length}`).digest('hex').slice(0, 16);
     // A long name keeps its extension, which decides how the file is converted.
     const safeName = `${name.slice(0, name.length - extension.length).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160 - extension.length)}${extension}`;
-    const storedAs = `${Date.now()}-${id}-${safeName}`;
-    const sourceDirectory = path.join(store.root, 'sources'); await mkdir(sourceDirectory, { recursive: true }); await writeFile(path.join(sourceDirectory, storedAs), bytes, { flag: 'wx' });
-    const record = { id, name: safeName, storedAs, bytes: bytes.length, uploadedAt: new Date().toISOString(), contextState: 'awaiting-extraction' };
+    const { record, duplicateOf } = await storeAttachmentOriginal(store.root, manifest, safeName, bytes);
     if (!converter) await applyConversion(store, record, await convertUpload(safeName, bytes));
-    manifest.push(record); created.push(record);
+    manifest.push(record); created.push(duplicateOf ? { ...record, duplicateOf } : record);
   }
   await writeAtomic(path.join(store.stateDirectory, 'documents.json'), `${JSON.stringify(manifest, null, 2)}\n`); return created;
 }
 
 /**
  * Converts a stored attachment that has no text yet. The record is checked
- * under the book's attachment lock, converted outside it, and updated only if
- * it is still unchanged and without text, so converted or approved text is
- * never replaced.
+ * under the book's attachment lock, including its original-byte receipt when
+ * present. Conversion runs outside the lock and updates only the same
+ * unconverted record, preserving converted and approved text.
  */
 async function convertAttachment(store, id) {
   if (!converter) throw attachmentError(503, 'CONVERTER_UNAVAILABLE', 'The document converter is not configured.');
@@ -356,13 +353,16 @@ async function convertAttachment(store, id) {
     const stored = path.basename(String(found.storedAs || ''));
     if (!stored || stored !== found.storedAs) throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.');
     const content = await readFile(path.join(store.root, 'sources', stored)).catch(() => { throw attachmentError(404, 'NOT_FOUND', 'The stored attachment is unavailable.'); });
+    if (Object.hasOwn(found, 'sourceSha256') && createHash('sha256').update(content).digest('hex') !== found.sourceSha256) {
+      throw attachmentError(409, 'ATTACHMENT_CHANGED', 'The stored attachment no longer matches its uploaded bytes.');
+    }
     return { record: { ...found }, bytes: content };
   });
   const outcome = await convertUpload(record.name, bytes);
   return mutateAttachments(store.root, async () => {
     const manifest = await readAttachmentManifest(store.root);
     const current = manifest.find((entry) => entry.id === id);
-    if (!current || current.extraction || current.storedAs !== record.storedAs || !convertibleStates.has(current.contextState)) {
+    if (!current || current.extraction || current.storedAs !== record.storedAs || current.sourceSha256 !== record.sourceSha256 || !convertibleStates.has(current.contextState)) {
       throw attachmentError(409, 'ATTACHMENT_CHANGED', 'This attachment changed while it was converting.');
     }
     await applyConversion(store, current, outcome);
@@ -529,10 +529,14 @@ async function vaultApi(request, response, url, store) {
   if (request.method === 'GET' && url.pathname === '/api/project/preview') return serveFile(response, store.previewPath());
   if (request.method === 'GET' && url.pathname === '/api/project/build') return json(response, 200, await store.buildStatus());
   if (request.method === 'GET' && url.pathname === '/api/project/preflight') {
-    const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
-    const pdfData = await readFile(store.previewPath()).catch(() => new Uint8Array());
-    const [graph, design] = await Promise.all([store.graph(), store.design()]);
-    return json(response, 200, await runPreflight({ manifest, pdfPath: store.previewPath(), pdfData, graph, currentDesign: design, currentHeadTitle: await resolveHeadTitle(store, graph, design) }));
+    const report = await store.exclusive(async () => {
+      const pdfPath = store.previewPath();
+      const manifest = await readFile(path.join(store.buildDirectory(), 'page-map.json'), 'utf8').then(JSON.parse).catch(() => null);
+      const pdfData = await readFile(pdfPath).catch(() => new Uint8Array());
+      const [graph, design] = await Promise.all([store.graph(), store.design()]);
+      return runPreflight({ manifest, pdfPath, pdfData, graph, currentDesign: design, currentHeadTitle: await resolveHeadTitle(store, graph, design) });
+    });
+    return json(response, 200, report);
   }
   if (request.method === 'GET' && url.pathname === '/api/project/design') { const design = await store.design(); return json(response, 200, { design, hash: designHash(design), defaultHash: designHash({}), trimSizes: [...TRIM_SIZES.keys()] }); }
   if (request.method === 'PUT' && url.pathname === '/api/project/design') { const design = await store.saveDesign(await body(request)); return json(response, 200, { design, hash: designHash(design) }); }

@@ -1,5 +1,6 @@
 /** Frige publishing engine source that checks proof currency, compiler findings and embedded fonts. */
-import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { TRIM_SIZES } from './lualatex.mjs';
 import { designHash } from './design-settings.mjs';
 
@@ -34,10 +35,9 @@ export function compilerFindings({ log, document, units = [] }) {
 /** Reads embedded font information when the tool is available. */
 function pdffonts(file) {
   return new Promise((resolve) => {
-    let output = ''; const child = spawn('pdffonts', [file], { windowsHide: true });
-    child.stdout.on('data', (chunk) => { output += chunk; });
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => resolve(code === 0 ? output : null));
+    execFile('pdffonts', [file], { windowsHide: true, timeout: 5000, killSignal: 'SIGKILL' }, (error, output) => {
+      resolve(error ? null : output);
+    });
   });
 }
 
@@ -63,6 +63,9 @@ function currentIncluded(graph, manifest) {
 /** Reports proof, source and font readiness findings. */
 export async function runPreflight({ manifest, pdfPath, pdfData, graph, currentDesign, currentHeadTitle }) {
   if (!manifest || manifest.schemaVersion < 3) return { checkedAt: new Date().toISOString(), proof: null, checks: [check('proof', 'Compiler-mapped proof', 'fail', 'There is no compiler-mapped proof. Typeset the book first.')] };
+  if (manifest.pdfSha256 !== undefined && createHash('sha256').update(pdfData ?? new Uint8Array()).digest('hex') !== manifest.pdfSha256) {
+    return { checkedAt: new Date().toISOString(), proof: null, checks: [check('proof', 'Compiler-mapped proof', 'fail', 'The preview PDF differs from the compiler page map. Typeset it again.')] };
+  }
   const checks = [];
   const pagination = manifest.pagination;
   checks.push(pagination.verified
@@ -94,7 +97,7 @@ export async function runPreflight({ manifest, pdfPath, pdfData, graph, currentD
 
   const fonts = pdf && pdfPath ? await pdffonts(pdfPath) : null;
   if (!pdf) checks.push(check('embedding', 'Fonts embedded', 'unavailable', 'There is no readable proof PDF to inspect.'));
-  else if (fonts === null) checks.push(check('embedding', 'Fonts embedded', 'unavailable', 'pdffonts is not available, so embedding was not checked.'));
+  else if (fonts === null) checks.push(check('embedding', 'Fonts embedded', 'unavailable', 'Font inspection was unavailable or did not complete within its time limit.'));
   else {
     const rows = fonts.split(/\r?\n/).slice(2).filter((line) => line.trim());
     const unembedded = rows.filter((line) => { const columns = line.trim().split(/\s+/); return columns.at(-5) !== 'yes'; });

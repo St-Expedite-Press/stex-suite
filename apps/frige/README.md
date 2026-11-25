@@ -194,7 +194,9 @@ book in table-of-contents order through the selected scope.
   no printer profile or PDF/X validation exists yet.
 - Staging a proof for the live build requires a compiler-verified page map,
   unchanged node sources, and an unchanged table of contents through the
-  proof's scope.
+  proof's scope. New proofs include a PDF digest. Preflight and handoff
+  check that the PDF matches its page map. Font inspection reports
+  unavailable when the subprocess exceeds five seconds.
 - The graph reports `empty-editorial-note` for a notes section with no
   reviewer comments in that form, since no footnote prints for it.
 - The sidebar is one book tree: the whole book, sections in
@@ -420,6 +422,11 @@ chat**. The exact excerpt, the first 6,000 characters of the converted text,
 can then accompany Igor turns for that book. The context limit can omit an
 excerpt on a large turn. Review again if the excerpt changes. A
 password-protected book supports this workflow in Frige after unlock.
+
+Frige records a SHA-256 digest of each new original. The workstation
+reports identical bytes from an earlier upload in the same book when
+the bounded check finds a match. Each upload keeps its own document ID,
+conversion state and approval.
 
 When `STEX_FRIGE_CONVERTER_SOCKET` names the socket of Frige's isolated
 converter (`src/document_convert.py`), every upload is converted to Markdown

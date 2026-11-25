@@ -935,22 +935,28 @@ async function uploadAttachments(files) {
   try {
     const attachments = await Promise.all(files.map(async (file) => ({ name: file.name, contentBase64: (await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.readAsDataURL(file); })) })));
     const created = await request('/api/project/attachments', { method: 'POST', body: JSON.stringify({ attachments }) });
-    state.attachments = await request('/api/project/attachments'); renderAttachments(); $('#attachment-state').textContent = '';
+    const duplicates = created.filter((record) => record.duplicateOf).length;
+    let notice = '';
+    if (duplicates === 1) notice = 'One file matches an earlier upload in this book.';
+    if (duplicates > 1) notice = `${duplicates} files match earlier uploads in this book.`;
+    state.attachments = await request('/api/project/attachments');
+    renderAttachments();
+    $('#attachment-state').textContent = notice;
     // With the converter configured, new uploads wait to be converted; convert them now, one at a time.
     const waiting = created.filter((record) => record.contextState === 'awaiting-extraction').map((record) => record.id);
-    if (waiting.length) await convertAttachments(waiting);
+    if (waiting.length) await convertAttachments(waiting, notice);
   } catch (error) { $('#attachment-state').textContent = error.message; } finally { $('#attachment-input').value = ''; }
 }
 
 /** Converts stored attachments one at a time; each result still needs the author's review. */
-async function convertAttachments(ids) {
+async function convertAttachments(ids, notice = '') {
   let failure = '';
   for (const [index, id] of ids.entries()) {
     $('#attachment-state').textContent = ids.length > 1 ? `Converting ${index + 1} of ${ids.length}…` : 'Converting…';
     try { await request(`/api/project/attachments/${id}/convert`, { method: 'POST' }); } catch (error) { failure = error.message; }
   }
   try { state.attachments = await request('/api/project/attachments'); renderAttachments(); } catch (error) { failure ||= error.message; }
-  $('#attachment-state').textContent = failure;
+  $('#attachment-state').textContent = [failure, notice].filter(Boolean).join(' ');
 }
 
 /** Previews the exact bytes and binds the next approval to their hash. */
