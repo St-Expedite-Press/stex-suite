@@ -12,6 +12,13 @@
 
 ## Current work
 
+The owner proposed a new program on 2026-11-25: persistent workspaces,
+knowledge architecture and interaction maturity. Its reconnaissance,
+dependency graph and first milestones are in
+[PERSISTENT-WORKSPACES.md](PERSISTENT-WORKSPACES.md). A1, A2, S0 + K0, D1
+and D2 are authorized (D-027 to D-029); check that file's change log for
+progress.
+
 The public source candidate is prepared for owner review. Its contents,
 verification and publication gates are in the
 [release preparation report](../verification/public-source-release.md).
