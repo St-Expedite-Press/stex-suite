@@ -53,7 +53,7 @@ Run in the worktree on Windows 11, Node 24.18.
 | `corepack pnpm run test:knowledge` | 22 tests: 20 pass, 0 fail, 2 skipped (see below) |
 | `corepack pnpm --dir apps/pantheon build` (`tsc --noEmit && vite build`) | pass; `seaxneat.js` and `seaxneat.css` built |
 | `git diff --check` | clean |
-| `corepack pnpm run verify:platform` | **NOT RUN to completion: it could not start.** `dev:alpha` needs the `stex-igor` submodule, which is not initialized in this worktree (`ENOENT ... stex-igor\apps`, twice). The updated script is syntax-checked only; its new assertions have not been executed. |
+| `corepack pnpm run verify:platform` | In the implementer's worktree it **could not start**: `dev:alpha` needs the `stex-igor` submodule, which was not initialized there. **The coordinator then ran it from the main checkout after the merge (2026-11-25): PASS, "platform workflow and five viewports".** That run observed: (1) the CSP blocks an external fetch and image load, with `securitypolicyviolation` events and 0 requests at the external server; (2) a port collision moves the preview to a free port; (3) an apply rebuilds and restarts the live preview, which then serves the new heading; (4) Stop removes the process tree, releases the port, the proxy refuses and the frame is removed. The rest of the existing workflow also passed. |
 | Scratch real-engine check (not committed; Seaxneat engine alone on port 4560, real `pnpm install` and `next build`, real Chrome via the repository's DevTools harness) | PASS, details below |
 
 Scratch check results, all observed: real Next build validated; with a foreign
@@ -102,5 +102,5 @@ every OS.
   prevented; the vault must not be writable by untrusted code. Two symlink
   negative tests were skipped on this machine for lack of privilege. Candidate
   names such as `note~1.md` are refused even when legitimate (conservative).
-- `verify:platform` must be run with the submodule present before this is
-  treated as release evidence.
+- `verify:platform` passed from the main checkout with the submodule present
+  (see the commands table). It ran on Windows with Chrome only.
