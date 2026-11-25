@@ -13,8 +13,12 @@ fixed context-export paths, no redirects, five-second call timeouts and a
 ### Personal journals (hosted)
 
 Hosted, the journal is chosen from the signed-in user the host admitted, never
-from a header or body: `<STEX_KNOWLEDGE_DATA_DIR>/people/<first 32 hex of
-sha256(username)>/knowledge.v1.json`. One person cannot read, export, revise
+from a header or body. It lives in
+`<STEX_KNOWLEDGE_DATA_DIR>/people/<username digest>/knowledge.v1.json`.
+The directory name is the first 32 lowercase hex digits of SHA-256 over the
+username's UTF-8 bytes. For usernames containing unpaired UTF-16 surrogates,
+the input is byte `0xff` followed by the UTF-8 bytes of the JSON-encoded
+username. One person cannot read, export, revise
 or erase another's journal. Without a signed-in user the host answers `401`.
 A journal that cannot open answers `503` for that person only. A journal
 already at the root of the data directory is never moved, rewritten or

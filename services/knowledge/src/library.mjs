@@ -3,7 +3,7 @@
  *
  * Purpose: hosted Pantheon serves several signed-in people from one process.
  * Knowledge is personal state, so each person gets their own journal, opened
- * lazily from `<root>/people/<sha256(username) first 32 hex>/`. Each directory
+ * lazily from a hashed username directory under `<root>/people/`. Each directory
  * keeps the single-writer lock and atomic journal of `projections.mjs`; this
  * module only chooses which directory a request may use.
  *
@@ -42,10 +42,18 @@ const fail = (status, code, message) => Object.assign(new Error(message), { stat
  * paths; usernames are compared exactly as Igor reports them.
  *
  * @param {string} username  The admitted Igor username.
- * @returns {string}  First 32 hex characters of the SHA-256 of the username.
+ * @returns {string}  First 32 hex characters of the username digest.
  */
 export function personDirectoryName(username) {
-  return createHash('sha256').update(username, 'utf8').digest('hex').slice(0, 32);
+  const hash = createHash('sha256');
+  if (username.isWellFormed()) {
+    hash.update(username, 'utf8');
+  } else {
+    // 0xff cannot occur in UTF-8. Reserve it to separate escaped usernames
+    // from the existing UTF-8 inputs, which must keep their journal paths.
+    hash.update(Buffer.from([0xff])).update(JSON.stringify(username), 'utf8');
+  }
+  return hash.digest('hex').slice(0, 32);
 }
 
 /**

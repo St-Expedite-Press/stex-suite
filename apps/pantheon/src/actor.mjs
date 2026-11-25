@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto';
 
-/** Header carrying the Igor username. */
+/** Header carrying the platform actor id. */
 export const ACTOR_HEADER = 'x-stex-actor';
 /** Header carrying the role, `owner` or `member`. */
 export const ACTOR_ROLE_HEADER = 'x-stex-actor-role';
@@ -53,26 +53,24 @@ export function stripActorHeaders(headers) {
  */
 export const ACTOR_RECEIVERS = new Set(['frige']);
 
-/** Usernames that can travel in the header as they are: visible ASCII, 1 to 128 characters. */
+/** Header values are visible ASCII, 1 to 128 characters. */
 const HEADER_SAFE = /^[\x21-\x7e]{1,128}$/;
+const DIGEST_ID = /^sha256-[0-9a-f]{64}$/;
 
 /**
  * The actor id sent for a username.
  *
- * Igor accepts usernames of up to 254 characters that may hold spaces or
- * non-ASCII letters. Those cannot travel in a header, but sending no actor
- * would leave that person unable to change anything in an engine that
- * requires one. So such a username travels as a stable digest instead:
- * `sha256-` and the 64 hex digits of its UTF-8 bytes. Every change is still
- * attributed to the same person.
+ * Reserve the digest format so a literal username cannot share the actor id
+ * of an encoded username. JSON string encoding preserves distinct usernames
+ * even when they contain unpaired UTF-16 surrogates.
  *
  * @param {string} username  The username Igor confirmed (Igor has already trimmed and lower-cased it).
  * @returns {string | null}  The id to send, or null for an empty or oversized username.
  */
 export function actorId(username) {
-  if (HEADER_SAFE.test(username)) return username;
+  if (HEADER_SAFE.test(username) && !DIGEST_ID.test(username)) return username;
   if (!username || username.length > 1024) return null;
-  return `sha256-${createHash('sha256').update(username, 'utf8').digest('hex')}`;
+  return `sha256-${createHash('sha256').update(JSON.stringify(username), 'utf8').digest('hex')}`;
 }
 
 /**

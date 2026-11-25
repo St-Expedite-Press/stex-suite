@@ -81,3 +81,25 @@ diff. It found no High findings. These were fixed afterwards:
 After these changes, `test:pantheon` passed 37 of 37, and `test:knowledge`
 passed 26 of 28 with 2 symlink cases skipped. The updated assertions fail
 against the code from before the fix.
+
+## Release follow-up (2026-11-25)
+
+The earlier mapping emitted the same actor ID for a username that needed
+encoding and a literal username identical to its digest. Pantheon now
+reserves the digest format and hashes the JSON string encoding of each
+username that needs a digest. The regression test covers the literal
+username collision, distinct unpaired surrogates, and a username outside
+the reserved format. The new test failed on the previous mapping, and all
+seven actor tests passed after the fix.
+
+The follow-up review found that unpaired surrogates could also cause two
+usernames to share a personal journal path. The library now encodes these
+usernames in a separate byte range before hashing. The ordinary UTF-8
+digest and the legacy root path are preserved. A regression test failed
+on the old encoding and now verifies that two synthetic accounts read
+separate journals. The independent reviewer reran all seven library tests
+and confirmed the preserved paths. `corepack pnpm verify:knowledge` passed
+in Chrome against disposable data at all four viewports.
+`corepack pnpm run verify:frige` passed with a LuaLaTeX proof and five
+viewports. The full `corepack pnpm test` passed with the existing Unix-socket
+converter skip and two Windows symlink skips.

@@ -183,15 +183,15 @@ sign-in ([D-023](../../docs/program/DECISIONS.md#d-023--hosted-pantheon-uses-igo
   `x-stex-platform-token` from every incoming request in every mode. With
   `STEX_PLATFORM_ACTOR_SECRET` set (at least 32 characters; a shorter value
   refuses startup in any mode), it sets all three on requests proxied to
-  Frige and Seaxneat (including the legacy `/api/books` proxy and the
-  knowledge `/accept` engine fetches) for the signed-in user. Usernames
-  must be visible ASCII, 1 to 128 characters, or nothing is sent; a role
-  other than `owner` becomes `member`. They are never sent to Igor, and
-  the token is never logged. Hosted **without** the secret, Pantheon logs one
-  startup warning and sends nothing, so engines cannot attribute requests.
+  Frige (including the legacy `/api/books` proxy and the knowledge
+  `/accept` engine fetches) for the signed-in user. Pantheon uses the
+  username directly when it is visible ASCII, 1 to 128 characters, and
+  outside the reserved digest format. Other valid usernames use a stable
+  digest. A role other than `owner` becomes `member`. Hosted with the secret
+  unset, Pantheon logs one startup warning and omits the actor headers.
   Local mode sends nothing. The actor grants no access.
 - **Knowledge is personal.** Hosted, each username has its own journal at
-  `STEX_KNOWLEDGE_DATA_DIR/people/<first 32 hex of sha256(username)>/`,
+  `STEX_KNOWLEDGE_DATA_DIR/people/<username digest>/`,
   opened on first use. At most 32 journals stay open (idle ones are
   closed, releasing their lock; a request that would need a 33rd while all
   are in use gets `503`). A journal that cannot open fails for that person

@@ -541,8 +541,9 @@ the coordinating agent's defaults and stand until the owner says otherwise.
 - **Local mode** has no secret, ignores actor headers, and acts as
   `local`.
 - **Amended before release** (2026-11-25, after the independent review):
-  - a username that a header cannot carry travels as a stable `sha256-`
-    digest, instead of sending no actor;
+  - a username that a header cannot carry, or that matches the reserved
+    actor digest format, travels as a stable `sha256-` digest of its
+    JSON string encoding;
   - only applications that verify the actor receive it (Frige today);
   - the legacy journal owner is matched the way Igor normalises usernames.
 

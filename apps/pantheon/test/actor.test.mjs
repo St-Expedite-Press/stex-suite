@@ -110,11 +110,19 @@ test('actor helpers validate the secret, strip all three headers and refuse unsa
   // so that person can still change things in Frige (independent review finding).
   for (const username of ['has space', 'tab\t', 'new\nline', 'café', 'x'.repeat(129)]) {
     const id = actorHeaders({ username, role: 'owner' }, SECRET)['x-stex-actor'];
-    assert.equal(id, `sha256-${createHash('sha256').update(username, 'utf8').digest('hex')}`, JSON.stringify(username));
+    assert.equal(id, `sha256-${createHash('sha256').update(JSON.stringify(username), 'utf8').digest('hex')}`, JSON.stringify(username));
     assert.equal(actorId(username), id);
     assert.match(id, /^[\x21-\x7e]{1,128}$/);
   }
   assert.ok(actorHeaders({ username: 'x'.repeat(128), role: 'owner' }, SECRET));
+});
+
+test('distinct usernames stay distinct in the actor header', () => {
+  const digestId = actorId('has space');
+  assert.match(digestId, /^sha256-[0-9a-f]{64}$/);
+  assert.notEqual(actorId(digestId), digestId);
+  assert.notEqual(actorId('\ud800'), actorId('\ud801'));
+  assert.equal(actorId('sha256-example'), 'sha256-example');
 });
 
 test('a secret shorter than 32 characters refuses startup, in any mode', async () => {
@@ -148,7 +156,7 @@ test('hosted with the secret sends the actor to Frige only, strips forged header
   assert.deepEqual(seen.seaxneat.at(-1).actor, {}, 'Seaxneat verifies no actor, so it never receives the token (and the forged headers are gone)');
 
   await call('/frige/api/health', { headers: { cookie: cookie('spaced'), ...FORGED } });
-  assert.deepEqual(seen.frige.at(-1).actor, expected(`sha256-${createHash('sha256').update('has space', 'utf8').digest('hex')}`, 'member'), 'a username a header cannot carry travels as its digest, and the forged headers are gone');
+  assert.deepEqual(seen.frige.at(-1).actor, expected(actorId('has space'), 'member'), 'a username a header cannot carry travels as its digest, and the forged headers are gone');
 
   await call('/igor/api/conversations', { headers: { cookie: cookie('alice'), ...FORGED }, method: 'POST' });
   for (const entry of seen.igor) assert.deepEqual(actorOf(entry), {}, `Igor never receives actor headers: ${entry.path}`);

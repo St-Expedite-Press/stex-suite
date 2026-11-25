@@ -43,8 +43,10 @@ unavailable. This is deliberate bounded access checking, not automatic indexing.
 Hosted Pantheon serves knowledge as personal state
 ([D-028](../../docs/program/DECISIONS.md#d-028--a-verified-actor-reaches-the-engines)).
 `src/library.mjs` (`openKnowledgeLibrary`) chooses the journal for the
-signed-in username the host admitted: `STEX_KNOWLEDGE_DATA_DIR/people/<first
-32 hex of sha256(username)>/`, each with its own writer lock, opened lazily,
+signed-in username the host admitted. Each directory lives under
+`STEX_KNOWLEDGE_DATA_DIR/people/` and uses the
+[username digest](../../protocol/knowledge/README.md#personal-journals-hosted).
+Each journal opens lazily with its own writer lock,
 at most 32 open at once (least-recently-used idle journals are closed first,
 releasing their locks; none is closed while in use). A journal that cannot
 open (lock held, corrupt) fails closed with `503` for that person only. In

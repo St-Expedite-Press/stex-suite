@@ -50,6 +50,19 @@ test('hosted requests without a user are refused, and a disabled library never c
   assert.equal((await disabled.lease('alice')).knowledge.enabled, false);
 });
 
+test('a username with an unpaired surrogate has a separate journal from the replacement character', async (context) => {
+  const directory = await temporary();
+  const library = await openKnowledgeLibrary({ directory, hosted: true });
+  context.after(() => library.close());
+
+  const unpaired = 'member-\ud800';
+  const replacement = 'member-\ufffd';
+  assert.notEqual(personDirectoryName(unpaired), personDirectoryName(replacement));
+  await using(library, unpaired, (journal) => accept(journal, 'unpaired-accept-1'));
+  assert.equal(await sources(library, replacement), 0);
+  assert.equal(await sources(library, unpaired), 1);
+});
+
 test('local mode uses the existing journal in place, whatever the user', async () => {
   const directory = await temporary();
   const first = await openKnowledge({ directory }); await accept(first, 'local-accept-1'); await first.close();

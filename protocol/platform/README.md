@@ -95,9 +95,15 @@ that the engine did not already allow.
 
 | Header | Value |
 | --- | --- |
-| `x-stex-actor` | The actor id: visible ASCII (0x21–0x7e), 1 to 128 characters. It is the Igor username when the username fits those rules. Otherwise (a space, non-ASCII letters, or more than 128 characters) it is `sha256-` followed by the 64 hex digits of the username's UTF-8 bytes, so the same person always has the same id |
+| `x-stex-actor` | The actor ID uses 1 to 128 visible ASCII characters (0x21–0x7e). It carries the Igor username directly if it fits and falls outside the reserved digest format. Other valid usernames use the digest described below. |
 | `x-stex-actor-role` | `owner` or `member` |
 | `x-stex-platform-token` | The shared secret `STEX_PLATFORM_ACTOR_SECRET` (at least 32 characters) |
+
+Pantheon reserves actor IDs matching `^sha256-[0-9a-f]{64}$`. A username
+that matches this pattern, or cannot travel directly in the header, is
+encoded as a JSON string, including its quotes and escapes. Pantheon hashes
+that string's UTF-8 bytes with SHA-256 and prefixes the lowercase hex
+digest with `sha256-`.
 
 ### Pantheon (the only sender)
 
