@@ -90,13 +90,23 @@ The browser check covers:
 
 - **Fake transport.** No turn reached hosted Hermes. A live run needs the
   owner's authorization.
-- **Release.** Releasing needs a push to stex-igor `main`, which deploys
-  and needs the owner's authorization. After release, rolling Igor back
-  would show sessions as chats and accept messages to closed sessions until
-  it was released again.
+- **Rollback.** Rolling Igor back to its previous generation would show
+  sessions as chats and accept messages to closed sessions until the
+  working-session release is restored.
 - **Summary history.** Only the latest revision of a summary is kept; a
   continued session keeps its own frozen copy.
 - **Summary fields.** `author` and `coversThroughMessageId` are stored as
   the client sends them, because the summary is the user's own record.
 - **Creating sessions.** New conversations start as chats in the interface,
   and the user turns one into a session.
+
+## Hosted release (2026-11-25)
+
+[Igor PR #14](https://github.com/St-Expedite-Press/stex-igor/pull/14) merged
+as `8b7a789c7e59fbaed3f07efda8bd5b3dc8528d93` after branch and PR CI passed.
+The [production workflow](https://github.com/St-Expedite-Press/stex-igor/actions/runs/45653289301)
+passed. A VM read of `/opt/stex/ACTIVE.json` confirmed the same revision at
+generation 24, with Igor and inference active. The local Chrome suite
+passed again with stub inference. Hosted acceptance is limited to the
+deployment and service checks. Hosted Pantheon and Frige use a separate
+release process.
