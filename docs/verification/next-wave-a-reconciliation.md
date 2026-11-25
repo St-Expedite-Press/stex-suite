@@ -1,7 +1,7 @@
 # Next-wave reconciliation
 
-Baseline checked on 2026-11-25. Current product status is tracked in
-[Status](../STATUS.md).
+The baseline below was checked before the 2026-11-25 release.
+See the [release checks](#hosted-release-on-2026-11-25) and [current status](../STATUS.md).
 
 | Surface | Authoritative revision and evidence | State |
 | --- | --- | --- |
@@ -69,7 +69,31 @@ session summary and continuation at 390 px and the knowledge views at
 four widths. On-device touch, virtual keyboard behavior, and signed-in
 multi-user workflows remain separate acceptance cases.
 
-Publishing, merging, activating suite PR 23, and patching Node on the
-VM are separately authorized operations. Local verification covers
-deterministic and simulated workflows. Live-provider evaluation requires
-its own authorization and budget.
+## Hosted release on 2026-11-25
+
+| Surface | Active revision | Verification |
+| --- | --- | --- |
+| Pantheon and Frige | Generation 3, `d3f995ea3910defd0d48356d9a8ac619ba5b7cda` | Both suite CI jobs passed with the exact Igor pin. The approved merge commit was packaged with `corepack pnpm release:pantheon`. Remote checksums and two consecutive installer health checks passed. VM release metadata confirmed the activation. [Suite PR 23](https://github.com/St-Expedite-Press/stex-suite/pull/23) · [Suite CI](https://github.com/St-Expedite-Press/stex-suite/actions/runs/45705214987) |
+| Igor, inference and Hermes | Igor generation 25, `0455f82148abf25513f988d252f56de52d97a636` | Igor CI and the production workflow passed. The VM reported the expected release and active Igor, inference, and Hermes services. [Igor PR 15](https://github.com/St-Expedite-Press/stex-igor/pull/15) · [Igor CI](https://github.com/St-Expedite-Press/stex-igor/actions/runs/45704838535) · [Igor deploy](https://github.com/St-Expedite-Press/stex-igor/actions/runs/45705148844) |
+
+- Public HTTPS checks passed on both hosts. Both sign-in pages returned HTTP
+  200. The Igor workspace and Pantheon's root, home and Frige workspace
+  redirected signed-out visitors to sign-in. The tested conversation, session,
+  Frige and knowledge APIs returned HTTP 401 without a session. The knowledge
+  check included untrusted actor headers. Chrome opened the public Frige
+  sign-in at 390 × 844 pixels and rendered it without horizontal overflow.
+  [Pantheon](https://pantheon.stexpedite.press) · [Igor](https://igor.stexpedite.press)
+- Frige reported healthy over loopback and returned `401 ACTOR_REQUIRED`
+  for a diagnostic POST to a nonexistent route without an actor. The VM check
+  confirmed the matching actor secret and assignment of the legacy journal to
+  the sole active owner. Cloudflared, both app stacks, and the document
+  converter, relay and worker services were active.
+- The previous Pantheon release and latest studio backup were present before
+  activation. The first installer bundle stopped on CRLF shell syntax before
+  switching versions. The corrected bundle's 13 files were verified against
+  the committed bytes before the second install. The VM Node readback was
+  `v22.23.4`. Local and CI verification used `v22.23.5`.
+- The public checks covered signed-out access. Submitting an actual login,
+  signed-in multi-user workflows, and paid provider turns remain unverified in
+  this release. The Frige and Seaxneat browser workflows ran locally with real
+  LuaLaTeX and Next.js builds. Hosted Seaxneat remains deferred.
