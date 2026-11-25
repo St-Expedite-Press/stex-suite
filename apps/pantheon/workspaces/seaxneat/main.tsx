@@ -4,9 +4,15 @@ import { createRoot } from 'react-dom/client';
 import './style.css';
 
 type Revision = { id: string; kind: string; createdAt: string; sourceHash: string };
-type Project = { id: string; title: string; ref: string; revisionCount: number; hasPendingProposal: boolean; lastValidatedRevision: string | null; revisions: Revision[]; operation: { state: string; detail?: string } };
+/** Preview lifecycle as reported by the engine: starting and running serve; stopped and failed do not. */
+type PreviewState = 'starting' | 'running' | 'stopped' | 'failed' | 'not_started';
+type Project = { id: string; title: string; ref: string; preview?: { state: PreviewState; updatedAt?: string } | null; revisionCount: number; hasPendingProposal: boolean; lastValidatedRevision: string | null; revisions: Revision[]; operation: { state: string; detail?: string } };
 type Proposal = { id: string; request: string; path: string; source: string; baseHash: string };
 const endpoint = '/seaxneat/api/stex/workspace/v1';
+/** Mounted preview path for a project; the engine's private origin is never exposed. */
+const previewPathFor = (id: string): string => '/seaxneat/api/projects/' + id + '/preview/';
+/** Returns the mounted path when the engine reports a serving preview, otherwise an empty string. */
+const livePreview = (project: Project | null): string => project && (project.preview?.state === 'running' || project.preview?.state === 'starting') ? previewPathFor(project.id) : '';
 /** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api<T>(route: string, payload?: object): Promise<T> {
   const response = await fetch(endpoint + route, { method: payload ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(390_000), ...(payload ? { body: JSON.stringify(payload) } : {}) });
@@ -32,7 +38,7 @@ function Workspace() {
   const [diff, setDiff] = useState('');
   /** Selects a website project and clears stale details. */
   const select = async (project: Project | null) => {
-    setSelected(project); setProposal(null); setPreview(''); setDiff('');
+    setSelected(project); setProposal(null); setPreview(livePreview(project)); setDiff('');
     const url = new URL(location.href);
     if (project) url.searchParams.set('project', project.id); else url.searchParams.delete('project');
     history.replaceState(null, '', url);
@@ -87,7 +93,7 @@ function Workspace() {
   /** Applies and validates the selected proposal. */
   const apply = () => { if (!selected || !proposal) return; void run(async () => {
     await api('/projects/' + selected.id + '/apply', { proposalId: proposal.id });
-    setProposal(null); setPreview(''); setDiff(''); await refresh(selected.id); setNotice('Validated edit applied.');
+    setProposal(null); setDiff(''); const { current } = await refresh(selected.id); setPreview(livePreview(current)); setNotice(current?.preview?.state === 'failed' ? 'Validated edit applied, but the preview could not restart. Start it again.' : 'Validated edit applied.');
   }); };
   /** Records dismissal of the current proposal. */
   const dismiss = () => { if (!selected || !proposal) return; void run(async () => {
@@ -97,8 +103,13 @@ function Workspace() {
   /** Starts the validated revision's isolated preview. */
   const startPreview = () => { if (!selected) return; void run(async () => {
     const result = await api<{ path: string }>('/projects/' + selected.id + '/preview', {});
-    if (result.path !== '/seaxneat/api/projects/' + selected.id + '/preview/') throw new Error('Invalid preview path.');
+    if (result.path !== previewPathFor(selected.id)) throw new Error('Invalid preview path.');
     setPreview(result.path); await refresh(selected.id); setNotice('Preview is starting after a successful build. Use Reload preview if it is still starting.');
+  }); };
+  /** Stops the preview process; the frame is removed so it cannot show a stale build. */
+  const stopPreview = () => { if (!selected) return; void run(async () => {
+    await api<{ state: PreviewState }>('/projects/' + selected.id + '/preview/stop', {});
+    setPreview(''); await refresh(selected.id); setNotice('Preview stopped.');
   }); };
   /** Loads changed files for the selected revision. */
   const viewDiff = (revision: string) => { if (!selected) return; void run(async () => {
@@ -108,7 +119,7 @@ function Workspace() {
   /** Restores the chosen source as a new validated revision. */
   const restore = (revision: string) => { if (!selected || !confirm('Restore revision ' + revision + '? This creates a new validated revision.')) return; void run(async () => {
     const project = await api<Project>('/projects/' + selected.id + '/restore', { revision });
-    await refresh(selected.id); await select(project); setNotice('Restored as a new validated revision.');
+    await refresh(selected.id); await select(project); setNotice(project.preview?.state === 'failed' ? 'Restored as a new validated revision, but the preview could not restart.' : 'Restored as a new validated revision.');
   }); };
   return <div className="development-workspace" aria-busy={busy}>
     <div className="workspace-heading"><p className="eyebrow">Seaxneat</p><h1>Website workspace</h1><p className="stex-meta">Edits are simulated proposals. Apply explicitly to build and validate a revision.</p>
@@ -128,6 +139,8 @@ function Workspace() {
           <p>Operation: {selected.operation.state}. Last validated revision: <code>{selected.lastValidatedRevision?.slice(0, 12) || 'None'}</code></p>
           {selected.operation.detail && <p className="workspace-notice">{selected.operation.detail}</p>}
           <button className="stex-button stex-button--secondary" type="button" disabled={busy} onClick={startPreview}>Build and start local preview</button>
+          <button className="stex-button stex-button--secondary" type="button" disabled={busy || !livePreview(selected)} onClick={stopPreview}>Stop preview</button>
+          <p className="workspace-preview-state" role="status">Preview: {selected.preview?.state ?? 'stopped'}{selected.preview?.state === 'failed' ? ' (it could not start; see the notice)' : ''}</p>
           {preview && <section aria-label="Website preview"><button className="stex-button stex-button--secondary" type="button" onClick={() => { const frame = document.querySelector<HTMLIFrameElement>('.workspace-preview'); if (frame) frame.src = preview; }}>Reload preview</button><iframe className="workspace-preview" title={selected.title + ' preview'} src={preview} sandbox="allow-scripts" referrerPolicy="no-referrer" /></section>}
           <form onSubmit={propose}><label htmlFor="heading-request">Propose a heading with the deterministic simulator</label><textarea id="heading-request" value={request} onChange={(event) => setRequest(event.target.value)} maxLength={800} required disabled={busy}/><button className="stex-button stex-button--secondary" type="submit" disabled={busy}>Prepare edit</button></form>
           {proposal && <section className="workspace-proposal" aria-label="Review proposal"><h3>Review simulated proposal</h3><p>{proposal.request}</p><p>Target: <code>{proposal.path}</code> · base <code>{proposal.baseHash.slice(0, 12)}</code></p><details><summary>Proposed source</summary><pre>{proposal.source}</pre></details><div className="workspace-actions"><button className="stex-button stex-button--secondary" type="button" disabled={busy} onClick={apply}>Apply and validate</button><button className="stex-button stex-button--secondary" type="button" disabled={busy} onClick={dismiss}>Dismiss proposal</button></div></section>}

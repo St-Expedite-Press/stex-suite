@@ -12,12 +12,13 @@ export function workspaceApi(store, { body, send }) {
     /** Removes engine-private fields before returning workspace data. */
     const publicValue = (value) => {
       if (Array.isArray(value)) return value.map(publicValue);
+      // preview.detail is engine-private diagnostics; only state and the mounted path leave the engine.
       if (value?.ref && value.preview) return { ...value, preview: { state: value.preview.state, updatedAt: value.preview.updatedAt, path: `/seaxneat/api/projects/${value.id}/preview/` } };
       return value;
     };
     /** Shapes the response for the current action. */
     const reply = (status, value) => send(response, status, versioned ? { schemaVersion: workspaceVersion, ...(status >= 400 ? value : { result: publicValue(value) }) } : value);
-    const match = /^\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/(proposal|apply|dismiss|diff|restore|preview))?$/.exec(pathname);
+    const match = /^\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/(proposal|apply|dismiss|diff|restore|preview(?:\/stop)?))?$/.exec(pathname);
     if (pathname !== '/projects' && !match) { reply(404, { code: 'NOT_FOUND', error: 'Unknown workspace route.' }); return; }
     const [, id, action] = match || [];
     const allowed = pathname === '/projects' ? ['GET', 'POST'] : !action || action === 'diff' ? ['GET'] : action === 'proposal' ? ['GET', 'POST'] : ['POST'];
@@ -42,6 +43,7 @@ export function workspaceApi(store, { body, send }) {
       if (action === 'dismiss') return reply(200, await store.dismiss(id, payload.proposalId));
       if (action === 'diff') return reply(200, { diff: await store.diff(id, url.searchParams.get('revision')) });
       if (action === 'restore') return reply(200, await store.restore(id, payload.revision));
+      if (action === 'preview/stop') return reply(200, { state: (await store.stopPreview(id)).state, path: `/seaxneat/api/projects/${id}/preview/` });
       const build = await store.build(project);
       if (!build.ok) throw Object.assign(new Error('The workspace did not build; preview was not started.'), { code: 'BUILD_FAILED' });
       const preview = await store.startPreview(id);

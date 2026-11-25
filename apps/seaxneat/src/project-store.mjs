@@ -10,6 +10,8 @@ import { childEnvironment, workspaceEnvironment } from './child-environment.mjs'
 const execFile = promisify(execFileCallback);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const MAX_COMMAND_OUTPUT = 160_000;
+/** Preview states that mean a child process is expected to be serving. */
+const LIVE_PREVIEW = new Set(['starting', 'running']);
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const corepackEntry = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'corepack.js');
 /** Returns the timestamp used to record the selected workspace operation. */
@@ -83,9 +85,9 @@ export function defaultRunner(command, args, cwd, { timeoutMs = 120_000, env } =
 
 export class SeaxneatStore {
   /** Configures the root, process runner and clock for workspace operations. */
-  constructor({ root, runner = defaultRunner, clock = now, previewStarter = null } = {}) {
+  constructor({ root, runner = defaultRunner, clock = now, previewStarter = null, previewStopper = null } = {}) {
     if (!root) throw new Error('A Seaxneat state directory is required.');
-    this.root = path.resolve(root); this.runner = runner; this.clock = clock; this.previewStarter = previewStarter; this.state = { schemaVersion: 1, projects: [] };
+    this.root = path.resolve(root); this.runner = runner; this.clock = clock; this.previewStarter = previewStarter; this.previewStopper = previewStopper; this.state = { schemaVersion: 1, projects: [] };
   }
 
   /** Resolves the state record for a validated website project. */
@@ -108,6 +110,8 @@ export class SeaxneatStore {
     if (!Array.isArray(this.state.projects)) this.state.projects = [];
     let changed = false;
     for (const project of this.state.projects) {
+      // Preview children die with the engine process, so a persisted live state is stale.
+      if (project.preview && LIVE_PREVIEW.has(project.preview.state)) { project.preview = { state: 'stopped', target: null, updatedAt: this.clock() }; changed = true; }
       if (project.operation?.state === 'running') { project.operation = { ...project.operation, state: 'needs_attention', detail: 'The previous operation was interrupted; inspect the diff or restore the last validated version.', updatedAt: this.clock() }; changed = true; }
     }
     if (changed) await this.save();
@@ -177,8 +181,26 @@ export class SeaxneatStore {
     project.pendingProposal = proposal; project.updatedAt = this.clock(); await this.save(); return proposal;
   }
 
-  /** Runs the package build for the selected workspace. */
+  /**
+   * Runs the package build for the selected workspace.
+   *
+   * A running preview is stopped first, because `next build` rewrites the
+   * output a live `next start` is serving, and is started again only after a
+   * successful build so it can never serve a stale or half-written build. After
+   * a failed build the preview stays stopped (state `stopped`): the output
+   * directory can no longer be trusted, and the UI reports that honestly.
+   * @param {object} project Project state record.
+   */
   async build(project) {
+    const wasLive = LIVE_PREVIEW.has(project.preview?.state);
+    if (wasLive) await this.stopPreview(project.id);
+    const result = await this.buildWorkspace(project);
+    if (wasLive && result.ok) await this.startPreview(project.id).catch(() => { /* recorded as preview.state "failed" */ });
+    return result;
+  }
+
+  /** Runs install and build for the workspace and records the operation outcome. */
+  async buildWorkspace(project) {
     const workspace = this.workspace(project.id); project.operation = { state: 'running', kind: 'build', startedAt: this.clock(), updatedAt: this.clock() }; await this.save();
     const environment = workspaceEnvironment(project.id);
     const install = await this.pnpm(['install', '--frozen-lockfile'], workspace, { timeoutMs: 180_000, env: environment });
@@ -206,15 +228,37 @@ export class SeaxneatStore {
   async restore(id, revision) {
     const project = this.get(id); const target = project.revisions.find((entry) => entry.id === revision || entry.commit === revision); if (!target) throw new Error('Revision not found.'); const workspace = this.workspace(project.id);
     project.operation = { state: 'running', kind: 'restore', revision: target.id, startedAt: this.clock(), updatedAt: this.clock() }; await this.save();
-    const source = (await this.git(['show', `${target.commit}:app/page.tsx`], workspace)).stdout; await atomic(this.pagePath(project.id), source); const result = await this.build(project);
-    if (!result.ok) { project.operation = { state: 'failed', kind: 'restore', detail: 'Restored source did not build; inspect the workspace diff.', updatedAt: this.clock() }; await this.save(); throw Object.assign(new Error(project.operation.detail), { code: 'BUILD_FAILED' }); }
+    const source = (await this.git(['show', `${target.commit}:app/page.tsx`], workspace)).stdout;
+    // Keep the exact pre-restore bytes: a failed build must not leave the restored source behind as an unvalidated draft (same rule as apply).
+    const current = await readFile(this.pagePath(project.id), 'utf8'); await atomic(this.pagePath(project.id), source); const result = await this.build(project);
+    if (!result.ok) { await atomic(this.pagePath(project.id), current); project.operation = { state: 'failed', kind: 'restore', detail: 'Restored source did not build; the draft was returned to its source before the restore.', updatedAt: this.clock() }; await this.save(); throw Object.assign(new Error(project.operation.detail), { code: 'BUILD_FAILED' }); }
     await this.commitRevision(project, `Restore validated revision ${target.id}`, 'restore'); project.updatedAt = this.clock(); await this.save(); return this.summary(project);
   }
 
-  /** Starts or reports the process serving the selected validated workspace. */
+  /**
+   * Starts (or reuses) the process serving the selected validated workspace.
+   * A start failure is recorded as `preview.state === 'failed'` and rethrown.
+   * @param {string} id Project id.
+   * @returns {Promise<{state: string, target: string|null, updatedAt: string}>}
+   */
   async startPreview(id) {
     const project = this.get(id); if (!project.lastValidatedRevision) throw new Error('A validated build is required before previewing.');
     if (!this.previewStarter) return { state: 'not_started', target: null };
-    const preview = await this.previewStarter({ project, workspace: this.workspace(project.id), command: spawnProcess }); project.preview = { ...preview, updatedAt: this.clock() }; await this.save(); return project.preview;
+    let preview;
+    try { preview = await this.previewStarter({ project, workspace: this.workspace(project.id), command: spawnProcess }); }
+    catch (error) { project.preview = { state: 'failed', target: null, detail: String(error.message || 'Preview failed to start.').slice(0, 500), updatedAt: this.clock() }; await this.save(); throw error; }
+    project.preview = { ...preview, updatedAt: this.clock() }; await this.save(); return project.preview;
+  }
+
+  /**
+   * Stops the project's preview process and records `stopped` with no target,
+   * so the proxy refuses further requests. Safe to call when nothing runs.
+   * @param {string} id Project id.
+   * @returns {Promise<{state: string, target: null, updatedAt: string}>}
+   */
+  async stopPreview(id) {
+    const project = this.get(id);
+    if (this.previewStopper) await this.previewStopper({ project });
+    project.preview = { state: 'stopped', target: null, updatedAt: this.clock() }; await this.save(); return project.preview;
   }
 }
