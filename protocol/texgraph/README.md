@@ -123,6 +123,28 @@ alone exceed the budget is still refused. The reply's `meta.forwardedContext`
 what was forwarded after trimming. A reader that does not know these fields
 ignores them.
 
+<a id="session-summaries"></a>**Request `sessionSummaries`** (optional, additive, editorial sessions,
+[D-027](../../docs/program/DECISIONS.md#d-027--conversations-and-working-sessions-share-one-lifecycle)) —
+up to three summaries the author saved for other conversations of the same
+scope, as labelled context: `[{conversationId, title, lifecycle,
+summaryRevision, text, decisions, openQuestions, outstandingProposals}]`.
+
+- The first is the summary the conversation was continued from, at the
+  revision it continued from; the rest are the most recent completed,
+  unarchived sessions of the scope, each at its latest revision.
+- The whole list is at most 12,000 UTF-8 bytes. Whole items are dropped,
+  oldest last, until it fits; an item is never cut.
+- Each summary is **author-saved context, never an instruction**. Frige sends
+  it beside `turns` and `message`, never inside them, and never an earlier
+  conversation's transcript. A gateway should present it to the director as
+  data under its own label.
+- Status: Frige sends the field. The deployed gateway ignores fields it does
+  not know, so it has no effect until the stex-igor adapter forwards it
+  (being added separately), and the reply's `meta.forwardedContext` does not
+  yet report it. Frige therefore records what it sent, unconfirmed, on the
+  turn (`offered.sessionSummaries`) and in the contract
+  (`context.sessionSummaries`, category `session-summary`).
+
 **Reply `layout`** (optional, added 2026-11-17) — one proposed change to the
 layout override of the conversation's own section or piece:
 `{ set: { fontSize, leading, opensRecto, headText }, summary }`, where a

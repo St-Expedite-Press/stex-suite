@@ -40,6 +40,11 @@
       "type": "string",
       "pattern": "^(book|[a-z][a-z0-9-]{5,80})$"
     },
+    "conversationId": {
+      "description": "Additive (editorial sessions): which conversation of the scope proposed the change; main is the scope's first conversation. Absent in records made before conversations, which belong to the first one.",
+      "type": "string",
+      "pattern": "^(main|c-[a-f0-9]{16})$"
+    },
     "scope": {
       "description": "The conversation that proposed the change.",
       "type": "object",
@@ -203,6 +208,32 @@
             "null"
           ],
           "maxLength": 120
+        },
+        "sessionSummaries": {
+          "description": "Additive (editorial sessions): saved summaries of other conversations of the scope that Frige offered with the turn, by reference only. What Frige sent; the gateway does not report them yet.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "conversationId",
+              "summaryRevision",
+              "category"
+            ],
+            "properties": {
+              "conversationId": {
+                "type": "string",
+                "pattern": "^(main|c-[a-f0-9]{16})$"
+              },
+              "summaryRevision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "category": {
+                "const": "session-summary"
+              }
+            }
+          }
         },
         "outline": {
           "description": "The book outline offered with the turn (Wave 3c): how many pieces it listed, and whether it was cut short. No manuscript text.",
