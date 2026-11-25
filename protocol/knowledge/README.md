@@ -10,6 +10,21 @@ limit protect the host. Engine requests use configured loopback origins,
 fixed context-export paths, no redirects, five-second call timeouts and a
 65,536-byte response cap. Browser event payloads are never accepted directly.
 
+### Personal journals (hosted)
+
+Hosted, the journal is chosen from the signed-in user the host admitted, never
+from a header or body: `<STEX_KNOWLEDGE_DATA_DIR>/people/<first 32 hex of
+sha256(username)>/knowledge.v1.json`. One person cannot read, export, revise
+or erase another's journal. Without a signed-in user the host answers `401`.
+A journal that cannot open answers `503` for that person only. A journal
+already at the root of the data directory is never moved, rewritten or
+deleted; `STEX_KNOWLEDGE_LEGACY_OWNER` names the one username that uses it.
+While it exists and no owner is named, `GET /` adds the additive field
+`legacyJournal: "unassigned"` (presence only, no contents). Local mode (no
+signed-in user) uses the configured directory unchanged. When the host holds
+`STEX_PLATFORM_ACTOR_SECRET`, its engine fetches carry the
+[platform actor](../platform/README.md#platform-actor-v1) headers.
+
 | Method / suffix | Behavior |
 | --- | --- |
 | `GET /` | Both views, with current owner access labels |
