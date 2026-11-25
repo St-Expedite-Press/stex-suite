@@ -238,10 +238,16 @@ function passageForGateway({ nodeId, relativePath, baseHash, action, startLine, 
  * outline, settings in force and approved contracts as three separately
  * labelled request fields (see `ProjectStore#hierarchy`).
  *
+ * `sessionSummaries` (additive, editorial sessions) are author-saved summaries
+ * of other conversations in the same scope, already bounded to 12,000 UTF-8
+ * bytes by `selectSessionSummaries`. They are sent as labelled context for the
+ * gateway to forward, never merged into `turns` or `message`. A gateway that
+ * does not know the field ignores it.
+ *
  * @param {object} input
  * @returns {Promise<object>}  The labelled reply; never throws for an unavailable gateway.
  */
-export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null, passage = null }) {
+export async function requestScopeTurn({ book, scope, sources, withheld = [], graph, hierarchy = null, approvedSourceExcerpts = [], turns, message, answer = null, passage = null, sessionSummaries = [] }) {
   if (deterministic()) return fakeScopeTurn(message, sources, passage);
   const endpoint = process.env.STEX_INFERENCE_URL;
   if (!endpoint) return { ...assistantResult('Igor did not reply: STEX_INFERENCE_URL is not set. Your message was saved.', 'unconfigured'), ...empty };
@@ -259,6 +265,7 @@ export async function requestScopeTurn({ book, scope, sources, withheld = [], gr
         graph,
         // Additive v3 fields: each carries its own category and none holds manuscript text.
         ...(hierarchy ? { outline: hierarchy.outline, documentSettings: hierarchy.settings, approvedContracts: hierarchy.contracts } : {}),
+        ...(sessionSummaries.length ? { sessionSummaries } : {}),
         approvedSourceExcerpts: approvedSourceExcerpts.map(({ id, name, hash, excerpt }) => ({ id, name, hash, excerpt })).slice(0, 8),
         turns: turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').slice(-MAX_CONTEXT_TURNS).map(({ role, message: turnMessage, commentary }) => ({ role, message: turnMessage || commentary || '' })),
         message,

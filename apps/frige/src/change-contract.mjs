@@ -111,6 +111,9 @@ const MAX_SUMMARY_REQUEST = 280;
  *   What was offered from the levels around the scope: the number of outline
  *   entries, whether the outline was cut short, the settings' profile hash, and
  *   the ids of the approved contracts offered.
+ * @property {string} [conversationId]  The conversation of the scope that produced the proposal (`main` for the first). Recorded as `conversationId`.
+ * @property {Array<{ conversationId: string, summaryRevision: number }>} [sessionSummaries]
+ *   Saved session summaries Frige offered with the turn (category `session-summary`); what Frige sent, not confirmed by the gateway.
  */
 
 /**
@@ -576,6 +579,8 @@ export function buildContract({ id, createdAt, scope, commentary, changes, dropp
     id,
     scopeId: scope.id,
     scope: { id: scope.id, kind: scope.kind, title: scope.title },
+    // Additive (editorial sessions): which conversation of the scope proposed this. Absent in earlier records, which belong to the first conversation.
+    ...(typeof provenance.conversationId === 'string' && provenance.conversationId ? { conversationId: provenance.conversationId.slice(0, 40) } : {}),
     createdAt,
     request: String(provenance.request || '').slice(0, MAX_REQUEST),
     commentary: String(commentary || '').slice(0, MAX_COMMENTARY),
@@ -589,6 +594,8 @@ export function buildContract({ id, createdAt, scope, commentary, changes, dropp
       withheld: (provenance.withheld || []).map(({ nodeId, title }) => ({ nodeId, title })),
       references: (provenance.references || []).map(({ id: referenceId, name }) => ({ id: referenceId, name, category: 'approved-reference' })),
       designHash: label(provenance.designHash),
+      // Saved summaries of other sessions offered with the turn, by reference only (no summary text).
+      ...(Array.isArray(provenance.sessionSummaries) && provenance.sessionSummaries.length ? { sessionSummaries: provenance.sessionSummaries.map(({ conversationId, summaryRevision }) => ({ conversationId: String(conversationId).slice(0, 40), summaryRevision: Number(summaryRevision), category: 'session-summary' })) } : {}),
       // Context from the levels around the scope (Wave 3c), recorded by category without its content.
       ...(provenance.hierarchy ? {
         outline: { category: 'outline', count: Number(provenance.hierarchy.outline) || 0, truncated: provenance.hierarchy.outlineTruncated === true },
@@ -737,6 +744,8 @@ export function summarizeContract(record) {
     id: record.id,
     scopeId: record.scopeId,
     scope: record.scope || null,
+    // Additive: `null` for a record from before editorial sessions (the scope's first conversation).
+    conversationId: record.conversationId || null,
     createdAt: record.createdAt || null,
     status: record.status || 'resolved',
     request: String(record.request || '').slice(0, MAX_SUMMARY_REQUEST),

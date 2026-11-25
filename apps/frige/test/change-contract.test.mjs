@@ -572,6 +572,13 @@ test('every state of a stored contract conforms to the published schema, and the
   const superseded = await propose(store, first, `${FIRST}\nEarlier.\n`, { request: 'Ask.', userTurnId: 'turn-1', model: 'stex/test', transport: 'fake', references: [{ id: 'ref-1', name: 'Notes.md' }], withheld: [{ nodeId: second, title: 'Second' }], designHash: 'design-1' });
   await propose(store, first, `${FIRST}\nLater.\n`);
   assert.deepEqual(violations(schema, await store.contract(superseded.id)), [], 'superseded, with full provenance');
+  // Editorial sessions: the optional conversation id and the offered session summaries are additive and validate.
+  const sessioned = await propose(store, second, `${SECOND}\nSession.\n`, { request: 'Ask.', conversationId: 'c-0123456789abcdef', sessionSummaries: [{ conversationId: 'main', summaryRevision: 2 }] });
+  assert.equal(sessioned.conversationId, 'c-0123456789abcdef');
+  assert.deepEqual(sessioned.context.sessionSummaries, [{ conversationId: 'main', summaryRevision: 2, category: 'session-summary' }]);
+  assert.deepEqual(violations(schema, await store.contract(sessioned.id)), [], 'a contract made in a named conversation conforms');
+  assert.equal((await store.contracts({ scopeId: second }))[0].conversationId, 'c-0123456789abcdef', 'the history lists the conversation');
+  assert.equal('conversationId' in (await store.contract(contract.id)), false, 'a record without a conversation stays valid and unchanged');
 
   // The check must be able to fail: each malformed record is refused for the stated reason.
   const record = await store.contract(contract.id);
@@ -583,6 +590,8 @@ test('every state of a stored contract conforms to the published schema, and the
   assert.match(refused((copy) => { copy.changes[0].baseHash = 'short'; }), /baseHash: does not match/);
   assert.match(refused((copy) => { copy.context.offered[0].category = 'generated'; }), /category: expected "canonical-source"/);
   assert.match(refused((copy) => { copy.schemaVersion = 2; }), /schemaVersion: expected 3/);
+  assert.match(refused((copy) => { copy.conversationId = 'conversation-1'; }), /conversationId: does not match/);
+  assert.match(refused((copy) => { copy.context.sessionSummaries = [{ conversationId: 'main', summaryRevision: 0, category: 'session-summary' }]; }), /summaryRevision: below 1/);
 });
 
 // --- Layout changes (program Wave 3b) --------------------------------------------

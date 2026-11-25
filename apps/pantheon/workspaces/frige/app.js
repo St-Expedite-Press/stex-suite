@@ -4,6 +4,7 @@ import { element, renderThread } from './thread.js';
 import { appBase, appUrl } from './base-path.js';
 import { restoreEditorLineEndings } from './line-diff.js';
 import { connectRevisionHistory } from './history.js';
+import { MAIN, connectSessions, turnPath, turnsPath } from './sessions.js';
 
 /** Selects the element with the supplied identifier. */
 const $ = (selector) => document.querySelector(selector);
@@ -212,17 +213,25 @@ function scopeSubject(scope) {
   return { name: `the section “${scope.title}”`, short: scope.title, reach: `Igor can suggest changes to the ${scope.nodeIds.length} piece${scope.nodeIds.length === 1 ? '' : 's'} in this section.` };
 }
 
+/**
+ * Whether the scope's pending proposal was made in the conversation on screen. A proposal is decided
+ * in the conversation that made it (a contract from before conversations belongs to the first one);
+ * another conversation shows a notice pointing to it instead of its cards.
+ */
+const ownsChangeSet = () => !state.changeSet || (state.changeSet.conversationId || MAIN) === sessions.id();
+
 // Keeps the reader at the bottom of the thread unless they have scrolled up to reread.
 /** Renders the current conversation turns and proposal actions. */
 function renderTurns({ follow = false } = {}) {
   const box = $('#turns'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const subject = scopeSubject(state.scope);
   const last = renderThread(box, {
-    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: state.changeSet, contracts: state.contracts, drafts: state.drafts, onDecide: decide, onRevert: revert, onAnswer: sendAnswer,
+    turns: state.turns || [], thinking: state.thinking, notice: state.notice, changeSet: ownsChangeSet() ? state.changeSet : null, contracts: state.contracts, drafts: state.drafts, onDecide: decide, onRevert: revert, onAnswer: sendAnswer,
     /** Resolves the mounted URL for a linked conversation artifact. */
     artifactUrl: (id, { download = false } = {}) => apiUrl(`/api/artifacts/${id}/content${download ? '?download=1' : ''}`),
     empty: { title: `Talk with ${subject.name}`, text: subject.reach },
   });
+  sessions.render();
   if (!last) return;
   // A new reply scrolls to its start so a long answer or its suggested changes read from the top.
   if (follow) box.scrollTop += last.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
@@ -297,7 +306,7 @@ function renderNode({ replaceSource = true } = {}) {
   const scope = state.scope || scopeFor(state.node.id); const subject = scopeSubject(scope);
   $('#conversation-context').textContent = `Conversation · ${scope.kind === 'book' ? 'whole book' : scope.kind === 'node' ? 'page' : 'section'}`;
   $('#conversation-title').textContent = scope.title;
-  $('#composer-scope').textContent = `To ${subject.short}`;
+  $('#composer-scope').textContent = `To ${subject.short}${sessions.suffix()}`;
   $('#message').placeholder = `Message ${subject.name}…`;
   if (replaceSource) $('#source').value = state.node.source;
   // The scope under discussion and the one file this editor saves are different things for books and sections.
@@ -603,12 +612,14 @@ async function loadNode(id, scopeId = id, { history: record = 'push' } = {}) {
   const scope = scopeFor(scopeId) || scopeFor(id);
   // The last navigation wins: a load overtaken by a later one is dropped when it arrives.
   const ticket = ++loadTicket; state.pendingScope = scope.id;
-  let loaded;
-  try { loaded = await Promise.all([request(`/api/nodes/${id}`), request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]); }
+  // Another scope opens on its first conversation; the same scope keeps the conversation on screen.
+  const changedScope = state.scope?.id !== scope.id; const conversationId = changedScope ? MAIN : sessions.id();
+  let loaded; let conversations = null;
+  try { [loaded, conversations] = await Promise.all([Promise.all([request(`/api/nodes/${id}`), request(turnsPath(scope.id, conversationId)), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]), changedScope ? sessions.fetchFor(scope.id) : null]); }
   finally { if (ticket === loadTicket) state.pendingScope = null; }
   if (ticket !== loadTicket) return null;
   const [node, turns, changeSet, contracts] = loaded;
-  const changedScope = state.scope?.id !== scope.id;
+  if (conversations) sessions.adopt(scope.id, conversations);
   state.node = node; state.scope = scope; state.turns = turns; state.changeSet = changeSet; state.contracts = contracts; state.sourceDirty = false;
   if (changedScope) {
     state.notice = '';
@@ -619,7 +630,7 @@ async function loadNode(id, scopeId = id, { history: record = 'push' } = {}) {
     if (record === 'push' && address !== `${location.pathname}${location.search}${location.hash}`) { shownIndex += 1; history.pushState({ scope: scope.id, index: shownIndex }, '', address); }
     else if (record === 'replace') history.replaceState({ scope: scope.id, index: shownIndex }, '', address);
   }
-  renderNode(); renderTurns(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
+  renderNode(); renderTurns(); renderComposer(); if (changedScope) $('#turns').scrollTop = $('#turns').scrollHeight;
   if (changedScope) setView(scope.kind === 'node' ? 'source' : 'thread');
   if (changedScope && !$('#design-panel').classList.contains('hidden')) fillOverride();
   return true;
@@ -805,21 +816,22 @@ async function refreshIgor() {
 // re-render leaves the form filled in and sendable again.
 /** Submits the user's approved answer for the selected prompt. */
 async function sendAnswer(promptId, values) {
-  const scope = state.scope; if (state.thinking) return;
+  const scope = state.scope; const conversationId = sessions.id(); if (state.thinking) return;
   state.drafts.set(promptId, values); state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
-    await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ answer: { promptId, values } }) });
+    await request(turnPath(scope.id, conversationId), { method: 'POST', body: JSON.stringify({ answer: { promptId, values } }) });
     state.drafts.delete(promptId);
   } catch (error) {
     state.notice = `Answer not sent: ${error.message}`;
     if (error.status === 503) refreshIgor();
   } finally {
     // Reload either way: a 409 means it was answered elsewhere, and the thread should show that.
-    if (state.scope?.id === scope.id) [state.turns, state.changeSet] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
+    const here = () => state.scope?.id === scope.id && sessions.id() === conversationId;
+    if (here()) [state.turns, state.changeSet] = await Promise.all([request(turnsPath(scope.id, conversationId)), request(`/api/scopes/${scope.id}/changes`)]).catch(() => [state.turns, state.changeSet]);
     if (state.scope?.id === scope.id) state.contracts = await contractsFor(scope.id);
     state.thinking = false;
-    if (state.scope?.id === scope.id) renderTurns({ follow: true });
-    refreshPending();
+    if (here()) renderTurns({ follow: true });
+    refreshPending(); sessions.refresh();
   }
 }
 
@@ -828,17 +840,20 @@ async function sendTurn(event) {
   event?.preventDefault();
   const input = $('#message'); const button = $('#turn-form [type="submit"]'); const message = input.value.trim();
   if (!message || !state.scope || state.thinking) return;
+  // A completed or abandoned conversation takes no message; the engine refuses it too (409 SESSION_CLOSED).
+  if (sessions.closed()) { state.notice = 'This conversation is closed. Reopen it, or continue from its summary in a new conversation.'; renderTurns(); return; }
   // The engine checks the passage against the piece as it is now; the browser's copy is only a request.
   const passage = state.passage;
   const selection = passage ? { nodeId: passage.nodeId, baseHash: passage.baseHash, start: passage.start, end: passage.end, text: passage.text, action: passage.action } : undefined;
-  const scope = state.scope; button.disabled = true; input.value = ''; sizeComposer(); setView('thread');
+  const scope = state.scope; const conversationId = sessions.id(); button.disabled = true; input.value = ''; sizeComposer(); setView('thread');
   state.passage = null; renderPassageChip();
   state.turns = [...state.turns, { role: 'user', message, at: new Date().toISOString(), ...(passage ? { passage } : {}) }]; state.thinking = true; state.notice = ''; renderTurns({ follow: true });
   try {
-    const result = await request(`/api/scopes/${scope.id}/turn`, { method: 'POST', body: JSON.stringify({ message, ...(selection ? { selection } : {}) }) });
+    const result = await request(turnPath(scope.id, conversationId), { method: 'POST', body: JSON.stringify({ message, ...(selection ? { selection } : {}) }) });
     if (result.availability !== 'available') refreshIgor();
-    if (state.scope?.id !== scope.id) return;
-    [state.turns, state.changeSet, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
+    // The author may have opened another scope or conversation while Igor answered; the answer stays in its own thread.
+    if (state.scope?.id !== scope.id || sessions.id() !== conversationId) return;
+    [state.turns, state.changeSet, state.contracts] = await Promise.all([request(turnsPath(scope.id, conversationId)), request(`/api/scopes/${scope.id}/changes`), contractsFor(scope.id)]);
     refreshPending();
   } catch (error) {
     if (!input.value) input.value = message; sizeComposer(); state.turns = state.turns.slice(0, -1);
@@ -848,8 +863,10 @@ async function sendTurn(event) {
     state.notice = `Not sent: ${error.message}`;
   } finally {
     state.thinking = false; button.disabled = false;
-    if (state.scope?.id === scope.id) renderTurns({ follow: true });
+    if (state.scope?.id === scope.id && sessions.id() === conversationId) renderTurns({ follow: true });
     renderEditorState();
+    // A send can resume a paused conversation, or find it closed elsewhere: the bar and composer follow the engine.
+    sessions.refresh();
   }
 }
 
@@ -870,7 +887,7 @@ async function decide(nodeId, decision) {
     state.graph = await request('/api/project/graph');
     if (state.changeSet.changes.some((change) => change.kind === 'set-layout' && change.status === 'accepted')) await refreshDesign();
     if (openAccepted) { state.node = await request(`/api/nodes/${state.node.id}`); state.sourceDirty = false; }
-    [state.turns, state.contracts] = await Promise.all([request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]); state.notice = '';
+    [state.turns, state.contracts] = await Promise.all([request(turnsPath(scope.id, sessions.id())), contractsFor(scope.id)]); state.notice = '';
     refreshPending();
     // renderNode reloads the editor, so it must not run over unsaved edits to an untouched page.
     if (state.sourceDirty) { renderNodes(); renderStatus(); } else renderNode();
@@ -902,7 +919,7 @@ async function revert(contractId, nodeId, { layout = false } = {}) {
     /** Checks whether the reviewed change still permits a rollback. */
     const stillOpen = () => state.scope?.id === scope.id;
     if (!stillOpen()) { renderNodes(); return; }
-    const [node, turns, contracts] = await Promise.all([touchesOpen ? request(`/api/nodes/${nodeId}`) : null, request(`/api/scopes/${scope.id}/turns`), contractsFor(scope.id)]);
+    const [node, turns, contracts] = await Promise.all([touchesOpen ? request(`/api/nodes/${nodeId}`) : null, request(turnsPath(scope.id, sessions.id())), contractsFor(scope.id)]);
     if (!stillOpen()) { renderNodes(); return; }
     if (node) { state.node = node; state.sourceDirty = false; }
     state.turns = turns; state.contracts = contracts; state.notice = '';
@@ -1013,6 +1030,31 @@ async function refresh() {
   const scope = scopeFor(priorScope) || scopeFor('book');
   if (scope?.anchorNodeId) await loadNode(scope.anchorNodeId, scope.id);
 }
+
+/** Disables the composer while the open conversation is completed or abandoned. */
+function renderComposer() {
+  const closed = sessions.closed();
+  $('#message').disabled = closed; $('#attach').disabled = closed;
+  $('#message').placeholder = closed ? 'This conversation is closed. Reopen it to keep talking.' : 'Message…';
+  if (!state.thinking) $('#turn-form [type="submit"]').disabled = closed;
+  // The composer names the conversation too, so a message never goes to an unseen one.
+  if (state.scope) $('#composer-scope').textContent = `To ${scopeSubject(state.scope).short}${sessions.suffix()}`;
+}
+
+// A scope's named conversations (D-027): the switcher, actions and sheets live in sessions.js. Switching
+// reloads only the thread, so the open scope, the source editor and its unsaved text are untouched.
+const sessions = connectSessions({
+  request,
+  getChangeSet: () => state.changeSet,
+  /** Loads the chosen conversation's thread; a result that arrives after the author moved on is dropped. */
+  onSwitch: async (conversationId) => {
+    const scope = state.scope;
+    const turns = await request(turnsPath(scope.id, conversationId));
+    if (state.scope?.id !== scope.id || sessions.id() !== conversationId) return;
+    state.turns = turns; state.notice = ''; renderTurns();
+  },
+  onChange: renderComposer,
+});
 
 /** Initializes the workspace with its selected source and controls. */
 async function bootstrap() {

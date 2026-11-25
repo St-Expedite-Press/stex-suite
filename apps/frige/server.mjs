@@ -15,6 +15,8 @@ import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
 import { mutateAttachments, readAttachmentManifest } from './src/attachment-manifest.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
+import { LOCAL_ACTOR, actorRefused, resolveActor } from './src/actor.mjs';
+import { MAIN_CONVERSATION } from './src/editorial-sessions.mjs';
 import { buildPage, TRIM_SIZES } from './src/lualatex.mjs';
 import { buildBook, resolveHeadTitle } from './src/book-assembler.mjs';
 import { designHash } from './src/design-settings.mjs';
@@ -25,7 +27,7 @@ import { gatewaySettings, inferenceHealth, requestPageRevision, requestScopeTurn
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
-const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
+const appEnvironment = new Set(['STEX_BOOKS_DIR', 'STEX_PANTHEON_URL', 'STEX_INFERENCE_URL', 'STEX_INFERENCE_SHARED_SECRET', 'STEX_FRIGE_INFERENCE_MODE', 'STEX_FRIGE_PORT', 'STEX_FRIGE_PROJECT_DIR', 'STEX_FRIGE_PROJECTS_DIR', 'STEX_FRIGE_BOOKS_DIR', 'STEX_FRIGE_BASE_PATH', 'STEX_FRIGE_SHELL_URL', 'STEX_FRIGE_ACCESS_FILE', 'STEX_FRIGE_CONVERTER_SOCKET', 'STEX_PLATFORM_ACTOR_SECRET', 'TEXGRAPH_INFERENCE_MODE', 'TEXGRAPH_PORT', 'TEXGRAPH_PROJECT_DIR', 'TEXGRAPH_PROJECTS_DIR', 'TEXGRAPH_BOOKS_DIR', 'TEXGRAPH_BASE_PATH', 'TEXGRAPH_SHELL_URL']);
 try {
   const localEnv = await readFile(path.resolve(directory, '..', '..', '.env'), 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
@@ -418,8 +420,18 @@ function resolveTurnPassage(context, selection) {
 
 // One conversation turn with a book, section or page. Hermes may propose changes;
 // the store keeps only those for nodes whose text this turn offered.
-/** Resolves approval context and submits a scoped publishing turn. */
-async function scopeTurn(store, scopeId, payload) {
+/**
+ * Resolves approval context and submits a scoped publishing turn.
+ *
+ * @param {ProjectStore} store
+ * @param {string} scopeId
+ * @param {Record<string, any>} payload  The request body.
+ * @param {{ conversationId?: string, actor?: import('./src/actor.mjs').Actor }} [options]
+ *   The conversation of the scope the turn belongs to (the first one by default) and who sent it.
+ *   The model is offered only this conversation's recent turns, plus up to three saved summaries
+ *   of other sessions of the scope as labelled context (`sessionSummaries`).
+ */
+async function scopeTurn(store, scopeId, payload, { conversationId = MAIN_CONVERSATION, actor = LOCAL_ACTOR } = {}) {
   // The scope's offered sources come first: a selected passage is checked against them before
   // anything is recorded, so a stale or invalid selection leaves the conversation untouched.
   const context = await store.scopeContext(scopeId);
@@ -429,19 +441,23 @@ async function scopeTurn(store, scopeId, payload) {
   let userTurn = null; let reservation = null;
   if (payload.answer && typeof payload.answer === 'object') {
     if (passage) throw Object.assign(new Error('An answer to Igor’s question cannot carry a selected passage.'), { code: 'INVALID_PASSAGE' });
-    reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values);
+    reservation = await store.reserveAnswer(scopeId, String(payload.answer.promptId || ''), payload.answer.values, conversationId);
+    // A closed conversation refuses the answer; the reserved question stays open to answer again.
+    try { await store.beginTurn(scopeId, conversationId, actor); } catch (error) { store.releaseAnswer(reservation); throw error; }
   } else {
     if (typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12_000) throw new Error('A concise message is required.');
+    // Refuses a completed or abandoned session, and resumes a paused or awaiting-review one (recorded), before anything is stored.
+    await store.beginTurn(scopeId, conversationId, actor);
     // The passage is kept with the author's message, so the thread and the contract's
     // `origin.userTurnId` show exactly which text, at which revision, the turn was about.
-    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) });
+    userTurn = await store.appendTurn(scopeId, { role: 'user', message: payload.message.trim(), ...(passage ? { passage } : {}) }, conversationId);
   }
   try {
-    const [priorTurns, approvedSourceExcerpts, settings] = await Promise.all([store.turns(scopeId, 12), store.approvedSourceExcerpts(), store.settingsTicket()]);
+    const [priorTurns, approvedSourceExcerpts, settings, sessionSummaries] = await Promise.all([store.turns(scopeId, 12, conversationId), store.approvedSourceExcerpts(), store.settingsTicket(), store.sessionSummariesFor(scopeId, conversationId)]);
     // Context from the levels around the scope (outline, settings in force, approved contracts), labelled by category.
     const hierarchy = await store.hierarchy(context.scope, context.graph);
     const graph = { readingOrder: context.graph.readingOrder, sections: context.graph.book.sections.map(({ id, kind, title, nodeIds }) => ({ id, kind, title, nodeIds })), nodes: context.graph.nodes.map(({ id, title, kind, relativePath }) => ({ id, title, kind, relativePath })), diagnostics: context.graph.diagnostics.slice(0, 40) };
-    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null, passage });
+    const result = await requestScopeTurn({ book: { id: path.basename(store.root), title: context.graph.book.title, settings }, scope: context.scope, sources: context.sources, withheld: context.withheld, graph, hierarchy, approvedSourceExcerpts, turns: reservation ? priorTurns : priorTurns.slice(0, -1), message: (reservation || userTurn).message, answer: reservation ? { promptId: reservation.partId, values: reservation.values } : null, passage, sessionSummaries });
     if (reservation) {
       // Hermes did not receive the answer: leave the question open and say why.
       if (result.availability !== 'available') throw Object.assign(new Error(result.commentary.replace(/\s*Your message was saved.*$/s, '')), { code: 'HERMES_UNAVAILABLE' });
@@ -450,7 +466,9 @@ async function scopeTurn(store, scopeId, payload) {
     // What the contract records about this turn: who asked, which model answered, and
     // what it was shown beyond the offered sources. Categories stay separate in the record.
     const provenance = {
-      request: (reservation || userTurn).message, userTurnId: userTurn?.id || null,
+      request: (reservation || userTurn).message, userTurnId: userTurn?.id || null, conversationId,
+      // Saved summaries of other sessions offered with this turn: what Frige sent (the gateway does not report them yet).
+      sessionSummaries: sessionSummaries.map(({ conversationId: id, summaryRevision }) => ({ conversationId: id, summaryRevision })),
       model: result.meta?.model || null, transport: result.meta?.usage?.transport || null,
       withheld: context.withheld, references: approvedSourceExcerpts
         .filter(({ id, hash }) => result.meta?.forwardedContext?.approvedSourceExcerpts?.some((entry) => entry.id === id && entry.hash === hash))
@@ -467,7 +485,7 @@ async function scopeTurn(store, scopeId, payload) {
     const bounds = passage && passage.action !== 'ask' ? { nodeId: passage.nodeId, start: passage.start, end: passage.end } : null;
     const { changeSet, dropped } = proposes ? await store.createChangeSet(scopeId, { commentary: result.commentary, changes: result.changes, layout: result.layout, bounds }, context.sources, provenance) : { changeSet: null, dropped: [] };
     const stored = await store.storeParts(scopeId, result.parts, result.meta);
-    const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped });
+    const assistantTurn = await store.appendTurn(scopeId, { role: 'assistant', commentary: result.commentary, availability: result.availability, parts: stored.parts, droppedParts: [...result.droppedParts, ...stored.dropped], meta: result.meta, failure: result.failure || null, graphSuggestions: result.graphSuggestions || [], changeSetId: changeSet?.id || null, droppedChanges: dropped, ...(sessionSummaries.length ? { offered: { sessionSummaries: provenance.sessionSummaries.map((entry) => ({ ...entry, category: 'session-summary' })) } } : {}) }, conversationId);
     return { userTurn, assistantTurn, changeSet, availability: result.availability };
   } finally { if (reservation) store.releaseAnswer(reservation); }
 }
@@ -544,13 +562,37 @@ async function vaultApi(request, response, url, store) {
     return record ? json(response, 200, record) : json(response, 404, { error: 'Change contract not found.', code: 'CONTRACT_NOT_FOUND' });
   }
   if (contractRoute && request.method === 'POST' && contractRoute[2]) { const payload = await body(request); return json(response, 200, await store.revertChanges(contractRoute[1], { nodeId: payload?.nodeId || null })); }
+  // Editorial sessions: a scope's named conversations (D-027), under the same scope ids as the routes below.
+  const session = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/conversations(?:\/(main|c-[a-f0-9]{16})(?:\/(turns|turn|summary|summary\/draft|continue))?)?$/);
+  if (session) {
+    const [, scopeId, conversationId, action] = session;
+    const actor = request.actor ?? LOCAL_ACTOR;
+    if (!conversationId) {
+      if (request.method === 'GET') return json(response, 200, await store.conversations(scopeId));
+      if (request.method === 'POST') return json(response, 201, await store.createConversation(scopeId, await body(request), actor));
+    } else if (!action) {
+      if (request.method === 'GET') return json(response, 200, await store.conversation(scopeId, conversationId));
+      if (request.method === 'PATCH') return json(response, 200, await store.updateConversation(scopeId, conversationId, await body(request), actor));
+    } else if (action === 'turns' && request.method === 'GET') {
+      await store.conversation(scopeId, conversationId);
+      return json(response, 200, await store.turns(scopeId, 40, conversationId));
+    } else if (action === 'turn' && request.method === 'POST') {
+      await store.conversation(scopeId, conversationId);
+      return json(response, 200, await scopeTurn(store, scopeId, await body(request), { conversationId, actor }));
+    } else if (action === 'summary') {
+      if (request.method === 'GET') return json(response, 200, await store.summary(scopeId, conversationId));
+      if (request.method === 'PUT') return json(response, 200, await store.saveSummary(scopeId, conversationId, await body(request), actor));
+    } else if (action === 'summary/draft' && request.method === 'GET') return json(response, 200, await store.summaryDraft(scopeId, conversationId));
+    else if (action === 'continue' && request.method === 'POST') return json(response, 201, await store.continueConversation(scopeId, conversationId, await body(request), actor));
+    return json(response, 405, { error: 'Method not allowed.' });
+  }
   const scoped = url.pathname.match(/^\/api\/scopes\/(book|[a-z][a-z0-9-]{5,80})\/(turns|turn|changes|changes\/decide)$/);
   if (scoped) {
     const [, scopeId, action] = scoped;
     if (request.method === 'GET' && action === 'turns') return json(response, 200, await store.turns(scopeId));
     if (request.method === 'GET' && action === 'changes') return json(response, 200, await store.changeSet(scopeId));
     if (request.method === 'POST' && action === 'changes/decide') { const payload = await body(request); return json(response, 200, await store.decideChanges(scopeId, payload.changeSetId, { nodeId: payload.nodeId || null, decision: payload.decision })); }
-    if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request)));
+    if (request.method === 'POST' && action === 'turn') return json(response, 200, await scopeTurn(store, scopeId, await body(request), { actor: request.actor ?? LOCAL_ACTOR }));
   }
   const editorial = response.getHeader('x-stex-contract') && editorialRoute.exec(url.pathname.slice('/api'.length));
   if (editorial) {
@@ -627,8 +669,13 @@ const STATUS_BY_CODE = {
   STALE_SOURCE: 409, STALE_DESIGN: 409, STALE_PROPOSAL: 409, ALREADY_ANSWERED: 409, NOTHING_TO_REVERT: 409, PASSAGE_STALE: 409,
   INVALID_PASSAGE: 400,
   CONTRACT_NOT_FOUND: 404, HERMES_UNAVAILABLE: 503,
+  // Editorial sessions (D-027) and the platform actor (D-028).
+  SESSION_CLOSED: 409, INVALID_TRANSITION: 409, STALE_SUMMARY: 409, SUMMARY_REQUIRED: 409, SESSION_HISTORY_FULL: 409,
+  CONVERSATION_NOT_FOUND: 404, SESSIONS_UNAVAILABLE: 503, INVALID_SESSION_REQUEST: 400, INVALID_SUMMARY: 400, ACTOR_REQUIRED: 401,
 };
 
+/** The context-v1 observation route, a server-to-server checkpoint that carries no actor. */
+const KNOWLEDGE_OBSERVATION = /^\/api\/stex\/context\/v1\/projects\/[a-z0-9][a-z0-9-]{0,62}\/observation$/;
 const legacyBooks = legacyBooksApi(booksDirectory, { isProtected: (id) => projectAccess.isProtected('book', id) });
 await defaultStore.initialize();
 http.createServer(async (request, response) => {
@@ -644,6 +691,12 @@ http.createServer(async (request, response) => {
       if (!url.pathname.startsWith(`${mountedAt}/`)) { json(response, 404, { error: 'Not found.' }); return; }
       url.pathname = url.pathname.slice(mountedAt.length) || '/';
     }
+    // The platform actor (D-028, stex.platform.actor.v1). Local mode (no secret) ignores actor headers and acts as `local`.
+    // With the secret set, every state-changing request needs a verified actor, except the knowledge observation checkpoint:
+    // Pantheon's knowledge API calls it server to server and sends no actor (reported in docs/verification/frige-sessions-a1.md).
+    const actor = resolveActor(request.headers);
+    request.actor = actor;
+    if (actorRefused(request.method, actor) && !KNOWLEDGE_OBSERVATION.test(url.pathname)) return json(response, 401, { error: 'A signed-in person is required to change this.', code: 'ACTOR_REQUIRED' });
     if (url.pathname.startsWith('/api/stex/context/v1/')) {
       // Server-to-server readers carry no unlock cookie, so a protected project is unavailable to them.
       const contextId = /^\/api\/stex\/context\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})(?:\/|$)/.exec(url.pathname)?.[1];

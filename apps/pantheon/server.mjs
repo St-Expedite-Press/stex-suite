@@ -20,7 +20,7 @@ const publishingTemplates = {
   library: await readFile(path.join(publishingDirectory, 'lobby.html'), 'utf8'),
   workstation: await readFile(path.join(publishingDirectory, 'index.html'), 'utf8'),
 };
-const publishingAssets = new Set(['app.js', 'base-path.js', 'history.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'proof-viewer.js', 'style.css', 'thread.js', 'workspace.js']);
+const publishingAssets = new Set(['app.js', 'base-path.js', 'history.js', 'lobby.css', 'lobby.js', 'line-diff.js', 'proof-viewer.js', 'sessions.js', 'style.css', 'thread.js', 'workspace.js']);
 const port = Number(process.env.STEX_PANTHEON_PORT || 4300);
 const registryFile = path.join(directory, '..', '..', 'protocol', 'applications', 'registry.v2.json');
 let applications = shellApplications;
