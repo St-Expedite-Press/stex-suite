@@ -55,6 +55,10 @@ test('versioned engine workflow preserves proposals, validated history, diff and
   assert.equal(JSON.stringify(preview).includes('9999'), false);
   assert.equal(JSON.stringify(await api('/projects')).includes('9999'), false);
   assert.equal(JSON.stringify(await api(route)).includes('9999'), false);
+  const stopped = await api(route + '/preview/stop', {});
+  assert.deepEqual(stopped.result, { state: 'stopped', path: `/seaxneat/api/projects/${project.id}/preview/` });
+  assert.equal((await api(route)).result.preview.state, 'stopped');
+  assert.equal((await api(route + '/preview/stop')).status, 405, 'stop is POST only');
   const next = await api(route + '/proposal', { message: 'Dismiss this' });
   await api(route + '/dismiss', { proposalId: next.result.id });
   assert.equal((await api(route + '/proposal')).result, null);
