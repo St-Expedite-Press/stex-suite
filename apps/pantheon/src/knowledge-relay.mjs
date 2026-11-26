@@ -28,6 +28,8 @@ import { personDirectoryName } from '../../../services/knowledge/src/library.mjs
 const PREFIX = '/api/knowledge/v1';
 /** The admitted person's journal directory name (a digest), sent beside the actor. */
 const PERSON_HEADER = 'x-stex-actor-journal';
+/** Sent on every request from a hosted Pantheon; a platform API not in hosted mode then refuses (one shared journal would otherwise serve every account). */
+const HOSTED_HEADER = 'x-stex-knowledge-hosted';
 /** Browser request bodies keep the existing 16,384-byte limit. */
 const MAX_REQUEST_BYTES = 16_384;
 /** Exports can approach the 8 MB journal limit plus their views. */
@@ -59,10 +61,11 @@ async function readBody(request) {
  *
  * @param {object} options
  * @param {URL} options.target  The platform API origin (validated by the caller).
+ * @param {boolean} [options.hosted]  Pantheon is hosted: every relayed request says so.
  * @param {typeof fetch} [options.fetchImpl]  Test seam.
  * @returns {(request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse, url: URL, context?: { user?: { username?: string } | null, actor?: Record<string, string> | null }) => Promise<void>}
  */
-export function knowledgeRelay({ target, fetchImpl = fetch }) {
+export function knowledgeRelay({ target, hosted = false, fetchImpl = fetch }) {
   return async (request, response, url, { user = null, actor = null } = {}) => {
     /** Sends a JSON answer with the knowledge API's headers. */
     const send = (status, body) => {
@@ -74,7 +77,7 @@ export function knowledgeRelay({ target, fetchImpl = fetch }) {
       if (request.headers['sec-fetch-site'] === 'cross-site' || (origin && origin !== `http://${request.headers.host}`)) throw fail(403, 'INVALID_REQUEST', 'Foreign browser origin refused.');
       if (!['GET', 'POST'].includes(request.method)) throw fail(405, 'INVALID_REQUEST', 'Method not allowed.');
       if (url.pathname !== PREFIX && !url.pathname.startsWith(`${PREFIX}/`)) throw fail(404, 'INVALID_REQUEST', 'Unknown knowledge route.');
-      const headers = { accept: 'application/json', 'accept-encoding': 'identity' };
+      const headers = { accept: 'application/json', 'accept-encoding': 'identity', ...(hosted ? { [HOSTED_HEADER]: '1' } : {}) };
       let body;
       if (request.method === 'POST') {
         headers['content-type'] = String(request.headers['content-type'] || '');

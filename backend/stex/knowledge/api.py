@@ -36,6 +36,8 @@ IGOR_TOKEN_HEADER = "x-stex-knowledge-token"  # noqa: S105 - a header name, not 
 MAX_REQUEST_BYTES = 16_384
 # The journal directory Pantheon computed from the admitted username (32 hex digits).
 PERSON_HEADER = "x-stex-actor-journal"
+# Set by a hosted Pantheon's relay; a platform that is not hosted refuses instead of sharing one journal.
+HOSTED_HEADER = "x-stex-knowledge-hosted"
 _PERSON = re.compile(r"[0-9a-f]{32}")
 _DIGEST_ACTOR = re.compile(r"sha256-[0-9a-f]{64}")
 _JSON_TYPE = re.compile(r"application/json\s*(;|$)", re.IGNORECASE)
@@ -190,6 +192,11 @@ async def knowledge(request: Request) -> Response:
             request.headers, request.app.state.knowledge_igor_secret, token_header=IGOR_TOKEN_HEADER
         )
     try:
+        if request.headers.get(HOSTED_HEADER) == "1" and not library.hosted:
+            # A hosted Pantheon in front of a local-mode platform would give every account one journal.
+            raise KnowledgeError(
+                503, "KNOWLEDGE_MISCONFIGURED", "Knowledge is not configured for signed-in accounts."
+            )
         async with library.lease(person_for(request, actor) if library.hosted else None) as journal:
             if isinstance(journal, DisabledJournal):
                 return reply(200, {"enabled": False})

@@ -217,3 +217,18 @@ def test_a_lock_left_by_an_earlier_run_with_the_same_pid_is_recovered(tmp_path: 
         asyncio.run(journal.close())
     assert not (directory / "knowledge.lock").exists()
     asyncio.run(Journal.open(directory).close())
+
+
+def test_a_hosted_pantheon_in_front_of_a_local_platform_is_refused(tmp_path: Path) -> None:
+    """Misconfiguration fails closed instead of serving one journal to every signed-in account."""
+    with client(tmp_path, frige([]), hosted=False) as api:
+        refused = api.get("/api/knowledge/v1", headers={**actor("alice"), "x-stex-knowledge-hosted": "1"})
+        assert refused.status_code == 503 and refused.json()["code"] == "KNOWLEDGE_MISCONFIGURED"
+        assert api.get("/api/knowledge/v1").status_code == 200, "local Pantheon (no marker) is unaffected"
+    with client(tmp_path / "hosted", frige([]), hosted=True) as api:
+        assert (
+            api.get(
+                "/api/knowledge/v1", headers={**actor("alice"), "x-stex-knowledge-hosted": "1"}
+            ).status_code
+            == 200
+        )

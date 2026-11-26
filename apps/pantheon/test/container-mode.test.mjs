@@ -115,6 +115,11 @@ test('hosted relays add the admitted actor and its journal digest, and an unreac
   assert.equal(calls[0].init.headers['x-stex-actor-journal'], personDirectoryName('josé'));
   assert.equal(calls[0].init.headers['x-stex-actor'], actor['x-stex-actor']);
   assert.equal(calls[0].init.redirect, 'manual');
+  assert.equal(calls[0].init.headers['x-stex-knowledge-hosted'], undefined, 'a local relay does not claim hosting');
+  const hostedRelay = knowledgeRelay({ target: new URL('http://platform:4340'), hosted: true, fetchImpl });
+  const third = exchange();
+  await hostedRelay(third.request, third.response, new URL('http://127.0.0.1:4300/api/knowledge/v1'), { user: { username: 'alice' }, actor });
+  assert.equal(calls.at(-1).init.headers['x-stex-knowledge-hosted'], '1');
   const down = knowledgeRelay({ target: new URL('http://platform:4340'), fetchImpl: async () => { throw new Error('refused'); } });
   const second = exchange();
   await down(second.request, second.response, new URL('http://127.0.0.1:4300/api/knowledge/v1'));

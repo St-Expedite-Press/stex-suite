@@ -70,7 +70,7 @@ const knowledgeService = process.env.STEX_KNOWLEDGE_SERVICE || '';
 if (!['', 'platform'].includes(knowledgeService)) throw new Error('STEX_KNOWLEDGE_SERVICE must be "platform" or unset.');
 if (knowledgeService === 'platform' && process.env.STEX_KNOWLEDGE_DATA_DIR) throw new Error('STEX_KNOWLEDGE_DATA_DIR belongs to the platform API when STEX_KNOWLEDGE_SERVICE=platform; unset it for Pantheon.');
 let knowledgeRoute;
-if (knowledgeService === 'platform') knowledgeRoute = knowledgeRelay({ target: platformTarget });
+if (knowledgeService === 'platform') knowledgeRoute = knowledgeRelay({ target: platformTarget, hosted: Boolean(hosted) });
 else {
   const knowledge = await openKnowledgeLibrary({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '', hosted: Boolean(hosted), legacyOwner: process.env.STEX_KNOWLEDGE_LEGACY_OWNER || '' });
   // Deferred studios get no target, so the knowledge API never contacts them.
