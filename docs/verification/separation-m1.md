@@ -67,7 +67,29 @@ Unit coverage: `backend/tests/test_contributions.py` (2),
 
 ## 3. Hermes and Obsidian
 
-See the evaluation results below (`stex-igor/hermes/eval`).
+`stex-igor/hermes/eval/run-eval.mjs` (Docker, disposable volumes, uid 1000, all
+capabilities dropped, `--network none` except the connector's git clone) — PASS:
+
+| Check | Result |
+| --- | --- |
+| Candidate | Hermes `v0.23.4` (`8fc0374`, 2026-11-23, latest stable; reports `2026.9.24`); the current pin `e76fbd80` is its ancestor |
+| STEX pins | `hermes/test` 14/14 with the `v0.23.4` checkout, including the cross-check that every upstream auxiliary task is pinned to Grok (the task set is unchanged) |
+| STEX profile script | 62 settings from `deploy/hermes/apply-igor-profile.sh` applied; only `gateway.standalone` unrecognised, **on both revisions** (pre-existing: production sets a key Hermes does not read) |
+| Official connector | `obsidianmd/obsidian-skills` (the `obsidian` entry of Hermes's plugin catalog; Obsidian's 1.2.3 README names Hermes's catalog entry), pinned `a53f5910` = tag `1.2.3`, tier verified. The release's bundled catalog pins `1.2.1`; the three skills are identical between them. Not the older built-in `obsidian` skill nor the third-party `obsidian-memory`/`obsidian-rag` entries |
+| Skills | `obsidian:obsidian-markdown`, `obsidian:obsidian-bases`, `obsidian:json-canvas` load through `skill_view` (no preprocessing) and the system-prompt skill index; `obsidian-cli`, `obsidian-headless`, `defuddle`, `knap` and the built-in `obsidian` are disabled and do not load (Hermes warns `skills.disabled` is unrecognised but enforces it) |
+| Isolation | Network blocked; root filesystem and fixture vault not writable; vault readable; uid 1000; CLI and API toolsets `[]` |
+| Restart | Same skill results and settings from persisted state |
+| Document worker coupling | `run_agent.AIAgent` (all 15 keyword arguments), `run_conversation`, MCP registration present on both; `services/inference` document tests 27/27 on Linux against each revision |
+| Upgrade and rollback | State made by `e76fbd80` (profile, 62 settings, a synthetic session) opened by `v0.23.4`, then by `e76fbd80` again: session, settings and SQLite integrity preserved; schema `user_version` 0 throughout. `e76fbd80` also lists the candidate-installed plugin |
+
+Read-only note import into Pantheon (one linked fixture note, bounded
+retrieval) is done by the platform API (`stex.knowledge.notes.v1`), verified
+through Pantheon in the staging stack, not by Hermes.
+
+Limits: plain uv environments, not upstream's `pm`-managed install the VM uses;
+no model turn; production keeps `e76fbd80` and installs no plugin. The Igor
+branch moves the `runtime/hermes-agent` gitlink to `v0.23.4`; merging it is a
+separate, authorized release.
 
 ## Commands run
 
