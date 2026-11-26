@@ -99,6 +99,23 @@ assert.match(journalFiles, /knowledge\.v1\.json/);
 const pantheonFiles = compose('exec', '-T', 'pantheon', 'sh', '-c', 'find / -name knowledge.v1.json -not -path "/proc/*" 2>/dev/null | wc -l');
 assert.equal(pantheonFiles, '0'); pass('journal exists only in the platform container');
 
+// 3b. One linked note from the synthetic vault, imported read-only through Pantheon, then bounded retrieval.
+const notes = await call('/api/knowledge/v1/notes');
+assert.equal(notes.status, 200, JSON.stringify(notes.value));
+if (!notes.value.notes.some((note) => note.path === 'Orchard Ledger.md')) {
+  const imported = await call('/api/knowledge/v1/notes/import', { method: 'POST', body: { idempotencyKey: `staging-note-${Date.now()}`, expectedVersion: notes.value.version, path: 'Orchard Ledger.md' } });
+  assert.equal(imported.status, 200, JSON.stringify(imported.value));
+}
+const ledger = (await call('/api/knowledge/v1/notes')).value.notes.find((note) => note.path === 'Orchard Ledger.md');
+assert.equal(ledger.state, 'current');
+assert.deepEqual(ledger.links, [{ target: 'Pruning Notes', resolved: 'Pruning Notes.md' }, { target: 'Orchard/Varieties', resolved: 'Orchard/Varieties.md' }, { target: 'Missing Note', resolved: null }]);
+const retrieved = await call(`/api/knowledge/v1/notes/search?q=${encodeURIComponent('counted rows')}`);
+assert.deepEqual(retrieved.value.results.map((result) => result.path), ['Orchard Ledger.md'], 'only the imported note is searched');
+assert.ok(retrieved.value.results[0].snippet.length <= 240);
+const vaultWrite = compose('exec', '-T', 'platform', 'sh', '-c', 'touch /vault/x 2>/dev/null && echo writable || echo read-only');
+assert.equal(vaultWrite, 'read-only');
+pass('one linked note imported read-only through Pantheon; links resolved; bounded retrieval; vault not writable');
+
 // 4. Frige is not reachable from the host; only Pantheon is published.
 await assert.rejects(fetch('http://127.0.0.1:4310/frige/api/books', { signal: AbortSignal.timeout(3000) })); pass('Frige port not published');
 
