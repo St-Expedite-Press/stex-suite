@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from stex import __version__
 from stex.config import Settings
-from stex.knowledge import contributions_api  # noqa: F401 - registers the contribution routes
+from stex.knowledge import contributions_api, notes_api  # noqa: F401 - register their routes
 from stex.knowledge.api import router as knowledge_router
 from stex.knowledge.engine import OwnerClient
 from stex.knowledge.library import KnowledgeLibrary
@@ -59,6 +59,7 @@ def create_app(
             )
             app.state.knowledge_secret = knowledge.actor_secret
             app.state.knowledge_igor_secret = knowledge.igor_secret
+            app.state.knowledge_vault = knowledge.vault
             app.state.knowledge_owners = OwnerClient(
                 client,
                 {

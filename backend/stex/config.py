@@ -83,6 +83,8 @@ class KnowledgeSettings:
     actor_secret: str | None = None
     # Igor's credential for the contribution resolve route only (never the actor secret).
     igor_secret: str | None = None
+    # A disposable or explicitly selected Obsidian vault, read-only (notes.py). Local mode only.
+    vault: Path | None = None
     open_limit: int = 32
     # Engines the knowledge API may contact; a host that defers a studio leaves it out.
     engines: frozenset[str] = frozenset({"frige", "seaxneat"})
@@ -101,6 +103,8 @@ class KnowledgeSettings:
             raise ConfigurationError(
                 "STEX_KNOWLEDGE_IGOR_SECRET must differ from STEX_PLATFORM_ACTOR_SECRET."
             )
+        if self.vault is not None and not self.vault.is_dir():
+            raise ConfigurationError("STEX_KNOWLEDGE_VAULT_DIR must be an existing directory.")
         if self.hosted and self.actor_secret is None:
             raise ConfigurationError("STEX_KNOWLEDGE_HOSTED=1 requires STEX_PLATFORM_ACTOR_SECRET.")
         if self.open_limit < 1:
@@ -158,6 +162,9 @@ class Settings:
             legacy_owner=env.get("STEX_KNOWLEDGE_LEGACY_OWNER", ""),
             actor_secret=env.get("STEX_PLATFORM_ACTOR_SECRET") or None,
             igor_secret=env.get("STEX_KNOWLEDGE_IGOR_SECRET") or None,
+            vault=Path(env["STEX_KNOWLEDGE_VAULT_DIR"]).resolve()
+            if env.get("STEX_KNOWLEDGE_VAULT_DIR")
+            else None,
             engines=knowledge_engines(env.get("STEX_KNOWLEDGE_ENGINES")),
         )
         return cls(

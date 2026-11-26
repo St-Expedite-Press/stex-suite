@@ -491,6 +491,8 @@ class Journal:
         self._queue = asyncio.Lock()
         # Per-directory state that shares this writer's lock (the contribution ledger).
         self.attachment: object | None = None
+        # The read-only note import ledger (notes.py), same directory and lock.
+        self.notes_ledger: object | None = None
 
     @property
     def directory(self) -> Path:
