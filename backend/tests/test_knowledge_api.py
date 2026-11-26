@@ -192,3 +192,28 @@ def test_container_settings_are_explicit_and_bounded() -> None:
     assert Settings.from_environment({"STEX_KNOWLEDGE_ENGINES": "frige"}).knowledge.engines == frozenset(
         {"frige"}
     )
+
+
+def test_a_lock_left_by_an_earlier_run_with_the_same_pid_is_recovered(tmp_path: Path) -> None:
+    """In a container the writer is PID 1 after every restart; its own stale lock must not block it."""
+    import asyncio
+    import os
+
+    import pytest
+
+    from stex.knowledge.journal import Journal, KnowledgeError
+
+    directory = tmp_path / "k"
+    directory.mkdir()
+    (directory / "knowledge.lock").write_text(
+        json.dumps({"pid": os.getpid(), "nonce": "earlier-run"}), encoding="utf-8"
+    )
+    journal = Journal.open(directory)
+    try:
+        with pytest.raises(KnowledgeError) as held:
+            Journal.open(directory)
+        assert held.value.code == "KNOWLEDGE_LOCKED", "a directory this process holds is never opened twice"
+    finally:
+        asyncio.run(journal.close())
+    assert not (directory / "knowledge.lock").exists()
+    asyncio.run(Journal.open(directory).close())

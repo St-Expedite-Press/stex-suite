@@ -398,6 +398,10 @@ def rebuild(document: Any) -> Json:
     }
 
 
+# Journal directories whose writer lock this process holds right now.
+_HELD: set[str] = set()
+
+
 def _process_alive(pid: int) -> bool:
     """Whether a process id is live. Never signals it (``os.kill(pid, 0)`` terminates on Windows)."""
     if sys.platform == "win32":
@@ -567,7 +571,10 @@ class Journal:
                 pid = safe_integer(previous.get("pid")) if isinstance(previous, dict) else None
                 if pid is None or pid < 1:
                     raise KnowledgeError(503, "KNOWLEDGE_LOCKED", "The knowledge writer lock is invalid.")
-                if _process_alive(pid):
+                # A lock naming this very process is from an earlier run that reused the PID (in a
+                # container the writer is PID 1 after every restart) unless this process holds it now.
+                same_process = pid == os.getpid()
+                if (same_process and str(root) in _HELD) or (not same_process and _process_alive(pid)):
                     raise KnowledgeError(503, "KNOWLEDGE_LOCKED", "Another knowledge writer is active.")
                 lock.unlink()
                 lock_handle = lock.open("x", encoding="utf-8")
@@ -576,6 +583,7 @@ class Journal:
                     recovery.unlink()
         with lock_handle:
             lock_handle.write(claim)
+        _HELD.add(str(root))
         try:
             raw: str | None = None
             try:
@@ -601,6 +609,7 @@ class Journal:
     @staticmethod
     def _release_lock(lock: Path, nonce: str) -> None:
         """Remove the lock only if it is still ours."""
+        _HELD.discard(str(lock.parent))
         try:
             value = json.loads(lock.read_text(encoding="utf-8"))
         except (OSError, ValueError):
