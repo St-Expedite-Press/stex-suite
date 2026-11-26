@@ -34,6 +34,7 @@ from stex.knowledge.journal import (
     Json,
     KnowledgeError,
     _atomic_write,
+    bind_ledger,
     detached,
     token,
     valid_id,
@@ -244,6 +245,8 @@ class NoteLedger:
                 503, "INVALID_JOURNAL", "The notes ledger is unreadable; it has been preserved."
             ) from error
         rebuild(document)
+        journal.ensure_persisted()
+        document = bind_ledger(file, document, journal.document["generation"], _initial)
         ledger = cls(file, document, journal)
         journal.notes_ledger = ledger
         return ledger
@@ -290,6 +293,17 @@ class NoteLedger:
             _atomic_write(self._file, following)
             self._document = following
             return {**self.view(), "replayed": False}
+
+    async def erase(self) -> None:
+        """Delete every imported note's metadata (the vault itself is never touched)."""
+        async with self._journal.queue:
+            following = {**_initial(), "journalGeneration": self._document.get("journalGeneration")}
+            _atomic_write(self._file, following)
+            self._document = following
+
+    def rebind(self, journal_generation: str) -> None:
+        """Follow the journal to its new generation after an erase."""
+        self._document = {**self._document, "journalGeneration": journal_generation}
 
     def search(self, root: Path, query: Any) -> Json:
         """Bounded snippets from imported notes whose bytes still match their import."""

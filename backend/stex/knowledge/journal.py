@@ -452,6 +452,27 @@ def _atomic_write(file: Path, document: Json) -> None:
             temporary.unlink()
 
 
+def bind_ledger(file: Path, document: Json, journal_generation: str, initial: Callable[[], Json]) -> Json:
+    """Tie a ledger beside the journal (contributions, notes) to one journal generation.
+
+    Erasing knowledge gives the journal a new generation, on either runtime. A
+    ledger still bound to an older generation therefore belongs to erased
+    knowledge: its records are dropped rather than honoured (the Node library
+    does not know these ledgers, so a native erase could otherwise leave them
+    to be revived when the platform path returns). A ledger written before
+    binding existed adopts the current generation.
+    """
+    bound = document.get("journalGeneration")
+    if bound == journal_generation:
+        return document
+    if bound is None:
+        return {**document, "journalGeneration": journal_generation}
+    fresh = {**initial(), "journalGeneration": journal_generation}
+    if file.exists():
+        _atomic_write(file, fresh)
+    return fresh
+
+
 class DisabledJournal:
     """The inert journal served when no directory is configured."""
 
@@ -498,6 +519,15 @@ class Journal:
     def directory(self) -> Path:
         """The journal directory this writer holds the lock for."""
         return self._root
+
+    def ensure_persisted(self) -> None:
+        """Write the (possibly empty) journal if it is not on disk yet, so its generation is stable.
+
+        Ledgers beside the journal bind to its generation; an unsaved journal would get a new
+        generation on every open and make them look erased.
+        """
+        if not self._file.exists():
+            _atomic_write(self._file, self._document)
 
     @property
     def queue(self) -> asyncio.Lock:

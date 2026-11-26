@@ -27,6 +27,7 @@ from stex.knowledge.engine import OwnerClient, fail, project_reference
 from stex.knowledge.journal import DisabledJournal, Journal, Json, KnowledgeError
 from stex.knowledge.jsjson import stringify
 from stex.knowledge.library import KnowledgeLibrary, person_directory_name
+from stex.knowledge.notes import NoteLedger
 
 PREFIX = "/api/knowledge/v1"
 RESOLVE_ROUTE = "/contributions/resolve"
@@ -155,9 +156,24 @@ async def _post(context: KnowledgeContext, route: str, data: Any) -> None:
     elif route == "/revise":
         await journal.revise(data)
     elif route == "/erase":
+        # Erasure covers everything this service holds for the person: the journal, contributions and
+        # imported-note metadata. Every ledger is loaded (a damaged one refuses) and the version checked
+        # before anything is deleted; ledgers go first, so a failure never leaves the journal erased while
+        # contributions remain resolvable, and a retry against the unchanged journal version succeeds.
+        if (
+            not isinstance(data, dict)
+            or data.get("confirmation") != "delete-knowledge"
+            or data.get("expectedVersion") != journal.view()["version"]
+        ):
+            raise KnowledgeError(
+                409, "STALE_KNOWLEDGE", "Confirm deletion against the current knowledge version."
+            )
+        ledgers = (ContributionLedger.of(journal), NoteLedger.of(journal))
+        for ledger in ledgers:
+            await ledger.erase()
         await journal.erase(data)
-        # The person's contributions are this service's state too, so erasure removes them.
-        await ContributionLedger.of(journal).erase()
+        for ledger in ledgers:
+            ledger.rebind(journal.document["generation"])
     else:
         raise fail(404, "Unknown knowledge route.")
 

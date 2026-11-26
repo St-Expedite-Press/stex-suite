@@ -35,6 +35,7 @@ from stex.knowledge.journal import (
     Json,
     KnowledgeError,
     _atomic_write,
+    bind_ledger,
     detached,
     safe_text,
     token,
@@ -219,6 +220,8 @@ class ContributionLedger:
                 503, "INVALID_JOURNAL", "The contribution ledger is unreadable; it has been preserved."
             ) from error
         rebuild(document)
+        journal.ensure_persisted()
+        document = bind_ledger(file, document, journal.document["generation"], _initial)
         ledger = cls(file, document, journal.queue)
         journal.attachment = ledger
         return ledger
@@ -326,8 +329,12 @@ class ContributionLedger:
         return await self._write(body, "withdraw", value_of, check)
 
     async def erase(self) -> None:
-        """Delete every contribution with the knowledge erase (a new empty generation)."""
+        """Delete every contribution (a new empty ledger, still bound to the current journal)."""
         async with self._queue:
-            following = _initial()
+            following = {**_initial(), "journalGeneration": self._document.get("journalGeneration")}
             _atomic_write(self._file, following)
             self._document = following
+
+    def rebind(self, journal_generation: str) -> None:
+        """Follow the journal to its new generation after an erase (written with the next change)."""
+        self._document = {**self._document, "journalGeneration": journal_generation}

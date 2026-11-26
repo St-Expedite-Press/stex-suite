@@ -224,3 +224,111 @@ def test_stale_withdrawn_restart_and_erase(tmp_path: Path) -> None:
         assert (
             api.get("/api/knowledge/v1/contributions", headers=person("alice")).json()["contributions"] == []
         )
+
+
+def test_erase_covers_every_ledger_and_refuses_before_deleting_anything(tmp_path: Path) -> None:
+    """Erase removes contributions and note metadata; a damaged ledger stops it with the journal intact."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Note.md").write_text("# Note\n\nRows.\n", encoding="utf-8")
+    frige = FakeFrige()
+    knowledge = KnowledgeSettings(directory=tmp_path / "k", vault=vault)
+    with TestClient(
+        create_app(
+            Settings(engine_origins=ORIGINS, knowledge=knowledge),
+            transport=Studios({FRIGE: frige}).transport(),
+        )
+    ) as api:
+        version = api.get("/api/knowledge/v1/contributions").json()["version"]
+        body = {"idempotencyKey": "erase-contribute-1", "expectedVersion": version, "citation": CITATION}
+        assert api.post("/api/knowledge/v1/contributions", json=body).status_code == 200
+        notes = api.get("/api/knowledge/v1/notes").json()
+        imported = {"idempotencyKey": "erase-note-1", "expectedVersion": notes["version"], "path": "Note.md"}
+        assert api.post("/api/knowledge/v1/notes/import", json=imported).status_code == 200
+        stale = api.post(
+            "/api/knowledge/v1/erase", json={"confirmation": "delete-knowledge", "expectedVersion": "x:0"}
+        )
+        assert stale.status_code == 409
+        assert api.get("/api/knowledge/v1/contributions").json()["contributions"], (
+            "a refused erase deletes nothing"
+        )
+        current = api.get("/api/knowledge/v1").json()["version"]
+        erased = api.post(
+            "/api/knowledge/v1/erase", json={"confirmation": "delete-knowledge", "expectedVersion": current}
+        )
+        assert erased.status_code == 200
+        assert api.get("/api/knowledge/v1/contributions").json()["contributions"] == []
+        assert api.get("/api/knowledge/v1/notes").json()["notes"] == []
+    # After restart the ledgers stay empty and stay bound to the new journal generation.
+    with TestClient(
+        create_app(
+            Settings(engine_origins=ORIGINS, knowledge=knowledge),
+            transport=Studios({FRIGE: frige}).transport(),
+        )
+    ) as api:
+        assert api.get("/api/knowledge/v1/contributions").json()["contributions"] == []
+        version = api.get("/api/knowledge/v1/contributions").json()["version"]
+        again = {"idempotencyKey": "erase-contribute-2", "expectedVersion": version, "citation": CITATION}
+        assert api.post("/api/knowledge/v1/contributions", json=again).status_code == 200
+    # A damaged ledger refuses erase before the journal is touched.
+    (tmp_path / "k" / "notes.v1.json").write_text("{damaged", encoding="utf-8")
+    journal_before = (tmp_path / "k" / "knowledge.v1.json").read_bytes()
+    with TestClient(
+        create_app(
+            Settings(engine_origins=ORIGINS, knowledge=knowledge),
+            transport=Studios({FRIGE: frige}).transport(),
+        )
+    ) as api:
+        current = api.get("/api/knowledge/v1").json()["version"]
+        refused = api.post(
+            "/api/knowledge/v1/erase", json={"confirmation": "delete-knowledge", "expectedVersion": current}
+        )
+        assert refused.status_code == 503 and refused.json()["code"] == "INVALID_JOURNAL"
+        assert api.get("/api/knowledge/v1/contributions").json()["contributions"], "contributions kept"
+    assert (tmp_path / "k" / "knowledge.v1.json").read_bytes() == journal_before
+
+
+def test_a_native_erase_is_honoured_when_the_platform_path_returns(tmp_path: Path) -> None:
+    """Rollback: the Node library erases the journal; contributions made before are not revived."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is required")
+    frige = FakeFrige()
+    knowledge = KnowledgeSettings(directory=tmp_path / "k")
+    with TestClient(
+        create_app(
+            Settings(engine_origins=ORIGINS, knowledge=knowledge),
+            transport=Studios({FRIGE: frige}).transport(),
+        )
+    ) as api:
+        version = api.get("/api/knowledge/v1/contributions").json()["version"]
+        created = api.post(
+            "/api/knowledge/v1/contributions",
+            json={"idempotencyKey": "native-erase-1", "expectedVersion": version, "citation": CITATION},
+        )
+        reference = created.json()["contributions"][0]["reference"]
+    driver = Path(__file__).parent / "fixtures" / "knowledge_parity.mjs"
+    subprocess.run(  # noqa: S603 - fixed local interpreter and repository script
+        [node, str(driver), str(tmp_path / "k")],
+        input=json.dumps(
+            [{"op": "erase", "body": {"confirmation": "delete-knowledge", "expectedVersion": "@version"}}]
+        ),
+        text=True,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    with TestClient(
+        create_app(
+            Settings(engine_origins=ORIGINS, knowledge=knowledge),
+            transport=Studios({FRIGE: frige}).transport(),
+        )
+    ) as api:
+        assert api.get("/api/knowledge/v1/contributions").json()["contributions"] == []
+        gone = api.post("/api/knowledge/v1/contributions/resolve", json={"reference": reference})
+        assert gone.status_code == 404
