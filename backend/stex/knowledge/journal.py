@@ -489,6 +489,18 @@ class Journal:
         self._closed = False
         self._closing = False
         self._queue = asyncio.Lock()
+        # Per-directory state that shares this writer's lock (the contribution ledger).
+        self.attachment: object | None = None
+
+    @property
+    def directory(self) -> Path:
+        """The journal directory this writer holds the lock for."""
+        return self._root
+
+    @property
+    def queue(self) -> asyncio.Lock:
+        """The writer queue; files sharing the directory lock serialize on it too."""
+        return self._queue
 
     @classmethod
     def open(cls, directory: Path) -> Journal:

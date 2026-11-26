@@ -14,6 +14,7 @@ import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
 import { mutateAttachments, readAttachmentManifest, storeAttachmentOriginal } from './src/attachment-manifest.mjs';
+import { readPassage, searchPassages } from './src/passages.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { LOCAL_ACTOR, actorRefused, resolveActor } from './src/actor.mjs';
 import { MAIN_CONVERSATION } from './src/editorial-sessions.mjs';
@@ -727,6 +728,18 @@ http.createServer(async (request, response) => {
       if (!match) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
       if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
       return json(response, 200, await projectContext(await contextStoreFor(match[1], url), match[1], { sourceId: match[2], revision: url.searchParams.get('revision'), offset: url.searchParams.get('offset') || '0' }));
+    }
+    // stex.frige.passages.v1: read-only passages of author-approved excerpts (src/passages.mjs).
+    // Separate from the shared context export, which stays manuscript-only; same project lock rule.
+    if (url.pathname.startsWith('/api/stex/passages/v1/')) {
+      const route = /^\/api\/stex\/passages\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/(search|attachments\/([a-f0-9]{16}))$/.exec(url.pathname);
+      if (!route) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown passage route.' });
+      if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
+      await projectAccess.assertUnlocked('book', route[1], request.headers);
+      const store = await contextStoreFor(route[1], url);
+      const project = { application: 'frige', id: route[1], reference: `stex://frige/project/${route[1]}`, title: (await store.graph()).book.title };
+      if (route[2] === 'search') return json(response, 200, await searchPassages(store, project, url.searchParams.get('q')));
+      return json(response, 200, await readPassage(store, project, route[3], url.searchParams));
     }
     // Unlock and lock a password-protected project for this browser.
     const accessRoute = /^\/api\/stex\/access\/v1\/(unlock|lock)$/.exec(url.pathname)?.[1];

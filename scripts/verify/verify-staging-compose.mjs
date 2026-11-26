@@ -67,7 +67,9 @@ assert.ok(books.value.some?.((entry) => entry.id === book) || JSON.stringify(boo
 
 // 2. A durable attachment and a real LuaLaTeX proof.
 const marker = `staging marker ${Date.now()}`;
-const upload = await call(`/frige/api/project/attachments?book=${book}`, { method: 'POST', body: { attachments: [{ name: 'staging-notes.txt', contentBase64: Buffer.from(`${marker}\nSynthetic note for container verification.\n`).toString('base64') }] } });
+// A file name per run: the volumes persist, so earlier runs' uploads are still there.
+const noteName = `staging-notes-${Date.now().toString(36)}.txt`;
+const upload = await call(`/frige/api/project/attachments?book=${book}`, { method: 'POST', body: { attachments: [{ name: noteName, contentBase64: Buffer.from(`${marker}\nSynthetic note for container verification.\n`).toString('base64') }] } });
 assert.equal(upload.status, 201, JSON.stringify(upload.value)); pass('synthetic attachment stored');
 const build = await call(`/frige/api/project/build?book=${book}`, { method: 'POST', body: { scopeId: 'book', mode: 'prefix' } });
 assert.equal(build.status, 200, JSON.stringify(build.value).slice(0, 400)); assert.equal(build.value.ok, true);
@@ -80,9 +82,14 @@ const knowledgeView = await call('/api/knowledge/v1');
 assert.equal(knowledgeView.status, 200); assert.equal(knowledgeView.value.enabled, true);
 const catalog = await call(`/api/knowledge/v1/sources?project=${encodeURIComponent(`stex://frige/project/${book}`)}`);
 assert.equal(catalog.status, 200); const first = catalog.value.sources.find((entry) => entry.available);
-const accepted = await call('/api/knowledge/v1/accept', { method: 'POST', body: { idempotencyKey: `staging-${Date.now()}`, expectedVersion: knowledgeView.value.version, project: `stex://frige/project/${book}`, sources: [{ id: first.id, revision: first.revision }] } });
-assert.equal(accepted.status, 200, JSON.stringify(accepted.value)); assert.equal(accepted.value.knowledge.sources[0].access, 'current');
-pass('source accepted into the platform-owned journal through Pantheon');
+// The volumes persist between runs; an owner event already accepted is not accepted twice (EVENT_CONFLICT by contract).
+const already = knowledgeView.value.knowledge.sources.some((source) => source.id === first.id && source.revision === first.revision);
+if (!already) {
+  const accepted = await call('/api/knowledge/v1/accept', { method: 'POST', body: { idempotencyKey: `staging-${Date.now()}`, expectedVersion: knowledgeView.value.version, project: `stex://frige/project/${book}`, sources: [{ id: first.id, revision: first.revision }] } });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.value));
+}
+assert.equal((await call('/api/knowledge/v1')).value.knowledge.sources.find((source) => source.id === first.id).access, 'current');
+pass(already ? 'source already accepted in the platform-owned journal (persistent volume)' : 'source accepted into the platform-owned journal through Pantheon');
 const foreign = await call('/api/knowledge/v1/accept', { method: 'POST', origin: 'http://attacker.example', body: {} });
 assert.equal(foreign.status, 403); pass('foreign browser origin refused before the relay');
 const pantheonEnv = execFileSync('docker', ['inspect', '--format', '{{json .Config.Env}}', compose('ps', '-q', 'pantheon')], { encoding: 'utf8' });
@@ -102,13 +109,13 @@ await until(async () => (await call('/frige/api/books')).status === 200, 'Frige 
 assert.notEqual(startedAt('frige'), frigeStarted, 'Frige container was recreated');
 assert.equal(startedAt('pantheon'), pantheonStarted, 'Pantheon was not restarted');
 const attachments = await call(`/frige/api/project/attachments?book=${book}`);
-assert.ok(JSON.stringify(attachments.value).includes('staging-notes.txt'));
-const preview = await call(`/frige/api/project/attachments/${attachments.value.find((entry) => entry.name === 'staging-notes.txt').id}/excerpt?book=${book}`);
+assert.ok(JSON.stringify(attachments.value).includes(noteName));
+const preview = await call(`/frige/api/project/attachments/${attachments.value.find((entry) => entry.name === noteName).id}/excerpt?book=${book}`);
 assert.ok(JSON.stringify(preview.value).includes(marker), 'the uploaded bytes survived');
 const proofAfter = await call(`/frige/api/project/preview?book=${book}`);
 assert.equal(proofAfter.status, 200); assert.equal(proofAfter.value.subarray(0, 5).toString('latin1'), '%PDF-');
 const knowledgeAfter = await call('/api/knowledge/v1');
-assert.equal(knowledgeAfter.value.knowledge.sources[0].access, 'current', 'the accepted source is still current after Frige returns');
+assert.equal(knowledgeAfter.value.knowledge.sources.find((source) => source.id === first.id).access, 'current', 'the accepted source is still current after Frige returns');
 pass('Frige recreated: attachment, proof and knowledge access survive; Pantheon not restarted');
 
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

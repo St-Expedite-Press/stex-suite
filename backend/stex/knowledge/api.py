@@ -21,12 +21,16 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from stex.knowledge.actor import Actor, verified_actor
+from stex.knowledge.contributions import ContributionLedger
 from stex.knowledge.engine import OwnerClient, fail, project_reference
 from stex.knowledge.journal import DisabledJournal, Journal, Json, KnowledgeError
 from stex.knowledge.jsjson import stringify
 from stex.knowledge.library import KnowledgeLibrary, person_directory_name
 
 PREFIX = "/api/knowledge/v1"
+RESOLVE_ROUTE = "/contributions/resolve"
+# Igor's own credential header for the resolve route (STEX_KNOWLEDGE_IGOR_SECRET).
+IGOR_TOKEN_HEADER = "x-stex-knowledge-token"  # noqa: S105 - a header name, not a secret
 MAX_REQUEST_BYTES = 16_384
 # The journal directory Pantheon computed from the admitted username (32 hex digits).
 PERSON_HEADER = "x-stex-actor-journal"
@@ -151,6 +155,8 @@ async def _post(context: KnowledgeContext, route: str, data: Any) -> None:
         await journal.revise(data)
     elif route == "/erase":
         await journal.erase(data)
+        # The person's contributions are this service's state too, so erasure removes them.
+        await ContributionLedger.of(journal).erase()
     else:
         raise fail(404, "Unknown knowledge route.")
 
@@ -165,6 +171,11 @@ async def knowledge(request: Request) -> Response:
     owners: OwnerClient = request.app.state.knowledge_owners
     secret: str | None = request.app.state.knowledge_secret
     actor = verified_actor(request.headers, secret)
+    if actor is None and request.url.path == PREFIX + RESOLVE_ROUTE:
+        # Igor may assert its signed-in account with its own secret, on the resolve route only.
+        actor = verified_actor(
+            request.headers, request.app.state.knowledge_igor_secret, token_header=IGOR_TOKEN_HEADER
+        )
     try:
         async with library.lease(person_for(request, actor) if library.hosted else None) as journal:
             if isinstance(journal, DisabledJournal):

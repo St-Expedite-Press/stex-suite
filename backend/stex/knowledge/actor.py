@@ -32,11 +32,13 @@ class Actor:
         return {ACTOR_HEADER: self.id, ACTOR_ROLE_HEADER: self.role, ACTOR_TOKEN_HEADER: secret}
 
 
-def verified_actor(headers: Mapping[str, str], secret: str | None) -> Actor | None:
-    """Return the actor when the token matches the secret; otherwise ``None``."""
+def verified_actor(
+    headers: Mapping[str, str], secret: str | None, *, token_header: str = ACTOR_TOKEN_HEADER
+) -> Actor | None:
+    """Return the actor when the token in ``token_header`` matches the secret; otherwise ``None``."""
     if secret is None:
         return None
-    supplied = headers.get(ACTOR_TOKEN_HEADER, "")
+    supplied = headers.get(token_header, "")
     actor = headers.get(ACTOR_HEADER, "")
     role = headers.get(ACTOR_ROLE_HEADER, "")
     if not supplied or not hmac.compare_digest(supplied.encode("utf-8"), secret.encode("utf-8")):

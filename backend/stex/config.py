@@ -81,6 +81,8 @@ class KnowledgeSettings:
     hosted: bool = False
     legacy_owner: str = ""
     actor_secret: str | None = None
+    # Igor's credential for the contribution resolve route only (never the actor secret).
+    igor_secret: str | None = None
     open_limit: int = 32
     # Engines the knowledge API may contact; a host that defers a studio leaves it out.
     engines: frozenset[str] = frozenset({"frige", "seaxneat"})
@@ -90,6 +92,14 @@ class KnowledgeSettings:
         if self.actor_secret is not None and len(self.actor_secret) < ACTOR_SECRET_MIN:
             raise ConfigurationError(
                 f"STEX_PLATFORM_ACTOR_SECRET must be at least {ACTOR_SECRET_MIN} characters."
+            )
+        if self.igor_secret is not None and len(self.igor_secret) < ACTOR_SECRET_MIN:
+            raise ConfigurationError(
+                f"STEX_KNOWLEDGE_IGOR_SECRET must be at least {ACTOR_SECRET_MIN} characters."
+            )
+        if self.igor_secret is not None and self.igor_secret == self.actor_secret:
+            raise ConfigurationError(
+                "STEX_KNOWLEDGE_IGOR_SECRET must differ from STEX_PLATFORM_ACTOR_SECRET."
             )
         if self.hosted and self.actor_secret is None:
             raise ConfigurationError("STEX_KNOWLEDGE_HOSTED=1 requires STEX_PLATFORM_ACTOR_SECRET.")
@@ -147,6 +157,7 @@ class Settings:
             hosted=hosted_text == "1",
             legacy_owner=env.get("STEX_KNOWLEDGE_LEGACY_OWNER", ""),
             actor_secret=env.get("STEX_PLATFORM_ACTOR_SECRET") or None,
+            igor_secret=env.get("STEX_KNOWLEDGE_IGOR_SECRET") or None,
             engines=knowledge_engines(env.get("STEX_KNOWLEDGE_ENGINES")),
         )
         return cls(

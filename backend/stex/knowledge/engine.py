@@ -60,13 +60,23 @@ class OwnerClient:
         self._secret = actor_secret
 
     async def call(
-        self, project: Json, suffix: str = "", payload: Any = None, actor: Actor | None = None
+        self,
+        project: Json,
+        suffix: str = "",
+        payload: Any = None,
+        actor: Actor | None = None,
+        *,
+        contract: str = "context/v1",
     ) -> Json:
-        """One owner request; any failure becomes 503, 409 or 502 as the Node host does."""
+        """One owner request; any failure becomes 503, 409 or 502 as the Node host does.
+
+        ``contract`` selects the owner export: ``context/v1`` (stex.project.context.v1)
+        or ``passages/v1`` (stex.frige.passages.v1, where a 404 stays a 404).
+        """
         origin = self._origins.get(project["application"])
         if origin is None:
             raise fail(503, "The source engine is unavailable.")
-        url = f"{origin}/{project['application']}/api/stex/context/v1/projects/{project['id']}{suffix}"
+        url = f"{origin}/{project['application']}/api/stex/{contract}/projects/{project['id']}{suffix}"
         headers = {"content-type": "application/json", "accept-encoding": "identity"}
         if actor is not None and self._secret is not None and project["application"] in ACTOR_RECEIVERS:
             headers.update(actor.headers(self._secret))
@@ -99,6 +109,8 @@ class OwnerClient:
         except (UnicodeDecodeError, ValueError, RecursionError) as error:
             raise fail(502, "The engine returned an unreadable response.") from error
         if not 200 <= response.status_code < 300:
+            if response.status_code == 404 and contract == "passages/v1":
+                raise KnowledgeError(404, "NOT_FOUND", "That approved document is not available.")
             raise fail(
                 409 if response.status_code == 409 else 503,
                 "The source is unavailable or changed. Refresh before accepting.",
