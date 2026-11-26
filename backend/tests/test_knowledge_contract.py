@@ -111,17 +111,19 @@ def test_representative_payloads_conform(tmp_path: Path) -> None:
         view = api.get(PREFIX).json()
         conforms("knowledge.api.v1", "view", view)
         conforms("knowledge.api.v1", "export", api.get(PREFIX + "/export").json())
-        search = api.get(PREFIX + "/passages/search", params={"project": CITATION["project"], "q": "orchard"})
+        search = api.get(
+            PREFIX + "/passages/search", params={"project": str(CITATION["project"]), "q": "orchard"}
+        )
         conforms("knowledge.contributions.v1", "passageSearchResponse", search.json())
         read = api.get(
             PREFIX + "/passages/read",
             params={
-                "project": CITATION["project"],
-                "attachment": CITATION["attachmentId"],
-                "excerpt": CITATION["excerptHash"],
+                "project": str(CITATION["project"]),
+                "attachment": str(CITATION["attachmentId"]),
+                "excerpt": str(CITATION["excerptHash"]),
                 "start": str(CITATION["start"]),
                 "end": str(CITATION["end"]),
-                "passage": CITATION["passageSha256"],
+                "passage": str(CITATION["passageSha256"]),
             },
         )
         conforms("knowledge.contributions.v1", "passageReadResponse", read.json())
