@@ -1,0 +1,32 @@
+# Build context for deploy/staging-compose. Real manuscripts, vault notes,
+# local state, secrets and the Hermes runtime never enter an image.
+.git
+**/.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/*.log
+**/.env
+**/.env.*
+!.env.example
+**/.local-*
+**/.local-data
+apps/frige/books
+apps/frige/books/**
+apps/texgraph
+apps/lab
+vault
+assets
+examples
+front-end-dev
+release
+docs
+.codex
+.github
+# Igor is not part of this slice; keep only the manifests pnpm's lockfile names.
+stex-igor/**
+!stex-igor/apps/igor/package.json
+!stex-igor/services/inference/package.json

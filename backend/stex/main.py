@@ -12,6 +12,9 @@ from pydantic import BaseModel
 
 from stex import __version__
 from stex.config import Settings
+from stex.knowledge.api import router as knowledge_router
+from stex.knowledge.engine import OwnerClient
+from stex.knowledge.library import KnowledgeLibrary
 from stex.platform.projects.api import router as projects_router
 from stex.platform.projects.service import ProjectSummaryService
 from stex.platform.registry import load_registry
@@ -44,7 +47,29 @@ def create_app(
                 timeout_seconds=resolved.studio_timeout_seconds,
                 max_bytes=resolved.max_summary_bytes,
             )
-            yield
+            # Knowledge journals (stex.knowledge.projections.v1). Local mode opens the single
+            # journal eagerly, so a held writer lock stops startup exactly as Pantheon's did.
+            knowledge = resolved.knowledge
+            app.state.knowledge = KnowledgeLibrary(
+                knowledge.directory,
+                hosted=knowledge.hosted,
+                legacy_owner=knowledge.legacy_owner,
+                limit=knowledge.open_limit,
+            )
+            app.state.knowledge_secret = knowledge.actor_secret
+            app.state.knowledge_owners = OwnerClient(
+                client,
+                {
+                    engine: origin
+                    for engine, origin in resolved.engine_origins.items()
+                    if engine in knowledge.engines
+                },
+                actor_secret=knowledge.actor_secret,
+            )
+            try:
+                yield
+            finally:
+                await app.state.knowledge.close()
 
     # No interactive docs: they load third-party assets. The OpenAPI document stays.
     app = FastAPI(
@@ -61,4 +86,5 @@ def create_app(
         return Health()
 
     app.include_router(projects_router)
+    app.include_router(knowledge_router)
     return app
