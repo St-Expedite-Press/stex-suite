@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from stex.knowledge.actor import Actor, verified_actor
+from stex.knowledge.contract import ROUTES, operation
 from stex.knowledge.contributions import ContributionLedger
 from stex.knowledge.engine import OwnerClient, fail, project_reference
 from stex.knowledge.journal import DisabledJournal, Journal, Json, KnowledgeError
@@ -161,10 +162,6 @@ async def _post(context: KnowledgeContext, route: str, data: Any) -> None:
         raise fail(404, "Unknown knowledge route.")
 
 
-@router.api_route(PREFIX, methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
-@router.api_route(
-    PREFIX + "/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
-)
 async def knowledge(request: Request) -> Response:
     """Serve one knowledge request against the caller's own journal."""
     library: KnowledgeLibrary = request.app.state.knowledge
@@ -220,3 +217,29 @@ async def knowledge(request: Request) -> Response:
         return reply(error.status, {"error": error.message, "code": error.code})
     except Exception:
         return reply(400, {"error": "Knowledge could not apply this request.", "code": "INVALID_REQUEST"})
+
+
+# Documented routes first (one OpenAPI operation each, payloads from protocol/ schema files),
+# then the undocumented catch-alls, so unknown paths keep the Node host's 404/405 semantics.
+for _route in ROUTES:
+    _spec = operation(_route)
+    router.add_api_route(
+        PREFIX + _route.path,
+        knowledge,
+        methods=[_route.method],
+        summary=_route.summary,
+        operation_id=f"knowledge_{_route.method.lower()}{_route.path.replace('/', '_') or '_root'}",
+        tags=["knowledge"],
+        responses=_spec["responses"],
+        openapi_extra=_spec["openapi_extra"],
+        response_class=Response,
+    )
+router.add_api_route(
+    PREFIX, knowledge, methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
+)
+router.add_api_route(
+    PREFIX + "/{rest:path}",
+    knowledge,
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)

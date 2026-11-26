@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/knowledge/notes.v1.schema.json",
+  "title": "Knowledge notes v1 (stex.knowledge.notes.v1)",
+  "description": "Read-only import of notes from one selected Obsidian vault, local mode only. Metadata only; text is reread and bounded on retrieval. Definitions only; see protocol/knowledge/README.md, Notes v1.",
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "importRequest": {
+      "type": "object",
+      "required": ["idempotencyKey", "expectedVersion", "path"],
+      "properties": {
+        "idempotencyKey": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$" },
+        "expectedVersion": { "type": "string" },
+        "path": { "type": "string", "maxLength": 512, "pattern": "\\.md$", "description": "Vault-relative path with forward slashes." }
+      }
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes", "title", "properties", "links", "importedAt"],
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 262144 },
+        "title": { "type": "string", "maxLength": 300 },
+        "properties": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
+        "links": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target", "resolved"],
+            "properties": { "target": { "type": "string" }, "resolved": { "type": ["string", "null"] } }
+          }
+        },
+        "importedAt": { "type": "string" },
+        "state": { "enum": ["current", "changed", "missing"], "description": "Present on GET /notes." }
+      }
+    },
+    "notesView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "version", "notes"],
+      "properties": {
+        "schemaVersion": { "const": "stex.knowledge.notes.v1" },
+        "version": { "type": "string" },
+        "notes": { "type": "array", "items": { "$ref": "#/$defs/note" } },
+        "replayed": { "type": "boolean" }
+      }
+    },
+    "searchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "results", "unavailable", "truncated"],
+      "properties": {
+        "schemaVersion": { "const": "stex.knowledge.notes.v1" },
+        "results": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "title", "sha256", "snippet"],
+            "properties": { "path": { "type": "string" }, "title": { "type": "string" }, "sha256": { "$ref": "#/$defs/sha256" }, "snippet": { "type": "string", "maxLength": 240 } }
+          }
+        },
+        "unavailable": { "type": "array", "items": { "type": "string" } },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  }
+}

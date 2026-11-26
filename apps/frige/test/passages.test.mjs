@@ -13,6 +13,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { segmentExcerpt } from '../src/passages.mjs';
+import { conformsTo } from './schema-check.mjs';
+
+const SCHEMA = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../../../protocol/frige/passages.v1.schema.json', import.meta.url), 'utf8'));
 
 const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sha = (text) => createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex');
@@ -80,8 +83,14 @@ test('only approved excerpt bytes are searchable and citations are re-verified',
     assert.equal(read.status, 200); assert.equal(read.value.passage.text, 'The frost-bound orchard keeps its counted rows — 雪.');
     const shifted = await call(`/api/stex/passages/v1/projects/fixture-book/attachments/${approved.id}?excerpt=${hit.excerptHash}&start=${hit.start + 1}&end=${hit.end}&passage=${hit.passageSha256}`);
     assert.equal(shifted.status, 409); assert.equal(shifted.value.code, 'STALE_PASSAGE');
+    // The published stex.frige.passages.v1 schema describes what the server actually sends.
+    assert.deepEqual(conformsTo(SCHEMA, 'searchResponse', search.value), []);
+    assert.deepEqual(conformsTo(SCHEMA, 'readResponse', read.value), []);
+    assert.deepEqual(conformsTo(SCHEMA, 'error', shifted.value), []);
+    assert.ok(conformsTo(SCHEMA, 'readResponse', { ...read.value, passage: { ...read.value.passage, start: -1 } }).length, 'the schema rejects a malformed citation');
     const pending = records.find((record) => record.name === 'pending.txt');
-    assert.equal((await call(`/api/stex/passages/v1/projects/fixture-book/attachments/${pending.id}${citation}`)).status, 404);
+    const notApproved = await call(`/api/stex/passages/v1/projects/fixture-book/attachments/${pending.id}${citation}`);
+    assert.equal(notApproved.status, 404); assert.deepEqual(conformsTo(SCHEMA, 'error', notApproved.value), []);
     assert.equal((await call('/api/stex/passages/v1/projects/fixture-book/search')).status, 400);
     assert.equal((await fetch(`${base}/api/stex/passages/v1/projects/fixture-book/search?q=x`, { method: 'POST' })).status, 405);
 

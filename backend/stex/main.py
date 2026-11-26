@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Any, Literal
 
 import httpx2
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 
 from stex import __version__
 from stex.config import Settings
 from stex.knowledge import contributions_api, notes_api  # noqa: F401 - register their routes
 from stex.knowledge.api import router as knowledge_router
+from stex.knowledge.contract import components as knowledge_components
 from stex.knowledge.engine import OwnerClient
 from stex.knowledge.library import KnowledgeLibrary
 from stex.platform.projects.api import router as projects_router
@@ -90,4 +92,14 @@ def create_app(
 
     app.include_router(projects_router)
     app.include_router(knowledge_router)
+
+    def openapi() -> dict[str, Any]:
+        """The generated document plus the published knowledge and passage schema definitions."""
+        if app.openapi_schema is None:
+            document = get_openapi(title=app.title, version=app.version, routes=app.routes)
+            document.setdefault("components", {}).setdefault("schemas", {}).update(knowledge_components())
+            app.openapi_schema = document
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
     return app

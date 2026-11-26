@@ -42,9 +42,11 @@ see [the evidence](../docs/verification/separation-m1.md).
   with fixed peer names in `STEX_INTERNAL_HOSTS`) used by
   `deploy/staging-compose`. Secrets (`STEX_PLATFORM_ACTOR_SECRET`,
   `STEX_KNOWLEDGE_IGOR_SECRET`) come only from ignored local configuration,
-  never code or docs. The knowledge routes are documented in
-  `protocol/knowledge/README.md` but do not yet have JSON Schemas and are
-  excluded from the generated OpenAPI document: an open gate.
+  never code or docs. The knowledge routes are listed once in
+  `stex/knowledge/contract.py`; their payloads are the published schemas in
+  `protocol/knowledge` and `protocol/frige/passages.v1.schema.json`, and
+  `backend/tests/test_knowledge_contract.py` fails if the README tables, that
+  list, the schemas and the generated OpenAPI drift.
 - **Toolchain.** uv with the committed `uv.lock` and `.python-version` (3.12);
   FastAPI, Pydantic, httpx2; Ruff (lint + format), mypy `strict`, pytest.
   Add a dependency only with an identified caller and a failing test.

@@ -33,9 +33,8 @@ the platform API with actor headers as Pantheon sends them
 Still on Node: Pantheon (shell, hosted gate, proxy, knowledge relay), Frige,
 Seaxneat, Igor, inference, and the Node knowledge library (native default and
 rollback path). Rollback of the knowledge move is configuration only (unset
-`STEX_KNOWLEDGE_SERVICE`, give Pantheon the same data directory). Open gate:
-the knowledge routes have contract READMEs but no JSON Schemas and are not in
-the generated OpenAPI document.
+`STEX_KNOWLEDGE_SERVICE`, give Pantheon the same data directory). The schema
+gap noted in the first pass is closed in the hardening pass (section 4).
 
 ## 2. Passages and private contributions
 

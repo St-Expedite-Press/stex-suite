@@ -192,6 +192,18 @@ consumer must export/erase deliberately when the limit is reached; it must
 never silently discard old records. Local writer data is trusted local state;
 the host is responsible for filesystem access restrictions and backups.
 
+## Schemas and OpenAPI
+
+Payloads are published as JSON Schema 2020-12 definitions:
+[`api.v1.schema.json`](api.v1.schema.json) (v1 host requests, view, export,
+disabled and error shapes), [`contributions.v1.schema.json`](contributions.v1.schema.json),
+[`notes.v1.schema.json`](notes.v1.schema.json), and Frige's
+[`passages.v1.schema.json`](../frige/passages.v1.schema.json). The platform
+API registers every route in the tables of this file as an OpenAPI operation
+whose payloads reference those definitions
+([`openapi.v1.json`](../platform/openapi.v1.json)); a test fails if the
+tables, the route list, the schema files and the committed OpenAPI disagree.
+
 ## Platform host (separation milestone 1, local candidate)
 
 With `STEX_KNOWLEDGE_SERVICE=platform`, Pantheon opens no journal: it checks
@@ -236,13 +248,13 @@ also deletes the caller's contributions.
 ## Notes v1 (`stex.knowledge.notes.v1`, read-only Obsidian import)
 
 Local mode only, with an explicitly selected vault (`STEX_KNOWLEDGE_VAULT_DIR`);
-hosted requests answer `403 VAULT_LOCAL_ONLY`. `POST /notes/import`
-`{idempotencyKey,expectedVersion,path}` records one note's vault-relative
-path, SHA-256, size, title, property names and wikilinks with their
-resolved targets in `notes.v1.json`, never its text. `GET /notes` reports
-each note `current`, `changed` or `missing`. `GET /notes/search?q=` rereads
-imported notes, skips any whose bytes changed, and returns at most 10
-snippets of at most 240 characters (16 KB total). The vault is never
+hosted requests answer `403 VAULT_LOCAL_ONLY`.
+
+| Route under `/api/knowledge/v1` | Behavior |
+| --- | --- |
+| `GET /notes` | Imported notes, each `current`, `changed` or `missing` |
+| `POST /notes/import` | `{idempotencyKey,expectedVersion,path}`: records one note's vault-relative path, SHA-256, size, title, property names and wikilinks with their resolved targets in `notes.v1.json`, never its text |
+| `GET /notes/search?q=` | Rereads imported notes, skips any whose bytes changed, and returns at most 10 snippets of at most 240 characters (16 KB total) | The vault is never
 written; symlinks, junctions, traversal, drive letters, streams, reserved
 device names and segments ending in a dot or space are refused. This is not
 synchronization and does not complete the Obsidian gate.
