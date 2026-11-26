@@ -141,7 +141,7 @@ export function isSignInRequest(pathname, method) {
  * Creates the hosted request gate.
  *
  * - A loopback Host with no proxy headers (health checks and local processes)
- *   keeps local behaviour.
+ *   keeps local behaviour, on a native host only (`loopbackExempt`).
  * - Any other Host than the public one is refused.
  * - A public request from another site, or naming another Origin, is refused.
  * - Sign-in requests (isSignInRequest) pass to Igor, which serves them.
@@ -150,14 +150,17 @@ export function isSignInRequest(pathname, method) {
  * Admitted requests are rewritten in place to Pantheon's loopback address.
  *
  * @param {{ publicOrigin: string, publicHost: string }} config  Hosted settings.
- * @param {{ port: number, checkSession: (cookie: string) => Promise<object | null> }} options
+ * @param {{ port: number, checkSession: (cookie: string) => Promise<object | null>, loopbackExempt?: boolean }} options  `loopbackExempt` false in container mode.
  * @returns {(request: import('node:http').IncomingMessage) => Promise<{ user: object | null }>}  Throws HostedRefusal to refuse.
  */
-export function createHostedGate(config, { port, checkSession }) {
+export function createHostedGate(config, { port, checkSession, loopbackExempt = true }) {
   const loopbackAddress = `127.0.0.1:${port}`;
   return async function admit(request) {
     const { headers } = request;
-    if (isLoopbackHost(headers.host) && proxyHeaders.every((name) => headers[name] === undefined)) return { user: null };
+    // Native hosts bind 127.0.0.1, so a loopback Host without proxy headers is this machine.
+    // In a container (bound to every interface) a peer could send that Host, so there is no
+    // such exemption: probes use /healthz, everything else needs the public host and a session.
+    if (loopbackExempt && isLoopbackHost(headers.host) && proxyHeaders.every((name) => headers[name] === undefined)) return { user: null };
     if (headers.host !== config.publicHost) throw new HostedRefusal(403, 'Pantheon answers only on its published address.');
     const origin = headers.origin;
     if (headers['sec-fetch-site'] === 'cross-site' || (origin && origin !== config.publicOrigin)) throw new HostedRefusal(403, 'Foreign browser origin refused.');

@@ -54,9 +54,25 @@ test('container switches are explicit opt-ins and native defaults stay loopback'
   assert.throws(() => localProxyTarget('http://user:pw@frige:4310', 'http://127.0.0.1:4310', internalHosts('frige')), /loopback/);
 });
 
-test('hosted Pantheon refuses to bind every interface, and the platform knowledge path refuses a local journal directory', async () => {
-  const hosted = await startPantheon(await freePort(), { STEX_BIND_ALL: '1', STEX_PANTHEON_PUBLIC_ORIGIN: 'https://pantheon.example.com' });
-  assert.equal(hosted.child, null); assert.notEqual(hosted.code, 0); assert.match(hosted.output, /STEX_BIND_ALL cannot be combined/);
+test('hosted Pantheon in a container admits no loopback probe: only /healthz, the public host and a session', async () => {
+  const port = await freePort();
+  const hosted = await startPantheon(port, { STEX_BIND_ALL: '1', STEX_PANTHEON_PUBLIC_ORIGIN: 'https://pantheon.example.com', STEX_IGOR_URL: 'http://127.0.0.1:9' });
+  assert.ok(hosted.child, hosted.output);
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    assert.deepEqual(await (await fetch(`${base}/healthz`)).json(), { status: 'ok' });
+    // A peer claiming a loopback Host is not "this machine" in a container: refused or sent to sign in, never admitted.
+    for (const route of ['/home/', '/api/knowledge/v1', '/frige/api/books', '/api/platform/v1/projects']) {
+      const response = await fetch(`${base}${route}`, { redirect: 'manual' });
+      assert.ok([303, 401, 403].includes(response.status), `${route} answered ${response.status}`);
+    }
+    // With the public host and no session: sign in first (Igor unreachable fails closed on protected routes).
+    const page = await new Promise((resolve) => http.get({ hostname: '127.0.0.1', port, path: '/home/', headers: { host: 'pantheon.example.com' } }, (response) => { response.resume(); resolve(response.statusCode); }));
+    assert.equal(page, 303);
+  } finally { hosted.child.kill(); }
+});
+
+test('the platform knowledge path refuses a local journal directory', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'stex-relay-'));
   try {
     const both = await startPantheon(await freePort(), { STEX_KNOWLEDGE_SERVICE: 'platform', STEX_KNOWLEDGE_DATA_DIR: root });

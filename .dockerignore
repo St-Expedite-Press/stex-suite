@@ -26,7 +26,14 @@ release
 docs
 .codex
 .github
-# Igor is not part of this slice; keep only the manifests pnpm's lockfile names.
+# Igor and its inference service are built for the hosted overlay (compose.hosted.yaml);
+# the Hermes runtime, deploy secrets and everything else in stex-igor stay out.
 stex-igor/**
-!stex-igor/apps/igor/package.json
-!stex-igor/services/inference/package.json
+!stex-igor/apps/igor/**
+!stex-igor/services/inference/**
+# Re-exclude build output, local state and dependencies inside what was just re-included.
+stex-igor/apps/igor/dist
+**/node_modules
+**/.local-data
+**/.local-*
+**/*.log

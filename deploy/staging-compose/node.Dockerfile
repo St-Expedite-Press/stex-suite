@@ -42,3 +42,19 @@ EXPOSE 4310
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=6 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:4310/frige/api/stex/projects').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 CMD ["node", "server.mjs"]
+
+# Igor (hosted overlay): its interface is built here with build-time dependencies, then
+# served by the same server.mjs the VM runs. Accounts come from a mounted fixture file.
+FROM node-base AS igor-build
+WORKDIR /srv/stex
+COPY . .
+RUN corepack enable  && NODE_ENV=development corepack pnpm install --frozen-lockfile --filter @stex/igor...  && corepack pnpm --dir stex-igor/apps/igor build
+
+FROM node-base AS igor
+COPY --from=igor-build /srv/stex /srv/stex
+RUN mkdir -p /data/igor && chown node:node /data/igor
+WORKDIR /srv/stex/stex-igor/apps/igor
+USER node
+EXPOSE 4330
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6   CMD ["node", "-e", "fetch('http://127.0.0.1:4330/igor/login').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+CMD ["node", "server.mjs"]

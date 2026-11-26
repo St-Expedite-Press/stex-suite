@@ -47,10 +47,11 @@ const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://1
 // one sign-in; every public request outside Igor's own sign-in route needs a
 // session Igor confirms. An invalid public origin stops startup.
 const hosted = hostedConfig(process.env);
-// The hosted gate admits a loopback probe without a session. Bound to every
-// interface, a peer container could claim a loopback Host, so the two refuse to combine.
-if (hosted && listenAddress !== '127.0.0.1') throw new Error('STEX_BIND_ALL cannot be combined with STEX_PANTHEON_PUBLIC_ORIGIN.');
-const admitHosted = hosted ? createHostedGate(hosted, { port, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
+// The hosted gate admits a loopback probe without a session on a native host only. Bound to
+// every interface (a container), a peer could claim a loopback Host, so that exemption is off
+// and health probes use /healthz, which reports liveness and nothing else.
+const containerMode = listenAddress !== '127.0.0.1';
+const admitHosted = hosted ? createHostedGate(hosted, { port, loopbackExempt: !containerMode, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
 // stex.platform.actor.v1 sender (D-028). The secret is validated here so a short
 // one refuses startup. Hosted without it sends no actor, so engines cannot
 // attribute requests to a person: that is allowed but warned about.
@@ -134,6 +135,8 @@ function designSystemFile(pathname) {
 http.createServer(async (request, response) => {
   // The actor headers are Pantheon's alone to set: drop any a client sent, in every mode, before routing.
   stripActorHeaders(request.headers);
+  // Container probes: liveness only, no data, no session, nothing proxied.
+  if (containerMode && request.url === '/healthz' && request.method === 'GET') { send(response, 200, { status: 'ok' }); return; }
   let user = null;
   // Refused before routing: the proxy would otherwise lend a rebound page a loopback Host.
   if (admitHosted) {
