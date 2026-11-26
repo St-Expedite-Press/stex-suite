@@ -62,7 +62,10 @@ export function segmentExcerpt(excerpt) {
     while (text.length - offset > SEGMENT_CHARS) {
       const window = text.slice(offset, offset + SEGMENT_CHARS);
       const cut = Math.max(window.lastIndexOf('\n'), window.lastIndexOf(' '));
-      const size = cut > SEGMENT_CHARS / 2 ? cut + 1 : SEGMENT_CHARS;
+      let size = cut > SEGMENT_CHARS / 2 ? cut + 1 : SEGMENT_CHARS;
+      // Never split a surrogate pair: an astral character (emoji, CJK extension) stays whole.
+      const last = text.charCodeAt(offset + size - 1);
+      if (last >= 0xd800 && last <= 0xdbff) size -= 1;
       add(cursor + offset, text.slice(offset, offset + size));
       offset += size;
     }

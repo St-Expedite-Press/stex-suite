@@ -32,6 +32,10 @@ test('segments carry exact UTF-8 byte offsets and split long paragraphs at white
   }
   assert.ok(segments.length >= 4, 'the 2,000-character paragraph was split');
   assert.deepEqual(segmentExcerpt(excerpt), segments, 'segmentation is deterministic');
+  // A long run without whitespace whose cut would land inside an emoji keeps it whole.
+  const astral = segmentExcerpt('x'.repeat(1199) + '🌨'.repeat(10));
+  assert.ok(astral.every((segment) => segment.text.isWellFormed()), 'no segment holds a lone surrogate');
+  assert.equal(astral.map((segment) => segment.text).join(''), 'x'.repeat(1199) + '🌨'.repeat(10));
 });
 
 /** A free loopback port. */

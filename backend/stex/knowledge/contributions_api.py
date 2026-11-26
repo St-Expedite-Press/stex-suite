@@ -112,7 +112,7 @@ async def search(context: KnowledgeContext, params: Json) -> Json:
         hits.append({**passage, "contribution": mine["reference"] if mine else None})
     return {
         "schemaVersion": PASSAGES_SCHEMA,
-        "project": result["project"],
+        "project": {key: result["project"].get(key) for key in ("application", "id", "reference", "title")},
         "passages": hits,
         "truncated": bool(result.get("truncated")),
     }
