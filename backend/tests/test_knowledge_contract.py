@@ -194,7 +194,7 @@ def test_representative_payloads_conform(tmp_path: Path) -> None:
 
 
 def test_unauthorized_and_disabled_shapes(tmp_path: Path) -> None:
-    """Hosted requests without a verified actor get 401 with the error shape; disabled answers {enabled:false}."""
+    """Hosted requests without a verified actor get 401 with the error shape; disabled is {enabled:false}."""
     with platform(tmp_path, FakeFrige(), hosted=True) as api:
         for method, path in ((route.method, route.path) for route in ROUTES):
             response = api.request(method, PREFIX + path, json={} if method == "POST" else None)
