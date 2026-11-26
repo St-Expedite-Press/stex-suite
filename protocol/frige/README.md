@@ -190,6 +190,29 @@ record until the reader approves the displayed excerpt. A successful
 MarkItDown extraction makes supported PDFs and DOCX documents eligible
 for the same excerpt review.
 
+### Passages v1 (approved excerpts)
+
+`stex.frige.passages.v1` is a read-only export of passages from approved
+document excerpts (`apps/frige/src/passages.mjs`). It is separate from
+`stex.project.context.v1`, which stays manuscript-only.
+
+| Method and path (under `/frige`) | Response |
+| --- | --- |
+| `GET /api/stex/passages/v1/projects/:id/search?q=` | `{schemaVersion,project,passages,truncated}`; at most 20 passages with citation fields and a snippet of at most 240 characters |
+| `GET /api/stex/passages/v1/projects/:id/attachments/:attachmentId?excerpt=&start=&end=&passage=` | `{schemaVersion,project,passage}` with the exact `text` |
+
+Only attachments in `approved` state whose current excerpt still hashes to
+`approvalHash` are searched or read; nothing beyond the approved excerpt
+bytes is ever returned. Passages are deterministic segments (paragraphs,
+long ones split at whitespace) of the excerpt. A citation is
+`{reference,attachmentId,title,originalSha256,excerptHash,start,end,passageSha256}`,
+with `start`/`end` as UTF-8 byte offsets into the approved excerpt. Reads
+re-verify every field: an unapproved or changed document is `404 NOT_FOUND`,
+a range that no longer names a segment with the same bytes is
+`409 STALE_PASSAGE`. The project password applies as for the context export;
+server-to-server readers without an unlock cookie cannot read a protected
+project. Nothing is stored.
+
 ### Layout overrides
 
 The publication profile may carry overrides for a section or a piece,

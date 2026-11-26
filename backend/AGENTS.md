@@ -11,7 +11,14 @@ The Python/FastAPI platform API introduced by milestone M1 of the
 It runs **beside** the existing Node engines and currently serves
 `/health` and the read-only [`stex.platform.projects.v1`](../protocol/platform/README.md),
 which Pantheon's project pages read through `/api/platform/v1/projects` with a
-browser fallback (M2a). `dev:alpha` starts it. Do not claim more than that.
+browser fallback (M2a). `dev:alpha` starts it.
+
+Separation milestone 1 (local candidate) adds `stex.knowledge` behind
+`/api/knowledge/v1`: a byte-compatible port of the knowledge journals that
+Pantheon relays to when `STEX_KNOWLEDGE_SERVICE=platform`, plus private
+passage contributions and read-only Obsidian note import. The Node library
+remains the native default and the rollback path. Do not claim more than that;
+see [the evidence](../docs/verification/separation-m1.md).
 
 ## Rules
 
@@ -31,8 +38,13 @@ browser fallback (M2a). `dev:alpha` starts it. Do not claim more than that.
   follow redirects to engines; do not use proxy environment variables; an
   unavailable engine is reported, never guessed or replaced with cached data.
 - **Configuration.** Read only through `Settings.from_environment`. Bind and
-  call loopback only. No secrets exist in this package yet; when one is
-  added it belongs in ignored local configuration, never in code or docs.
+  call loopback only, except the explicit container opt-in (`STEX_BIND_ALL=1`
+  with fixed peer names in `STEX_INTERNAL_HOSTS`) used by
+  `deploy/staging-compose`. Secrets (`STEX_PLATFORM_ACTOR_SECRET`,
+  `STEX_KNOWLEDGE_IGOR_SECRET`) come only from ignored local configuration,
+  never code or docs. The knowledge routes are documented in
+  `protocol/knowledge/README.md` but do not yet have JSON Schemas and are
+  excluded from the generated OpenAPI document: an open gate.
 - **Toolchain.** uv with the committed `uv.lock` and `.python-version` (3.12);
   FastAPI, Pydantic, httpx2; Ruff (lint + format), mypy `strict`, pytest.
   Add a dependency only with an identified caller and a failing test.

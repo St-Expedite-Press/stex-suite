@@ -191,3 +191,58 @@ The journal allows 10,000 accepted operations and 8 MB of UTF-8 JSON. The
 consumer must export/erase deliberately when the limit is reached; it must
 never silently discard old records. Local writer data is trusted local state;
 the host is responsible for filesystem access restrictions and backups.
+
+## Platform host (separation milestone 1, local candidate)
+
+With `STEX_KNOWLEDGE_SERVICE=platform`, Pantheon opens no journal: it checks
+the browser origin, then relays the method, path, query, a bounded JSON body
+and, when hosted, the admitted actor plus `x-stex-actor-journal` (the
+person's 32-hex journal directory name) to the Python platform API
+(`backend/stex/knowledge`). Routes, bodies, limits, error codes, journal
+bytes, version tokens and fingerprints are identical to the Node host; a
+parity test replays each runtime's journal in the other. The platform API
+accepts hosted requests only with a verified actor (`STEX_KNOWLEDGE_HOSTED=1`
+requires `STEX_PLATFORM_ACTOR_SECRET`). Rollback is configuration only:
+unset `STEX_KNOWLEDGE_SERVICE` and give Pantheon the same
+`STEX_KNOWLEDGE_DATA_DIR`; never run both against one directory.
+
+## Contributions v1 (`stex.knowledge.contributions.v1`)
+
+A contribution records that one person approved one exact Frige passage
+revision (`stex.frige.passages.v1` citation) for use with Igor. It is stored
+in that person's journal directory as `contributions.v1.json` (metadata
+only, never passage text), so `knowledge.v1.json` stays Node-compatible.
+Audience is always the contributor. A contribution grants no access to the
+Frige source, which Frige checks on every read.
+
+| Route under `/api/knowledge/v1` | Behavior |
+| --- | --- |
+| `GET /passages/search?project=&q=` | Frige's search, with `contribution` set only for the caller's own active approval |
+| `GET /passages/read?project=&attachment=&excerpt=&start=&end=&passage=` | Exact cited text, re-verified by Frige |
+| `GET /contributions` | The caller's contributions with `state`: `current`, `stale`, `unavailable` or `withdrawn` (bounded checks, no text) |
+| `POST /contributions` | `{idempotencyKey,expectedVersion,citation}`; Frige re-verifies first; `409 ALREADY_CONTRIBUTED` for a duplicate |
+| `POST /contributions/withdraw` | `{idempotencyKey,expectedVersion,id}` |
+| `POST /contributions/resolve` | `{reference}` → `{schemaVersion:"stex.knowledge.contribution.v1",reference,citation,text,trust:"untrusted-source"}`; `404` unknown or another person's, `410 CONTRIBUTION_WITHDRAWN`, `409 STALE_PASSAGE` |
+
+References are `stex://knowledge/contribution/ctb-<16 hex>`. Igor calls
+`/contributions/resolve` before each turn that names a contribution, with
+its own secret (`x-stex-knowledge-token`, `STEX_KNOWLEDGE_IGOR_SECRET`) and
+the owner's actor id and journal digest; that secret opens no other route.
+Withdrawal stops every future read and resolve. It does not erase turns
+that already used the passage or provider-retained records. Replaying an
+earlier approval key never revives a withdrawn contribution. `POST /erase`
+also deletes the caller's contributions.
+
+## Notes v1 (`stex.knowledge.notes.v1`, read-only Obsidian import)
+
+Local mode only, with an explicitly selected vault (`STEX_KNOWLEDGE_VAULT_DIR`);
+hosted requests answer `403 VAULT_LOCAL_ONLY`. `POST /notes/import`
+`{idempotencyKey,expectedVersion,path}` records one note's vault-relative
+path, SHA-256, size, title, property names and wikilinks with their
+resolved targets in `notes.v1.json`, never its text. `GET /notes` reports
+each note `current`, `changed` or `missing`. `GET /notes/search?q=` rereads
+imported notes, skips any whose bytes changed, and returns at most 10
+snippets of at most 240 characters (16 KB total). The vault is never
+written; symlinks, junctions, traversal, drive letters, streams, reserved
+device names and segments ending in a dot or space are refused. This is not
+synchronization and does not complete the Obsidian gate.

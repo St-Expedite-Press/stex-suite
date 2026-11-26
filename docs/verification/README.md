@@ -22,6 +22,7 @@ then use a report here to inspect the command output and limits behind it.
 | Seaxneat preview and vault adapter hardening (program S0 + K0) | [Hardening evidence](security-hardening-s0-k0.md) | No OS isolation for builds (S1); two symlink tests skipped where symlinks cannot be created |
 | Platform actor and personal knowledge (program D2) | [Actor evidence](platform-actor-d2.md) | Host configuration and Frige's missing-actor rejection verified. Signed-in production journal isolation remains unverified. |
 | Igor document runtime in production | [Activation evidence](igor-document-runtime-activation.md) | Synthetic VM acceptance (31 checks) before activation; no paid verification turn |
+| Separation milestone 1 (containers, Python knowledge, passages, Hermes/Obsidian evaluation) | [Milestone evidence](separation-m1.md) | Local candidate: synthetic data, local containers, recording inference stand-in; hosted sign-in and the VM not exercised |
 | Public source release | [Preparation and approval gates](public-source-release.md) | Local candidate for source reading |
 | Igor free mode, model prices and descriptions | [Free mode evidence](igor-free-mode-pricing.md) | Generation 15 read-back and profile verification; feature checks use stub catalog and fake transport |
 | Frige interface increment 1: navigation and passage selection (program Wave F) | [UI-1 evidence](frige-ui-1-navigation-passages.md) | Suite merge and generation 15 release are recorded in Status; workflow checks use stub and fake transports |
