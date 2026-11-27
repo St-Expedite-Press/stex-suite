@@ -276,7 +276,9 @@ describe('trusted CI', () => {
       assert.match(read(file), /^defaults:\n {2}run:\n {4}shell: bash$/m, `${file} must default to bash`);
     }
     const suiteCi = read(workflows[0]);
-    assert.match(suiteCi, /node scripts\/verify\/run-gates\.mjs --repo suite/);
+    // Both repositories in one run: anything narrower is never release evidence.
+    assert.match(suiteCi, /node scripts\/verify\/run-gates\.mjs --repo all /);
+    assert.match(suiteCi, /corepack pnpm --dir stex-igor install --frozen-lockfile/);
     assert.doesNotMatch(suiteCi, /run: corepack pnpm test$/m, 'CI runs the gate through the runner, not the fail-fast chain');
   });
 });

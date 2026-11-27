@@ -125,6 +125,8 @@ bundle copied off the VM, (3) a network-less restore from the deployed
 revisions with count and digest assertions and recorded recovery time and
 point, and (4) standing protection.
 
+**Executed 2026-11-27 (owner-authorized):** stages 1–3 passed. Writers were stopped for 2 s; the encrypted bundle (350 files) was copied off the VM and its digest verified; the deployed revisions were restored in a container with no network, and every count and digest matched. Sign-in, per-account isolation, the locked book and a real LuaLaTeX proof worked on the restored data. Decryption to verified took 2 min 53 s; the recoverable point is 18:49:33Z. The inventory also found no disk snapshot schedule, open egress, and a daily backup that omits most of the Hermes home and the users file. See the [recovery evidence](../../stex-igor/docs/verification/release-baseline-backup-restore-2026-11-27.md).
+
 ## 6. Review of this pass
 
 A second independent reviewer examined this pass's own diff (suite

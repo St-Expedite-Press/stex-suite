@@ -117,9 +117,15 @@ jobs:
           pdffonts -v
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
+      # Igor's own workspace (its lockfile and vendored design system), so the gate
+      # can also run Igor's tests, typecheck and build at the pinned revision.
+      - run: corepack pnpm --dir stex-igor install --frozen-lockfile
       # The canonical gate runs check:prereqs, build:pantheon and every step of
-      # `pnpm test` as separate processes, keeps each exit status, and fails
-      # unless all of them passed (a skipped or unexecuted check also fails).
-      # Its report, with revisions, pins and environment, goes to the job summary.
-      - name: Run the canonical suite gate
-        run: node scripts/verify/run-gates.mjs --repo suite --out "$RUNNER_TEMP/stex-gate" --summary-file "$GITHUB_STEP_SUMMARY"
+      # `pnpm test`, then Igor's test chain, typecheck and build, as separate
+      # processes; keeps each exit status; and fails unless all of them passed (a
+      # skipped or unexecuted check also fails). Both repositories in one run, on
+      # the pinned toolchain, is what `--check --release` accepts as release
+      # evidence. The report, with revisions, pins and environment, goes to the
+      # job summary.
+      - name: Run the canonical gate for both repositories
+        run: node scripts/verify/run-gates.mjs --repo all --out "$RUNNER_TEMP/stex-gate" --summary-file "$GITHUB_STEP_SUMMARY"
