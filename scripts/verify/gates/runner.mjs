@@ -204,7 +204,8 @@ export function runCheck(check, { timeoutMs, onOutput = () => {}, onSpawn = () =
     let output = '';
     let timedOut = false;
     let settled = false;
-    const child = spawn(plan.file, plan.args, { cwd: check.cwd, shell: plan.shell, windowsHide: true, env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    // POSIX: its own process group, so a timeout can stop pnpm's descendants too (killTree).
+    const child = spawn(plan.file, plan.args, { cwd: check.cwd, shell: plan.shell, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
     onSpawn(child);
     const collect = (data) => { const text = data.toString('utf8'); output += text; onOutput(text); };
     child.stdout.on('data', collect);
@@ -227,13 +228,22 @@ export function runCheck(check, { timeoutMs, onOutput = () => {}, onSpawn = () =
 }
 
 /**
- * Stops a child and, on Windows, its descendants (pnpm spawns further shells).
+ * Stops a check and its descendants (pnpm spawns shells, Node and pytest). A
+ * descendant left alive would hold the output pipes open, so the check would
+ * never close and its timeout would never be recorded. Windows kills the tree
+ * with taskkill; POSIX signals the check's process group (it was spawned
+ * detached), then escalates to SIGKILL after five seconds.
  * @param {import('node:child_process').ChildProcess} child
  */
 export function killTree(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
-  else child.kill('SIGTERM');
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
+    return;
+  }
+  const signalGroup = (signal) => { try { process.kill(-child.pid, signal); } catch { /* the group is already gone */ } };
+  signalGroup('SIGTERM');
+  setTimeout(() => signalGroup('SIGKILL'), 5000).unref();
 }
 
 /**
@@ -411,11 +421,18 @@ export function describeEnvironment(pins) {
  * repositories were clean, the checked-out Igor matched the suite's gitlink,
  * and the toolchain matched the pins.
  *
- * @param {{ verdict: string, repositories: Record<string, RepoFingerprint|null>, pins: ReturnType<typeof readPins>, environment: { mismatches: string[] } }} report
+ * It must also be the whole canonical gate: both repositories, the checks
+ * derived from their package.json files, no injected manifest and no
+ * `--only` selection (a partial selection already makes the verdict
+ * `incomplete`).
+ *
+ * @param {{ verdict: string, gate?: { scope: string, custom: boolean }, repositories: Record<string, RepoFingerprint|null>, pins: ReturnType<typeof readPins>, environment: { mismatches: string[] } }} report
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
 export function releaseEligibility(report) {
   const reasons = [];
+  if (!report.gate || report.gate.custom) reasons.push('the run used an injected check manifest, not the canonical gate');
+  else if (report.gate.scope !== 'all') reasons.push(`the run covered only --repo ${report.gate.scope}, not both repositories`);
   if (report.verdict !== 'pass') reasons.push(`verdict is ${report.verdict}`);
   for (const [key, repo] of Object.entries(report.repositories)) if (repo?.dirty) reasons.push(`${key} worktree had uncommitted changes (${repo.changedPaths.length} paths)`);
   if (report.pins.igorGitlinkConsistent === false) reasons.push(`checked-out Igor ${String(report.pins.igorCheckedOut).slice(0, 12)} differs from the suite gitlink ${String(report.pins.igorGitlink).slice(0, 12)}`);

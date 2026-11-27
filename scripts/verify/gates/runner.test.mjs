@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { countTestSkips, parseChain, tally, verdictOf } from './runner.mjs';
+import { countTestSkips, parseChain, releaseEligibility, tally, verdictOf } from './runner.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.join(here, '..', 'run-gates.mjs');
@@ -115,7 +115,9 @@ describe('aggregate gate', () => {
     assert.equal(run.report.repositories.suite.head, git(root, 'rev-parse', 'HEAD'));
     assert.equal(run.report.repositories.suite.dirty, false);
     assert.ok(run.report.environment.os.platform);
-    assert.equal(run.report.releaseEvidence.eligible, true);
+    assert.deepEqual(run.report.gate, { scope: 'all', custom: true, only: null });
+    assert.equal(run.report.releaseEvidence.eligible, false, 'an injected manifest is never release evidence');
+    assert.ok(run.report.releaseEvidence.reasons.some((reason) => /injected check manifest/.test(reason)));
     assert.ok(readFileSync(path.join(run.out, 'report.md'), 'utf8').includes('STEX gate: PASS'));
   });
 
@@ -153,6 +155,16 @@ describe('aggregate gate', () => {
     const run = runGate(root, [node('suite/slow', 'setTimeout(() => {}, 60000)')], '--timeout-minutes', '0.02');
     assert.equal(run.status, 1);
     assert.match(run.report.checks[0].reason, /timed out/);
+  });
+
+  test('a timeout stops descendants that hold the output open, so the check still ends', () => {
+    const root = repository();
+    const grandchild = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit' }); setTimeout(() => {}, 60000)`;
+    const started = Date.now();
+    const run = runGate(root, [node('suite/holds-pipe', grandchild)], '--timeout-minutes', '0.02');
+    assert.equal(run.status, 1);
+    assert.match(run.report.checks[0].reason, /timed out/);
+    assert.ok(Date.now() - started < 30_000, 'the gate did not wait for the orphaned grandchild');
   });
 
   test('fail-fast leaves the remaining checks unexecuted, not passed', () => {
@@ -202,12 +214,23 @@ describe('aggregate gate', () => {
 });
 
 describe('stale evidence', () => {
+  test('only the whole canonical gate can be release evidence', () => {
+    const at = (gate) => releaseEligibility({ verdict: 'pass', gate, repositories: {}, pins: { igorGitlinkConsistent: true }, environment: { mismatches: [] } });
+    assert.equal(at({ scope: 'all', custom: false }).eligible, true);
+    assert.equal(at({ scope: 'igor', custom: false }).eligible, false);
+    assert.equal(at({ scope: 'suite', custom: false }).eligible, false);
+    assert.equal(at({ scope: 'all', custom: true }).eligible, false);
+    assert.equal(at(undefined).eligible, false, 'a report without a recorded gate is not evidence');
+  });
+
   test('a report stays current only while HEAD and the worktree are unchanged', () => {
     const root = repository();
     const run = runGate(root, [node('suite/a', 'process.exit(0)')]);
     assert.equal(run.status, 0);
     assert.equal(checkReport(root, run.out).status, 0);
-    assert.equal(checkReport(root, run.out, '--release').status, 0);
+    const release = checkReport(root, run.out, '--release');
+    assert.equal(release.status, 1, 'current, but a one-check injected gate is not release evidence');
+    assert.match(release.stderr, /NOT RELEASE EVIDENCE/);
 
     writeFileSync(path.join(root, 'source.txt'), 'edited\n');
     const edited = checkReport(root, run.out);

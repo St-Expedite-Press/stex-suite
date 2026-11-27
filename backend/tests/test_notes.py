@@ -11,6 +11,8 @@ from conftest import ORIGINS, local_client
 from fastapi.testclient import TestClient
 
 from stex.config import KnowledgeSettings, Settings
+from stex.knowledge.journal import KnowledgeError
+from stex.knowledge.notes import safe_relative
 from stex.main import create_app
 
 NOTE_A = """---
@@ -145,3 +147,13 @@ def test_hosted_mode_refuses_vault_import(tmp_path: Path) -> None:
     with client(tmp_path, root, hosted=True) as api:
         response = api.get("/api/knowledge/v1/notes", headers=headers)
         assert response.status_code == 403 and response.json()["code"] == "VAULT_LOCAL_ONLY"
+
+
+@pytest.mark.parametrize("name", ["x" * 253 + ".md", "é" * 127 + ".md", "folder" * 43 + "/Note.md"])
+def test_overlong_path_segments_are_the_callers_error(name: str) -> None:
+    """A segment over 255 UTF-8 bytes is a 400 before any filesystem call (Linux would raise
+    ENAMETOOLONG, which the API reports as a 503 storage fault)."""
+    with pytest.raises(KnowledgeError) as refused:
+        safe_relative(name)
+    assert refused.value.status == 400
+    assert safe_relative("x" * 252 + ".md") == "x" * 252 + ".md", "255 bytes is still a valid name"

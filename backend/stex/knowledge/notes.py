@@ -68,6 +68,8 @@ def safe_relative(value: Any) -> str:
             or _SEGMENT_BAD.search(segment)
             or segment[-1] in ". "
             or _RESERVED.fullmatch(segment)
+            # Filesystems cap a name at 255 bytes; a longer one is the caller's error, never a storage fault.
+            or len(segment.encode("utf-8")) > 255
         ):
             raise KnowledgeError(400, "INVALID_REQUEST", "Name a Markdown note by its path inside the vault.")
     if not segments[-1].lower().endswith(".md"):

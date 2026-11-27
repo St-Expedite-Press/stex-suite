@@ -47,7 +47,7 @@ which suites never ran.
   `--release` also rejects dirty trees, gitlink drift and toolchains off the
   pins.
 
-Its 19 tests inject failing, lying ("PASS" with exit 1), aborting,
+Its 21 tests inject failing, lying ("PASS" with exit 1), aborting,
 unstartable, timed-out, skipped, partially selected and mutating checks and
 stale reports. Breaking the exit-status classification or the verdict in a
 copy fails 7 and 5 of them. Suite CI now runs the gate through the runner
@@ -125,18 +125,47 @@ bundle copied off the VM, (3) a network-less restore from the deployed
 revisions with count and digest assertions and recorded recovery time and
 point, and (4) standing protection.
 
-## 6. Verification
+## 6. Review of this pass
+
+A second independent reviewer examined this pass's own diff (suite
+`d215117..bdfa4ad`, Igor `ec0ee08..3b6b68b`):
+
+| Finding | Outcome |
+| --- | --- |
+| A report from an injected manifest or from one repository could pass `--check --release` | **Fixed**: reports record their gate scope. Release evidence needs both repositories, no manifest, and the exact check list the checkout defines now, each passed |
+| On Linux a timeout signalled only the direct child, so descendants holding the pipes could stall the job | **Fixed**: checks run in their own process group, which gets SIGTERM and then SIGKILL. A test with a pipe-holding grandchild passes on Windows and on Linux (Node 22.23.5 in Docker, 21/21) |
+| The backup plan's restore used the staging compose files, whose `edge` network has outbound access | **Fixed**: a dedicated `--internal` network, no published ports, a verifier container, and isolation asserted before any data is restored |
+| The studio backup is a live `tar`, so "no stop needed" was wrong; plaintext staging copies were not deleted | **Fixed**: the baseline stops writers by default; plaintext copies are deleted after encryption |
+| An over-long note path segment would answer 503 on Linux (ENAMETOOLONG) | **Fixed**: refused as 400 before any filesystem call |
+| Parity test 4 accepted any 400 | **Fixed**: asserts the refusal reason |
+| Ignored files are not fingerprinted; a CRLF-only change to a tracked file is invisible under `autocrlf` | Accepted: ignored files are local state outside the tested source; git normalises the content it tests |
+| Skipped tests inside a passing suite do not fail the gate | Accepted: they are counted in every report. The known skips are Windows symlink and socket cases, which run on CI's Linux |
+| CI keeps the full report in `$RUNNER_TEMP` only (the job summary has the table) | Open: uploading it needs `actions/upload-artifact` pinned to a verified commit SHA, which could not be verified offline here |
+| A harness break inside the `todo` parity case would also read as todo | Open (note): the case's failure message was checked by hand on both reviews |
+
+The Host check holds for every probe tried. These were refused: a trailing
+dot, `127.1`, `0.0.0.0`, port 0 and out-of-range ports, a duplicate or
+missing Host, and `null`, userinfo or trailing-slash Origins. The probes
+found no legitimate caller that is now refused.
+
+## 7. Verification
 
 | Run | Suite | Igor | Result |
 | --- | --- | --- | --- |
 | 1 | `3d3e1e3` | `ec0ee08` | PASS: 24 of 24 checks, 111 s. Not release evidence (Node 24.18.0) |
 | 2 | `91957ed` | `3b6b68b` | PASS: 24 of 24 checks, 114 s. Skips reported inside suites: Frige 1, knowledge 2, platform 1 (Windows symlink and socket cases); Igor's parity `todo` 1. Not release evidence (Node 24.18.0) |
+| 3 | `bdfa4ad` | `3b6b68b` | PASS: 24 of 24 checks, 113 s. `--check` CURRENT; `--release` refused (Node 24.18.0). Run 2's report was refused as STALE (exit 4) after the docs commit |
 
-Other commands: `corepack pnpm run test:platform` (113 passed, 1 Windows
-symlink skip); runner tests 19/19; staging stack `verify-staging-compose.mjs`
-15/15 with the Host check (built, verified, volumes removed); the reviewer
-ran pytest, Igor, knowledge, Pantheon and Frige suites, `verify-passages`
-and `verify-knowledge-rollback` (all exit 0, on `d215117`).
+A report cannot name the commit that contains it. The run on the final
+revision is in the handoff, and anyone can reproduce it with
+`corepack pnpm verify:gates`.
+
+Other commands: `corepack pnpm run test:platform` (116 passed, 1 Windows
+symlink skip, after the review fixes); runner tests 21/21 on Windows and on
+Linux; staging stack `verify-staging-compose.mjs` 15/15 with the Host check
+(built, verified, volumes removed). The first reviewer ran the pytest, Igor,
+knowledge, Pantheon and Frige suites, `verify-passages` and
+`verify-knowledge-rollback`, all exit 0, on `d215117`.
 
 Not run: the hosted and Igor-host staging overlays after these fixes, a
 clean uncached Hermes build or offline restart (A5), any VM check, any
@@ -144,6 +173,6 @@ browser workflow. Local runs used Node 24.18.0, not the pinned 22.23.5, so
 **no local report is release evidence**; trusted CI on Node 22.23.5 must
 produce it after an authorized push.
 
-## 7. Next authorization
+## 8. Next authorization
 
 See the completion report for the exact request.

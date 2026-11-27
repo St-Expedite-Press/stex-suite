@@ -96,9 +96,20 @@ function checkReport(options) {
     return EXIT.stale;
   }
   if (report.verdict !== 'pass') { console.error(`FAIL: the report's verdict is ${report.verdict}.`); return EXIT.fail; }
-  if (options.release && !report.releaseEvidence?.eligible) {
-    console.error(`NOT RELEASE EVIDENCE: ${(report.releaseEvidence?.reasons || ['unknown']).join('; ')}`);
-    return EXIT.fail;
+  if (options.release) {
+    // Recompute rather than trust the stored flag, and require exactly the canonical checks the
+    // checkout defines now, each passed: a report from a narrower or injected gate is not evidence.
+    const reasons = [...releaseEligibility(report).reasons];
+    if (!report.releaseEvidence?.eligible) reasons.push(...(report.releaseEvidence?.reasons || ['the report was not marked eligible']));
+    const expected = igorRoot ? [...suiteGate(suiteRoot), ...igorGate(igorRoot)].map((check) => check.id) : null;
+    const ran = (report.checks || []).map((check) => check.id);
+    if (!expected) reasons.push('stex-igor is not checked out, so the canonical gate cannot be confirmed');
+    else if (JSON.stringify(ran) !== JSON.stringify(expected)) reasons.push(`the report's checks differ from the canonical gate (${ran.length} ran, ${expected.length} defined)`);
+    if ((report.checks || []).some((check) => check.status !== 'passed')) reasons.push('not every check passed');
+    if (reasons.length) {
+      console.error(`NOT RELEASE EVIDENCE: ${[...new Set(reasons)].join('; ')}`);
+      return EXIT.fail;
+    }
   }
   console.log(`CURRENT: the report (${report.verdict}) describes the checked-out content${options.release ? ' and is release evidence' : ''}.`);
   return EXIT.pass;
@@ -178,6 +189,7 @@ async function runGates(options) {
     startedAt,
     durationMs: Date.now() - started,
     verdict,
+    gate: { scope: options.repo, custom: Boolean(options.manifest), only: options.only },
     counts: tally(results),
     contentChangedDuringRun: drift,
     repositories: before,
