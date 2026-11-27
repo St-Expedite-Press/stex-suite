@@ -16,7 +16,7 @@ from typing import Any
 import httpx2
 import jsonschema
 import pytest
-from conftest import FRIGE, ORIGINS, PROTOCOL, Studios
+from conftest import FRIGE, ORIGINS, PROTOCOL, Studios, local_client
 from fastapi.testclient import TestClient
 from referencing import Registry, Resource
 from test_contributions import CITATION, SECRET, FakeFrige, person
@@ -93,7 +93,7 @@ def platform(
     knowledge = KnowledgeSettings(
         directory=tmp_path / "k", hosted=hosted, actor_secret=SECRET if hosted else None, vault=vault
     )
-    return TestClient(
+    return local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -203,7 +203,7 @@ def test_unauthorized_and_disabled_shapes(tmp_path: Path) -> None:
             assert response.status_code == 401, (method, path)
             conforms("knowledge.api.v1", "error", response.json())
         assert api.get(PREFIX + "/contributions", headers=person("alice")).status_code == 200
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS), transport=httpx2.MockTransport(lambda r: httpx2.Response(503))
         )

@@ -40,7 +40,10 @@ see [the evidence](../docs/verification/separation-m1.md).
 - **Configuration.** Read only through `Settings.from_environment`. Bind and
   call loopback only, except the explicit container opt-in (`STEX_BIND_ALL=1`
   with fixed peer names in `STEX_INTERNAL_HOSTS`) used by
-  `deploy/staging-compose`. Secrets (`STEX_PLATFORM_ACTOR_SECRET`,
+  `deploy/staging-compose`. Every request passes `stex.hosts.HostAdmission`
+  first: a foreign `Host`, a cross-site fetch or a foreign `Origin` gets
+  `403` (DNS-rebinding defence); never bypass it for tests, address the app
+  with `conftest.local_client` instead. Secrets (`STEX_PLATFORM_ACTOR_SECRET`,
   `STEX_KNOWLEDGE_IGOR_SECRET`) come only from ignored local configuration,
   never code or docs. The knowledge routes are listed once in
   `stex/knowledge/contract.py`; their payloads are the published schemas in

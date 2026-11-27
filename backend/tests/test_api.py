@@ -6,7 +6,7 @@ import json
 
 import httpx2
 import jsonschema
-from conftest import FRIGE, ORIGINS, PROTOCOL, SEAXNEAT, Studios, entry, json_reply, summary
+from conftest import FRIGE, ORIGINS, PROTOCOL, SEAXNEAT, Studios, entry, json_reply, local_client, summary
 from fastapi.testclient import TestClient
 
 from stex.config import Settings
@@ -19,7 +19,7 @@ OPENAPI = PROTOCOL / "platform" / "openapi.v1.json"
 
 def client(studios: Studios) -> TestClient:
     """Build the test client with fixture studio responses."""
-    return TestClient(create_app(Settings(engine_origins=ORIGINS), transport=studios.transport()))
+    return local_client(create_app(Settings(engine_origins=ORIGINS), transport=studios.transport()))
 
 
 def test_health_needs_no_engine() -> None:

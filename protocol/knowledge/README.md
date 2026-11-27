@@ -10,6 +10,15 @@ limit protect the host. Engine requests use configured loopback origins,
 fixed context-export paths, no redirects, five-second call timeouts and a
 65,536-byte response cap. Browser event payloads are never accepted directly.
 
+The platform API host (`STEX_KNOWLEDGE_SERVICE=platform`) applies the same
+admission before any route: `Host` must be a loopback name or a service name
+listed in `STEX_INTERNAL_HOSTS`; a `Sec-Fetch-Site: cross-site` request or an
+`Origin` naming any other host is refused with `403`. A storage failure
+(for example a full disk) answers `503 KNOWLEDGE_UNAVAILABLE`; writes replace
+files atomically, so the earlier state stands. `contributions/resolve`
+re-checks the contribution after reading the source, so a withdrawal or
+erasure committed during that read wins.
+
 ### Personal journals (hosted)
 
 Hosted, the journal is chosen from the signed-in user the host admitted, never

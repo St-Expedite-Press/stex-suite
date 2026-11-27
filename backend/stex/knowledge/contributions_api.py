@@ -194,11 +194,17 @@ async def withdraw(context: KnowledgeContext, data: Json) -> Json:
 async def resolve(context: KnowledgeContext, data: Json) -> Json:
     """Igor's pre-use check: active, this person's, and the same source revision now."""
     identifier = identifier_of(data.get("reference"))
-    record = ContributionLedger.of(context.journal).find(identifier)
-    if record is None:
-        raise KnowledgeError(404, "NOT_FOUND", "That contribution does not exist.")
-    if record["status"] != "active":
-        raise KnowledgeError(410, "CONTRIBUTION_WITHDRAWN", "That contribution was withdrawn.")
+
+    def active() -> Json:
+        """The contribution as the ledger holds it now; refuses one that is gone or withdrawn."""
+        record = ContributionLedger.of(context.journal).find(identifier)
+        if record is None:
+            raise KnowledgeError(404, "NOT_FOUND", "That contribution does not exist.")
+        if record["status"] != "active":
+            raise KnowledgeError(410, "CONTRIBUTION_WITHDRAWN", "That contribution was withdrawn.")
+        return record
+
+    record = active()
     try:
         passage = await _read(context, record)
     except KnowledgeError as error:
@@ -207,6 +213,10 @@ async def resolve(context: KnowledgeContext, data: Json) -> Json:
                 409, "STALE_PASSAGE", "The cited passage changed or is no longer approved."
             ) from error
         raise
+    # The Frige read can take seconds; a withdrawal or erasure committed meanwhile must win, so the
+    # text is released only if the same contribution is still active once the read has returned.
+    if active() != record:
+        raise KnowledgeError(410, "CONTRIBUTION_WITHDRAWN", "That contribution was withdrawn.")
     return {
         "schemaVersion": RESOLVED_SCHEMA,
         "reference": record["reference"],

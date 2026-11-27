@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from stex import __version__
 from stex.config import Settings
+from stex.hosts import HostAdmission
 from stex.knowledge import contributions_api, notes_api  # noqa: F401 - register their routes
 from stex.knowledge.api import router as knowledge_router
 from stex.knowledge.contract import components as knowledge_components
@@ -92,6 +93,8 @@ def create_app(
 
     app.include_router(projects_router)
     app.include_router(knowledge_router)
+    # Outermost: a request addressed to a foreign name never reaches a route (DNS-rebinding defence).
+    app.add_middleware(HostAdmission, internal_hosts=resolved.internal_hosts)
 
     def openapi() -> dict[str, Any]:
         """The generated document plus the published knowledge and passage schema definitions."""

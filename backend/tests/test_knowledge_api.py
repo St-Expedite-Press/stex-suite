@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx2
 import pytest
-from conftest import FRIGE, ORIGINS, Studios
+from conftest import FRIGE, ORIGINS, Studios, local_client
 from fastapi.testclient import TestClient
 
 from stex.config import ConfigurationError, KnowledgeSettings, Settings
@@ -72,7 +72,7 @@ def client(tmp_path: Path, studios: Studios, *, hosted: bool) -> TestClient:
     knowledge = KnowledgeSettings(
         directory=tmp_path / "knowledge", hosted=hosted, actor_secret=SECRET if hosted else None
     )
-    return TestClient(
+    return local_client(
         create_app(Settings(engine_origins=ORIGINS, knowledge=knowledge), transport=studios.transport())
     )
 
@@ -105,7 +105,7 @@ def accept(api: TestClient, headers: dict[str, str], key: str) -> httpx2.Respons
 def test_disabled_knowledge_answers_enabled_false_and_contacts_no_engine(tmp_path: Path) -> None:
     """Without a directory the API is inert, exactly as Pantheon's was."""
     observed: list[httpx2.Request] = []
-    with TestClient(
+    with local_client(
         create_app(Settings(engine_origins=ORIGINS), transport=frige(observed).transport())
     ) as api:
         assert api.get("/api/knowledge/v1").json() == {"enabled": False}

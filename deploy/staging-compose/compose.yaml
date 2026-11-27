@@ -49,7 +49,8 @@ services:
       dockerfile: deploy/staging-compose/platform.Dockerfile
     environment:
       STEX_BIND_ALL: "1"
-      STEX_INTERNAL_HOSTS: frige
+      # Peers it calls (frige) and its own service name, which the Host check admits from Pantheon.
+      STEX_INTERNAL_HOSTS: frige,platform
       STEX_FRIGE_URL: http://frige:4310
       STEX_KNOWLEDGE_DATA_DIR: /data/knowledge
       # A synthetic Obsidian vault, mounted read-only (stex.knowledge.notes.v1 import and retrieval).

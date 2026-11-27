@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
-from conftest import ORIGINS
+from conftest import ORIGINS, local_client
 from fastapi.testclient import TestClient
 
 from stex.config import KnowledgeSettings, Settings
@@ -51,7 +51,7 @@ def client(tmp_path: Path, root: Path, *, hosted: bool = False) -> TestClient:
     knowledge = KnowledgeSettings(
         directory=tmp_path / "k", hosted=hosted, actor_secret="s" * 40 if hosted else None, vault=root
     )
-    return TestClient(create_app(Settings(engine_origins=ORIGINS, knowledge=knowledge)))
+    return local_client(create_app(Settings(engine_origins=ORIGINS, knowledge=knowledge)))
 
 
 def test_one_linked_note_imports_read_only_and_retrieval_is_bounded(tmp_path: Path) -> None:

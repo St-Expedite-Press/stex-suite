@@ -14,10 +14,13 @@ from pathlib import Path
 from typing import Any
 
 import httpx2
-from conftest import FRIGE, ORIGINS, Studios
+import pytest
+from conftest import FRIGE, ORIGINS, Studios, local_client
 from fastapi.testclient import TestClient
 
 from stex.config import KnowledgeSettings, Settings
+from stex.knowledge import contributions, contributions_api
+from stex.knowledge.contributions import ContributionLedger
 from stex.knowledge.library import person_directory_name
 from stex.main import create_app
 
@@ -82,7 +85,7 @@ def app(tmp_path: Path, frige: FakeFrige) -> TestClient:
     knowledge = KnowledgeSettings(
         directory=tmp_path / "k", hosted=True, actor_secret=SECRET, igor_secret=IGOR
     )
-    return TestClient(
+    return local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -233,7 +236,7 @@ def test_erase_covers_every_ledger_and_refuses_before_deleting_anything(tmp_path
     (vault / "Note.md").write_text("# Note\n\nRows.\n", encoding="utf-8")
     frige = FakeFrige()
     knowledge = KnowledgeSettings(directory=tmp_path / "k", vault=vault)
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -260,7 +263,7 @@ def test_erase_covers_every_ledger_and_refuses_before_deleting_anything(tmp_path
         assert api.get("/api/knowledge/v1/contributions").json()["contributions"] == []
         assert api.get("/api/knowledge/v1/notes").json()["notes"] == []
     # After restart the ledgers stay empty and stay bound to the new journal generation.
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -273,7 +276,7 @@ def test_erase_covers_every_ledger_and_refuses_before_deleting_anything(tmp_path
     # A damaged ledger refuses erase before the journal is touched.
     (tmp_path / "k" / "notes.v1.json").write_text("{damaged", encoding="utf-8")
     journal_before = (tmp_path / "k" / "knowledge.v1.json").read_bytes()
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -300,7 +303,7 @@ def test_a_native_erase_is_honoured_when_the_platform_path_returns(tmp_path: Pat
         pytest.skip("node is required")
     frige = FakeFrige()
     knowledge = KnowledgeSettings(directory=tmp_path / "k")
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -323,7 +326,7 @@ def test_a_native_erase_is_honoured_when_the_platform_path_returns(tmp_path: Pat
         capture_output=True,
         timeout=60,
     )
-    with TestClient(
+    with local_client(
         create_app(
             Settings(engine_origins=ORIGINS, knowledge=knowledge),
             transport=Studios({FRIGE: frige}).transport(),
@@ -332,3 +335,51 @@ def test_a_native_erase_is_honoured_when_the_platform_path_returns(tmp_path: Pat
         assert api.get("/api/knowledge/v1/contributions").json()["contributions"] == []
         gone = api.post("/api/knowledge/v1/contributions/resolve", json={"reference": reference})
         assert gone.status_code == 404
+
+
+def test_a_withdrawal_during_the_source_read_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve re-checks the ledger after Frige answers: no text for a contribution withdrawn meanwhile."""
+    frige = FakeFrige()
+    original = contributions_api._read
+
+    async def withdraw_while_reading(context: Any, cited: Any) -> Any:
+        passage = await original(context, cited)
+        ledger = ContributionLedger.of(context.journal)
+        version = ledger.view()["version"]
+        await ledger.withdraw(
+            {"idempotencyKey": "key-race-withdraw", "expectedVersion": version, "id": cited["id"]}
+        )
+        return passage
+
+    with app(tmp_path, frige) as api:
+        reference = contribute(api, "alice", "key-alice-race1").json()["contributions"][0]["reference"]
+        monkeypatch.setattr(contributions_api, "_read", withdraw_while_reading)
+        raced = api.post(
+            "/api/knowledge/v1/contributions/resolve", headers=IGOR_ALICE, json={"reference": reference}
+        )
+        assert raced.status_code == 410 and raced.json()["code"] == "CONTRIBUTION_WITHDRAWN"
+        assert TEXT not in raced.text
+
+
+def test_a_failed_withdrawal_is_a_service_fault_and_changes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A storage failure answers 503 (not the client's 400), and the contribution keeps its earlier state."""
+    frige = FakeFrige()
+    with app(tmp_path, frige) as api:
+        body = contribute(api, "alice", "key-alice-disk1").json()
+        identifier = body["contributions"][0]["id"]
+        version = api.get("/api/knowledge/v1/contributions", headers=person("alice")).json()["version"]
+
+        def full_disk(*_args: Any) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(contributions, "_atomic_write", full_disk)
+        failed = api.post(
+            "/api/knowledge/v1/contributions/withdraw",
+            headers=person("alice"),
+            json={"idempotencyKey": "key-withdraw-disk", "expectedVersion": version, "id": identifier},
+        )
+        assert failed.status_code == 503 and failed.json()["code"] == "KNOWLEDGE_UNAVAILABLE"
+        listing = api.get("/api/knowledge/v1/contributions", headers=person("alice")).json()
+        assert listing["version"] == version and listing["contributions"][0]["status"] == "active"

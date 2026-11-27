@@ -238,6 +238,14 @@ async def knowledge(request: Request) -> Response:
             return reply(200, await owners.accessible(journal.view(), actor))
     except KnowledgeError as error:
         return reply(error.status, {"error": error.message, "code": error.code})
+    except OSError:
+        # Storage failed (disk full, permissions, a lost volume): a service fault, not a bad request.
+        # Writes replace files atomically, so a failed withdrawal leaves the earlier state, and the
+        # client must not read the refusal as its own error.
+        return reply(
+            503,
+            {"error": "Knowledge storage failed; try again.", "code": "KNOWLEDGE_UNAVAILABLE"},
+        )
     except Exception:
         return reply(400, {"error": "Knowledge could not apply this request.", "code": "INVALID_REQUEST"})
 

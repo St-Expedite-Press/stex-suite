@@ -82,7 +82,8 @@ def _resolve(root: Path, relative: str) -> Path:
         current = current / segment
         try:
             info = current.lstat()
-        except FileNotFoundError as error:
+        except (FileNotFoundError, NotADirectoryError) as error:
+            # A path through a file is the caller's mistake, not a storage fault (api.py answers OSError 503).
             raise KnowledgeError(404, "NOT_FOUND", "That note does not exist in the vault.") from error
         if (
             current.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400
