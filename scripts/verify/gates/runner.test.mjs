@@ -248,6 +248,21 @@ describe('stale evidence', () => {
     assert.equal(checkReport(root, run.out).status, 4, 'a new commit makes the report stale');
   });
 
+  test('a different commit with a byte-identical tree is the same content, and says so', () => {
+    // GitHub's synthetic pull-request merge of a branch whose base is current has the branch's tree.
+    const root = repository();
+    const run = runGate(root, [node('suite/a', 'process.exit(0)')]);
+    git(root, 'commit', '-q', '--allow-empty', '-m', 'same tree, new commit');
+    const same = checkReport(root, run.out);
+    assert.equal(same.status, 0, same.stderr);
+    assert.match(same.stdout, /NOTE: suite: the report tested commit [0-9a-f]{12}; the checkout is [0-9a-f]{12} with the identical tree/);
+    writeFileSync(path.join(root, 'source.txt'), 'changed\n');
+    git(root, 'commit', '-q', '-am', 'different tree');
+    const changed = checkReport(root, run.out);
+    assert.equal(changed.status, 4, 'a different tree is different content');
+    assert.match(changed.stderr, /tree/);
+  });
+
   test('a failed or dirty report is not accepted', () => {
     const root = repository();
     const failed = runGate(root, [node('suite/a', 'process.exit(1)')]);

@@ -89,12 +89,14 @@ function checkReport(options) {
   const { suiteRoot, igorRoot } = repositories(options.suiteRoot);
   const current = { suite: fingerprint(suiteRoot), igor: igorRoot && report.repositories.igor ? fingerprint(igorRoot) : null };
   const recorded = { suite: report.repositories.suite ?? null, igor: report.repositories.igor ?? null };
-  const differences = compareFingerprints(recorded, current);
+  const notes = [];
+  const differences = compareFingerprints(recorded, current, notes);
   if (differences.length) {
     console.error('STALE: the report does not describe the checked-out content.');
     for (const difference of differences) console.error(`  - ${difference}`);
     return EXIT.stale;
   }
+  for (const note of notes) console.log(`NOTE: ${note}`);
   if (report.verdict !== 'pass') { console.error(`FAIL: the report's verdict is ${report.verdict}.`); return EXIT.fail; }
   if (options.release) {
     // Recompute rather than trust the stored flag, and require exactly the canonical checks the

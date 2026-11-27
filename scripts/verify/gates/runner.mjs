@@ -311,22 +311,34 @@ export function fingerprint(root) {
 }
 
 /**
- * Lists every way the current state differs from the state a report recorded.
- * An empty list means the report still describes this exact content.
+ * Lists every way the current content differs from the content a report
+ * recorded. An empty list means the report describes exactly this content.
+ *
+ * Content, not commit identity, decides: `contentDigest` covers HEAD's tree
+ * (including the Igor gitlink) and every worktree difference. A different
+ * commit with a byte-identical tree and the same worktree, such as GitHub's
+ * synthetic pull-request merge of a branch whose base is current, is the same
+ * content; it is reported in `notes`, never silently.
  *
  * @param {Record<string, RepoFingerprint|null>} recorded
  * @param {Record<string, RepoFingerprint|null>} current
+ * @param {string[]} [notes] Receives same-content, different-commit observations.
  * @returns {string[]}
  */
-export function compareFingerprints(recorded, current) {
+export function compareFingerprints(recorded, current, notes = []) {
   const differences = [];
   for (const key of new Set([...Object.keys(recorded), ...Object.keys(current)])) {
     const before = recorded[key];
     const after = current[key];
     if (!before && !after) continue;
     if (!before || !after) { differences.push(`${key}: present in only one of the report and the checkout`); continue; }
-    if (before.head !== after.head) differences.push(`${key}: HEAD is ${after.head.slice(0, 12)}, the report tested ${before.head.slice(0, 12)}`);
-    else if (before.contentDigest !== after.contentDigest) differences.push(`${key}: worktree content changed since the report (now: ${after.changedPaths.slice(0, 5).join(', ') || 'clean'})`);
+    if (before.contentDigest !== after.contentDigest) {
+      differences.push(before.tree !== after.tree
+        ? `${key}: HEAD ${after.head.slice(0, 12)} (tree ${after.tree.slice(0, 12)}) differs from the tested ${before.head.slice(0, 12)} (tree ${before.tree.slice(0, 12)})`
+        : `${key}: worktree content changed since the report (now: ${after.changedPaths.slice(0, 5).join(', ') || 'clean'})`);
+    } else if (before.head !== after.head) {
+      notes.push(`${key}: the report tested commit ${before.head.slice(0, 12)}; the checkout is ${after.head.slice(0, 12)} with the identical tree ${after.tree.slice(0, 12)} and worktree`);
+    }
   }
   return differences;
 }
