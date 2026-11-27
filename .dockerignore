@@ -31,6 +31,9 @@ docs
 stex-igor/**
 !stex-igor/apps/igor/**
 !stex-igor/services/inference/**
+# The staging Igor host reads STEX's Hermes profile script and the evaluation pins as code.
+!stex-igor/deploy/hermes/apply-igor-profile.sh
+!stex-igor/hermes/eval/pins.json
 # Re-exclude build output, local state and dependencies inside what was just re-included.
 stex-igor/apps/igor/dist
 **/node_modules

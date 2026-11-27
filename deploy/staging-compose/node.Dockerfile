@@ -48,7 +48,7 @@ CMD ["node", "server.mjs"]
 FROM node-base AS igor-build
 WORKDIR /srv/stex
 COPY . .
-RUN corepack enable  && NODE_ENV=development corepack pnpm install --frozen-lockfile --filter @stex/igor...  && corepack pnpm --dir stex-igor/apps/igor build
+RUN corepack enable  && NODE_ENV=development corepack pnpm install --frozen-lockfile --filter @stex/igor... --filter @stex/inference...  && corepack pnpm --dir stex-igor/apps/igor build
 
 FROM node-base AS igor
 COPY --from=igor-build /srv/stex /srv/stex
