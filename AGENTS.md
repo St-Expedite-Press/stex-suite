@@ -371,8 +371,11 @@ Document (loop 6) → Integrate → Decide: **accept**, **repair**, **replan**, 
    that fails without the change.
 3. Integration boundaries: store, compiler, proxy, inference, schema or
    OpenAPI contract the change touches.
-4. `corepack pnpm test` across all suites; in stex-igor, its own
-   `corepack pnpm test`.
+4. Both repository gates through `corepack pnpm verify:gates`
+   (`scripts/verify/run-gates.mjs`): every check runs as its own process and
+   the run fails unless all passed. Cite its report, never a summary of it;
+   a report counts as release evidence only when `--check <report> --release`
+   accepts it for the exact committed candidate.
 5. Representative browser or HTTP workflow (`corepack pnpm dev:alpha`, the
    `scripts/verify/*` verifiers, or the staging stack) when UI, routing,
    proxying, identity or a user path changed, using disposable data.

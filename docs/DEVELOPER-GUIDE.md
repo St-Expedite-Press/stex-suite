@@ -116,7 +116,9 @@ runtime toolsets are empty.
 
 | Command | Purpose |
 | --- | --- |
-| `corepack pnpm test` | Full deterministic suite including charter, platform, asset and private-pin checks |
+| `corepack pnpm verify:gates` | **Canonical gate.** Runs prerequisites, the Pantheon build, every `test` step of the suite, and Igor's tests, typecheck and build as separate processes; reports each as passed, failed, skipped or unexecuted with revisions, pins and environment; exits non-zero unless all passed. Add `--repo suite` or `--repo igor` for one repository. |
+| `node scripts/verify/run-gates.mjs --check <report.json> --release` | Refuse a gate report that no longer matches the checkout (exit 4), did not pass, or is not release evidence (dirty tree, Igor gitlink drift, toolchain off the pins) |
+| `corepack pnpm test` | Fail-fast developer chain of the same suite steps (stops at the first failure and records nothing) |
 | `corepack pnpm test:<suite>` | Owning suite for a scoped change |
 | `corepack pnpm check:prereqs` and `test:setup` | Check the actual checkout and exercise the missing and mismatched setup cases |
 | `corepack pnpm build:pantheon` | TypeScript check and build of the Seaxneat workspace |
@@ -129,7 +131,10 @@ runtime toolsets are empty.
 | `corepack pnpm test:stex-igor-sync` | Compare suite-owned source to the pinned synchronized copies |
 | `corepack pnpm sync:stex-igor` | Refresh those copies for a separately authorized integration change |
 
-Run the owning checks first, then full regression. Browser verification uses
+Run the owning checks first, then full regression through `verify:gates`.
+Release evidence is a gate report from a clean checkout of the exact
+candidate revisions on the pinned Node (`.node-version`); trusted CI runs the
+same gate and publishes its report in the job summary. Browser verification uses
 disposable data and a simulated or stub transport. See the
 [verification index](verification/README.md) for recorded coverage.
 
