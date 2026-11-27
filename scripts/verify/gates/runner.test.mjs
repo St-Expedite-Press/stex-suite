@@ -91,6 +91,8 @@ describe('status accounting', () => {
     assert.equal(countTestSkips('ℹ tests 4\nℹ skipped 2\n'), 2);
     assert.equal(countTestSkips('# skip 1\n'), 1);
     assert.equal(countTestSkips('======= 85 passed, 1 skipped in 3.20s =======\n'), 1);
+    assert.equal(countTestSkips('..s..   [100%]\n97 passed, 1 skipped in 2.15s\n'), 1, 'pytest -q prints the summary unframed');
+    assert.equal(countTestSkips('3 failed, 10 passed, 2 skipped, 1 warning in 4.00s\n'), 2);
     assert.equal(countTestSkips('all good\n'), null);
   });
   test('only an all-passed run is a pass', () => {

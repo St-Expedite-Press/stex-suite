@@ -174,7 +174,8 @@ export function countTestSkips(output) {
   const add = (value) => { total = (total ?? 0) + Number(value); };
   for (const match of output.matchAll(/^[ℹ#]\s+skipped\s+(\d+)\s*$/gmu)) add(match[1]);
   for (const match of output.matchAll(/^# skip (\d+)\s*$/gm)) add(match[1]);
-  for (const match of output.matchAll(/^=+ .*?\b(\d+) skipped\b.* =+$/gm)) add(match[1]);
+  // pytest's final summary, framed with `=` by default and bare under `-q`.
+  for (const match of output.matchAll(/^(?:=+ )?(?:\d+ [a-z]+, )*(\d+) skipped(?:, \d+ [a-z]+)* in [\d.]+s\b/gm)) add(match[1]);
   return total;
 }
 
