@@ -73,8 +73,8 @@ capabilities dropped, `--network none` except the connector's git clone) — PAS
 | --- | --- |
 | Candidate | Hermes `v0.23.4` (`8fc0374`, 2026-11-23, latest stable; reports `2026.9.24`); the current pin `e76fbd80` is its ancestor |
 | STEX pins | `hermes/test` 14/14 with the `v0.23.4` checkout, including the cross-check that every upstream auxiliary task is pinned to Grok (the task set is unchanged) |
-| STEX profile script | 62 settings from `deploy/hermes/apply-igor-profile.sh` applied; only `gateway.standalone` unrecognised, **on both revisions** (pre-existing: production sets a key Hermes does not read) |
-| Official connector | `obsidianmd/obsidian-skills` (the `obsidian` entry of Hermes's plugin catalog; Obsidian's 1.2.3 README names Hermes's catalog entry), pinned `a53f5910` = tag `1.2.3`, tier verified. The release's bundled catalog pins `1.2.1`; the three skills are identical between them. Not the older built-in `obsidian` skill nor the third-party `obsidian-memory`/`obsidian-rag` entries |
+| STEX profile script | 62 settings from `deploy/hermes/apply-igor-profile.sh` applied. `hermes config set` warns that `gateway.standalone` is unrecognised on both revisions, but the gateway reads it (`profile_is_standalone`, `gateway/run.py`): it keeps the `igor` profile out of the host multiplexer. It is live, marked upstream as a temporary compatibility shim. *Corrected in the hardening pass; the first pass wrongly called it unread.* |
+| Official connector | `obsidianmd/obsidian-skills`, the `obsidian` entry of Hermes's plugin catalog. Pinned at `b110b2f8e9eb1f287892f937050dfd40af862cbb` (`1.2.1`), the SHA in the tagged `v0.23.4` catalog; the first pass used `1.2.3` from the live catalog. The three enabled skills are identical in both. Installs always pass the SHA with `--ref`. Not the older built-in `obsidian` skill nor the third-party `obsidian-memory`/`obsidian-rag` entries |
 | Skills | `obsidian:obsidian-markdown`, `obsidian:obsidian-bases`, `obsidian:json-canvas` load through `skill_view` (no preprocessing) and the system-prompt skill index; `obsidian-cli`, `obsidian-headless`, `defuddle`, `knap` and the built-in `obsidian` are disabled and do not load (Hermes warns `skills.disabled` is unrecognised but enforces it) |
 | Isolation | Network blocked; root filesystem and fixture vault not writable; vault readable; uid 1000; CLI and API toolsets `[]` |
 | Restart | Same skill results and settings from persisted state |
@@ -103,7 +103,105 @@ temporary build folder and passed on two reruns (pre-existing timing).
 
 ## Limits
 
-- No independent review yet; owner review requested.
-- Hosted sign-in and the VM were not exercised. No live model or provider call.
+- First pass: no independent review (done in the hardening pass, section 4).
+- First pass: hosted sign-in not exercised (done in staging, section 4). The VM
+  was never touched. No live model or provider call in either pass.
 - The Igor branch is local; pushing it to Igor `main` deploys, so it is not pushed.
 - The containers use Debian TeX packages matching the VM list, not the VM itself.
+
+## 4. Hardening pass (2026-11-26/27)
+
+Independent review: a separate read-only reviewer agent reviewed both diffs
+against their baselines (suite `9c4f77c..ae2e7cc`, Igor `0455f82..671b380`).
+It found no blocker for a local milestone. Findings, checked against the code,
+and their outcome:
+
+| Finding | Outcome |
+| --- | --- |
+| Erase left note metadata; a failure between steps could leave contributions resolvable | Fixed (`eba51a1`): everything is checked first, ledgers cleared before the journal |
+| A native (Node) erase left contributions to be revived on the platform path | Fixed (`eba51a1`): each ledger is bound to the journal generation; a test runs the real Node library's erase |
+| A crash left a lock naming PID 1 that blocked the containerised platform forever | Fixed (`f9d14ee`) |
+| A hosted Pantheon over a local-mode platform shared one journal | Fixed (`33196b3`): `KNOWLEDGE_MISCONFIGURED` |
+| The Igor gitlink moved while the manifest and runtime docs still named `e76fbd80`; the branch tip failed the gitlink test | Fixed (Igor `cf434ac`). The first pass's "Igor gate passed" ran before the gitlink was committed |
+| A conversation with project context and knowledge opened an unused document grant | Fixed (Igor `ab11074`) |
+| Passage cuts could split a surrogate pair; search echoed Frige's project object | Fixed (`4f8ca13`) |
+| The Igor secret limits the route, not the person | Accepted: Igor owns accounts; the secret opens only `POST /contributions/resolve` |
+
+Contracts: JSON Schemas at the owning boundaries
+(`protocol/knowledge/{api,contributions,notes}.v1.schema.json`,
+`protocol/frige/passages.v1.schema.json`). All 17 knowledge routes are in the
+generated OpenAPI. `backend/tests/test_knowledge_contract.py` fails when the
+README tables, route list, schemas and OpenAPI drift (confirmed by mutation),
+and validates success, invalid input, stale revision, unauthorized and
+disabled responses. Frige's own test validates its real passage responses.
+
+| Proof | Result |
+| --- | --- |
+| `verify-knowledge-rollback.mjs` (real Frige and platform, the Node library as Pantheon hosts it) | PASS. Node → FastAPI (a contribution made, another withdrawn) → restart → Node → FastAPI → Node erase → FastAPI. Journals read identically both ways; contribution files byte-identical through the Node phase; nothing revived; ownership unchanged; Node's erase honoured |
+| `verify-staging-hosted.mjs` (TLS edge, real Igor password sessions) | PASS, 10 checks: only the edge published; signed-out redirects and 401s; foreign origin, wrong password and wrong Host refused; Secure HttpOnly session; refresh past the cache; cross-account isolation; peers with a loopback Host get nothing but `/healthz`; sign-out revokes; Frige proof and recreate while signed in |
+| `verify-staging-igor.mjs` (managed Hermes install, recording fake provider) | PASS: exact pins; Markdown/Bases/Canvas load on the API profile, the four others do not; toolsets `[]`; no egress; a signed-in turn carried only the approved current passage (Grok model, no tools); withdrawal excluded it next turn; clean restart; rollback to `e76fbd80` and forward with the VM procedure |
+
+Knowledge rollback preserves journals, contribution and note ledgers,
+per-person directories and ownership. While on the Node path,
+`/contributions*`, `/passages/*` and `/notes*` answer 404, Igor resolves every
+contribution as `unavailable` (passages are not used; turns still run), and
+nothing can be withdrawn until the platform returns. An erase made on the
+Node path is honoured afterwards.
+
+Findings that need an owner decision:
+
+- **The Obsidian skills are installed but not active in Igor's turns.** With
+  empty toolsets the API turn prompt carries no skill index. Activating them
+  needs a skills toolset, which is a separate authorization.
+- **The current production pin needs egress at every start.** `e76fbd80`
+  re-resolves a GitHub-hosted wheel on every activation; `v0.23.4` activates
+  with no egress. Rollback to `e76fbd80` therefore needs its egress
+  allowlist; the staging rollback phase ran with outside network attached.
+- **Switching runtimes needs an egress window both ways**: the managed install
+  keeps its tool store beside the profile in `~hermes/.hermes`.
+- **Auxiliary calls**: Hermes attempts auxiliary tasks against OpenRouter on
+  Grok pins; staging blocked them. On the VM they are paid calls under the
+  existing policy.
+
+Known flakes and limits: one Frige real-proof test can fail with a Windows
+`EBUSY` when removing a temporary build folder (passes on rerun); one image
+build failed transiently during upstream's managed setup and passed on
+rebuild; `cua-driver` (optional computer-use tool) fails its self-check in a
+headless image and the installer skips it. The plain-venv harness
+(`stex-igor/hermes/eval/run-eval.mjs`) was not rerun after the connector pin
+changed to `1.2.1`; the staging Igor host supersedes it.
+
+## 5. Proposed deploy order and rollback (not executed)
+
+Nothing below is authorized. Each step is a separate approval.
+
+0. **Precondition (separate approval item):** a fresh off-disk backup of
+   Frige books and state, Igor data, inference state, the Hermes profile
+   (`state.db`, `response_store.db`, `runs_idempotency.db`, config) and the
+   knowledge journals and ledgers, restored on a disposable host and checked.
+1. Merge the Igor branch (auto-deploys Igor and inference; the Hermes runtime
+   is not changed by the gitlink). Knowledge stays unconfigured
+   (`STEX_KNOWLEDGE_URL` unset), so contributions are inert.
+2. Release Pantheon and Frige from the suite branch with
+   `STEX_KNOWLEDGE_SERVICE` unset (native knowledge path, unchanged).
+3. Deploy the platform API on loopback with hosted knowledge and both secrets;
+   stop Pantheon, set `STEX_KNOWLEDGE_SERVICE=platform`, start. Never run both
+   writers on one journal directory.
+4. Set Igor's `STEX_KNOWLEDGE_URL` and secret to enable contributions.
+5. Hermes `v0.23.4` (separate change): stop `hermes-igor`, lift the egress
+   rule, `git checkout` the pin and `./setup-hermes.sh --runtime-only` as
+   `hermes`, run `apply-igor-profile.sh`, restore egress, start, run a
+   tool-negative turn. Install the connector with `--ref` only if the skills
+   are to be activated, which is a further decision.
+
+Rollback, in reverse: Hermes by the same checkout-and-setup procedure with
+egress (the old pin needs its allowlist at every start); knowledge by
+stopping the platform and Pantheon, unsetting `STEX_KNOWLEDGE_SERVICE` and
+giving Pantheon the same data directory (contributions stay on disk and become
+unavailable); Igor and Pantheon releases by their existing rollback-capable
+installers.
+
+## Decision
+
+**Production: no-go** until the step 0 precondition is verified. The local
+candidate is ready for owner review.
