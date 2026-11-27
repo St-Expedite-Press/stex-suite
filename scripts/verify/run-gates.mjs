@@ -146,7 +146,7 @@ async function runGates(options) {
 
   const before = { suite: fingerprint(suiteRoot), igor: igorRoot ? fingerprint(igorRoot) : null };
   const pins = readPins(suiteRoot, igorRoot);
-  const environment = describeEnvironment(pins);
+  const environment = describeEnvironment(pins, suiteRoot);
   const startedAt = new Date().toISOString();
   const started = Date.now();
   /** @type {import('./gates/runner.mjs').CheckResult[]} */

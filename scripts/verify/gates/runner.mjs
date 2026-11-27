@@ -307,7 +307,17 @@ export function fingerprint(root) {
     hash.update(`\nuntracked ${file}\n`);
     try { hash.update(readFileSync(path.join(root, file))); } catch { hash.update('<unreadable>'); }
   }
-  return { root, head, tree, branch: branchName === 'HEAD' ? null : branchName, dirty: tracked.length + untracked.length > 0, contentDigest: hash.digest('hex'), changedPaths: [...tracked, ...untracked] };
+  // `assume-unchanged` (lower-case tag) and `skip-worktree` (S) make git, and so the diff above,
+  // ignore a tracked file's edits. Such a file is hashed from disk and always counts as a change,
+  // so a hidden edit can neither pass as clean nor leave a report current.
+  const flagged = git(root, ['ls-files', '-v', '-z']).split('\0').filter(Boolean)
+    .filter((entry) => /^[a-z] /.test(entry) || entry.startsWith('S ')).map((entry) => entry.slice(2)).sort();
+  for (const file of flagged) {
+    hash.update(`\nflagged ${file}\n`);
+    try { hash.update(readFileSync(path.join(root, file))); } catch { hash.update('<unreadable>'); }
+  }
+  const changedPaths = [...tracked, ...untracked, ...flagged.map((file) => `${file} (assume-unchanged or skip-worktree)`)];
+  return { root, head, tree, branch: branchName === 'HEAD' ? null : branchName, dirty: changedPaths.length > 0, contentDigest: hash.digest('hex'), changedPaths };
 }
 
 /**
@@ -363,10 +373,11 @@ function sha256Of(file) {
  * Runs a version probe without a shell and returns its first output line.
  * @param {string[]} command
  */
-function probeVersion(command) {
+function probeVersion(command, cwd) {
   let plan;
   try { plan = spawnPlan(command); } catch { return null; }
-  const result = spawnSync(plan.file, plan.args, { shell: plan.shell, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+  // In the suite root: corepack resolves pnpm from that packageManager, as the checks do.
+  const result = spawnSync(plan.file, plan.args, { cwd, shell: plan.shell, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
   if (result.error || result.status !== 0) return null;
   return `${result.stdout || ''}${result.stderr || ''}`.trim().split(/\r?\n/)[0] || null;
 }
@@ -407,20 +418,30 @@ export function readPins(suiteRoot, igorRoot) {
 }
 
 /**
- * Describes where the gate ran and compares the toolchain with the pins.
+ * Describes where the gate ran and compares the toolchain with the pins. Every
+ * unknown counts against release evidence: a missing pin, an unprobeable pnpm,
+ * or a `node` on PATH (which the checks run through pnpm) that differs from the
+ * Node running the gate.
  * @param {ReturnType<typeof readPins>} pins
+ * @param {string} [cwd] The suite root, where corepack and PATH resolve as for the checks.
  */
-export function describeEnvironment(pins) {
+export function describeEnvironment(pins, cwd) {
   const nodeVersion = process.version.replace(/^v/, '');
-  const pnpmVersion = probeVersion(['corepack', 'pnpm', '--version']);
-  const uvVersion = probeVersion(['uv', '--version']);
+  const pathNode = probeVersion(['node', '--version'], cwd)?.replace(/^v/, '') ?? null;
+  const pnpmVersion = probeVersion(['corepack', 'pnpm', '--version'], cwd);
+  const uvVersion = probeVersion(['uv', '--version'], cwd);
   const expectedPnpm = /^pnpm@(.+)$/.exec(pins.packageManager || '')?.[1] ?? null;
   const mismatches = [];
-  if (pins.node && nodeVersion !== pins.node) mismatches.push(`Node ${nodeVersion} runs the gate; .node-version pins ${pins.node}`);
-  if (expectedPnpm && pnpmVersion && pnpmVersion !== expectedPnpm) mismatches.push(`pnpm ${pnpmVersion} runs the gate; packageManager pins ${expectedPnpm}`);
+  if (!pins.node) mismatches.push('no .node-version pin to check Node against');
+  else if (nodeVersion !== pins.node) mismatches.push(`Node ${nodeVersion} runs the gate; .node-version pins ${pins.node}`);
+  if (pathNode && pathNode !== nodeVersion) mismatches.push(`the node on PATH (${pathNode}) differs from the Node running the gate (${nodeVersion})`);
+  if (!expectedPnpm) mismatches.push('no packageManager pin to check pnpm against');
+  else if (!pnpmVersion) mismatches.push('pnpm could not be probed');
+  else if (pnpmVersion !== expectedPnpm) mismatches.push(`pnpm ${pnpmVersion} runs the gate; packageManager pins ${expectedPnpm}`);
   return {
     os: { platform: process.platform, release: os.release(), arch: process.arch, hostnameHash: createHash('sha256').update(os.hostname()).digest('hex').slice(0, 12) },
     node: nodeVersion,
+    pathNode,
     pnpm: pnpmVersion,
     uv: uvVersion,
     ci: process.env.GITHUB_ACTIONS === 'true' ? { provider: 'github-actions', runId: process.env.GITHUB_RUN_ID || null, sha: process.env.GITHUB_SHA || null, ref: process.env.GITHUB_REF || null } : null,
@@ -438,7 +459,15 @@ export function describeEnvironment(pins) {
  * `--only` selection (a partial selection already makes the verdict
  * `incomplete`).
  *
- * @param {{ verdict: string, gate?: { scope: string, custom: boolean }, repositories: Record<string, RepoFingerprint|null>, pins: ReturnType<typeof readPins>, environment: { mismatches: string[] } }} report
+ * Summary fields are cross-checked against the raw data they summarise (the
+ * verdict against each check's status, cleanliness against the changed paths,
+ * gitlink consistency against both revisions, the toolchain against the pins),
+ * so a summary edit alone cannot pass. A report file is still unsigned local
+ * data, so this is a consistency check, not tamper evidence. The authoritative
+ * release evidence is trusted CI, which runs `--check --release` on the report it
+ * has just produced (see .github/workflows/ci.yml).
+ *
+ * @param {{ verdict: string, checks?: { status: string }[], gate?: { scope: string, custom: boolean }, repositories: Record<string, RepoFingerprint|null>, pins: ReturnType<typeof readPins>, environment: { node?: string, mismatches: string[] } }} report
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
 export function releaseEligibility(report) {
@@ -446,10 +475,15 @@ export function releaseEligibility(report) {
   if (!report.gate || report.gate.custom) reasons.push('the run used an injected check manifest, not the canonical gate');
   else if (report.gate.scope !== 'all') reasons.push(`the run covered only --repo ${report.gate.scope}, not both repositories`);
   if (report.verdict !== 'pass') reasons.push(`verdict is ${report.verdict}`);
-  for (const [key, repo] of Object.entries(report.repositories)) if (repo?.dirty) reasons.push(`${key} worktree had uncommitted changes (${repo.changedPaths.length} paths)`);
-  if (report.pins.igorGitlinkConsistent === false) reasons.push(`checked-out Igor ${String(report.pins.igorCheckedOut).slice(0, 12)} differs from the suite gitlink ${String(report.pins.igorGitlink).slice(0, 12)}`);
+  if (Array.isArray(report.checks) && verdictOf(report.checks) !== 'pass') reasons.push('the checks themselves do not all pass');
+  for (const [key, repo] of Object.entries(report.repositories)) {
+    if (repo?.dirty || repo?.changedPaths?.length) reasons.push(`${key} worktree had uncommitted changes (${repo.changedPaths?.length ?? '?'} paths)`);
+  }
+  const { igorGitlink, igorCheckedOut } = report.pins;
+  if (report.pins.igorGitlinkConsistent === false || (igorCheckedOut && igorGitlink !== igorCheckedOut)) reasons.push(`checked-out Igor ${String(igorCheckedOut).slice(0, 12)} differs from the suite gitlink ${String(igorGitlink).slice(0, 12)}`);
+  if (report.environment.node !== undefined && report.environment.node !== report.pins.node) reasons.push(`recorded Node ${report.environment.node} differs from the pin ${report.pins.node}`);
   for (const mismatch of report.environment.mismatches) reasons.push(mismatch);
-  return { eligible: reasons.length === 0, reasons };
+  return { eligible: reasons.length === 0, reasons: [...new Set(reasons)] };
 }
 
 /**

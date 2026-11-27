@@ -129,3 +129,8 @@ jobs:
       # job summary.
       - name: Run the canonical gate for both repositories
         run: node scripts/verify/run-gates.mjs --repo all --out "$RUNNER_TEMP/stex-gate" --summary-file "$GITHUB_STEP_SUMMARY"
+      # A report file is unsigned data; the evidence is this job. It fails unless the
+      # report it just produced, on this clean checkout and pinned toolchain, is
+      # accepted as release evidence. A green job therefore means exactly that.
+      - name: Require release evidence
+        run: node scripts/verify/run-gates.mjs --check "$RUNNER_TEMP/stex-gate/report.json" --release

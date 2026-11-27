@@ -263,6 +263,31 @@ describe('stale evidence', () => {
     assert.match(changed.stderr, /tree/);
   });
 
+  test('edits hidden with skip-worktree or assume-unchanged are still changes', () => {
+    for (const flag of ['--skip-worktree', '--assume-unchanged']) {
+      const root = repository();
+      git(root, 'update-index', flag, 'source.txt');
+      writeFileSync(path.join(root, 'source.txt'), 'hidden edit\n');
+      assert.equal(git(root, 'status', '--porcelain'), '', `${flag} hides the edit from git status`);
+      const run = runGate(root, [node('suite/a', 'process.exit(0)')]);
+      assert.equal(run.report.repositories.suite.dirty, true, `${flag}: the hidden edit makes the tree dirty`);
+      assert.ok(run.report.releaseEvidence.reasons.some((reason) => /uncommitted/.test(reason)));
+      writeFileSync(path.join(root, 'source.txt'), 'another hidden edit\n');
+      assert.equal(checkReport(root, run.out).status, 4, `${flag}: a further hidden edit makes the report stale`);
+    }
+  });
+
+  test('summary fields are checked against the raw data, so editing a summary alone does not pass', () => {
+    const at = (patch) => releaseEligibility({ verdict: 'pass', gate: { scope: 'all', custom: false }, checks: [{ status: 'passed' }],
+      repositories: { suite: { dirty: false, changedPaths: [] } }, pins: { node: '22.23.5', igorGitlink: 'a', igorCheckedOut: 'a', igorGitlinkConsistent: true },
+      environment: { node: '22.23.5', mismatches: [] }, ...patch });
+    assert.equal(at({}).eligible, true);
+    assert.equal(at({ checks: [{ status: 'failed' }] }).eligible, false, 'verdict "pass" over a failed check');
+    assert.equal(at({ repositories: { suite: { dirty: false, changedPaths: ['x'] } } }).eligible, false, '"clean" with changed paths');
+    assert.equal(at({ pins: { node: '22.23.5', igorGitlink: 'a', igorCheckedOut: 'b', igorGitlinkConsistent: true } }).eligible, false, '"consistent" gitlink that differs');
+    assert.equal(at({ environment: { node: '24.18.0', mismatches: [] } }).eligible, false, 'mismatches cleared but Node off the pin');
+  });
+
   test('a failed or dirty report is not accepted', () => {
     const root = repository();
     const failed = runGate(root, [node('suite/a', 'process.exit(1)')]);
@@ -294,6 +319,8 @@ describe('trusted CI', () => {
     // Both repositories in one run: anything narrower is never release evidence.
     assert.match(suiteCi, /node scripts\/verify\/run-gates\.mjs --repo all /);
     assert.match(suiteCi, /corepack pnpm --dir stex-igor install --frozen-lockfile/);
+    // CI's own report must pass the release check, so a green job is the evidence, not a file.
+    assert.match(suiteCi, /node scripts\/verify\/run-gates\.mjs --check "\$RUNNER_TEMP\/stex-gate\/report\.json" --release/);
     assert.doesNotMatch(suiteCi, /run: corepack pnpm test$/m, 'CI runs the gate through the runner, not the fail-fast chain');
   });
 });
