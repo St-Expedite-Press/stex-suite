@@ -117,6 +117,9 @@ jobs:
           pdffonts -v
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
-      - run: corepack pnpm check:prereqs
-      - run: corepack pnpm build:pantheon
-      - run: corepack pnpm test
+      # The canonical gate runs check:prereqs, build:pantheon and every step of
+      # `pnpm test` as separate processes, keeps each exit status, and fails
+      # unless all of them passed (a skipped or unexecuted check also fails).
+      # Its report, with revisions, pins and environment, goes to the job summary.
+      - name: Run the canonical suite gate
+        run: node scripts/verify/run-gates.mjs --repo suite --out "$RUNNER_TEMP/stex-gate" --summary-file "$GITHUB_STEP_SUMMARY"
