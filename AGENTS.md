@@ -373,9 +373,13 @@ Document (loop 6) → Integrate → Decide: **accept**, **repair**, **replan**, 
    OpenAPI contract the change touches.
 4. Both repository gates through `corepack pnpm verify:gates`
    (`scripts/verify/run-gates.mjs`): every check runs as its own process and
-   the run fails unless all passed. Cite its report, never a summary of it;
-   a report counts as release evidence only when `--check <report> --release`
-   accepts it for the exact committed candidate.
+   the run fails unless all passed. Cite its report, never a summary of it.
+   **Release evidence is a green trusted-CI run**, whose "Require release
+   evidence" step accepts the report that same job produced, on the exact
+   candidate content (a synthetic pull-request merge with an identical tree
+   counts, and `--check` names both commits). A report file on its own is
+   unsigned and is never release evidence, and neither is a local run
+   off the pinned toolchain.
 5. Representative browser or HTTP workflow (`corepack pnpm dev:alpha`, the
    `scripts/verify/*` verifiers, or the staging stack) when UI, routing,
    proxying, identity or a user path changed, using disposable data.

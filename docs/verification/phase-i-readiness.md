@@ -175,6 +175,61 @@ browser workflow. Local runs used Node 24.18.0, not the pinned 22.23.5, so
 **no local report is release evidence**; trusted CI on Node 22.23.5 must
 produce it after an authorized push.
 
-## 8. Next authorization
+## 8. Continuation: Phase I closure work (2026-11-27, owner-authorized local work)
 
-See the completion report for the exact request.
+| Item | Outcome |
+| --- | --- |
+| 1. Continued-session document turns (option B) | **Fixed.** A document turn may carry `approvedDocuments` alone or with Igor's bounded, author-saved `prior-session-summary`. Every field is type-checked and the block is at most 8,192 bytes. It sits inside the untrusted context, is bound into the grant's request digest and grants nothing. The new end-to-end test in `stex-igor/apps/igor/test/server.test.mjs` signs in, saves a summary, continues the session, re-approves, and sends a turn through Igor, the real inference handler and the worker socket. It fails with the old rule. An independent review found no blocker; its hardening point was applied. Evidence in Igor `e6e3818`, `e36f63f` |
+| 2. A5: reproducible Hermes and offline start | **Done.** The uncached build installed `v0.23.4`, which starts and restarts with no network. The production pin `e76fbd80` cannot start offline. A retained `v0.23.4` runtime and tool store switch back offline. A clean build needs Nous's asset host, GitHub release objects and PyPI; one attempt failed on transient DNS. See the [A5 evidence](../../stex-igor/docs/verification/hermes-a5-offline-2026-11-27.md) |
+| 3. Gate runner review | **Done.** Every listed case is rejected: partial manifests, `--only`, one repository, skipped or unexecuted checks, stale content, gitlink drift, dirty trees and an off-pin toolchain. Fixed: hidden edits under `skip-worktree` or `assume-unchanged`; summary fields that contradicted the raw data; missing pins and an unprobeable pnpm; a PATH `node` that differs. CI now runs `--check --release` on its own report. Accepted: ignored files (`node_modules`, local state) stay outside the fingerprint, and a report file is not tamper-evident; the green CI job is the evidence |
+| 4. CI revision `baa2713` vs branch tip `4c52bbc` | **Settled.** `baa2713` is GitHub's synthetic merge of PR #25, with parents `9c4f77c` (main) and `4c52bbc`. Its tree `9b6830ce…` is identical to `4c52bbc`'s because main is the branch's base. `--check` now accepts identical content under a different commit and prints both commits |
+| 5. Standing protection | **Prepared, not applied.** The daily backup now takes the users file and the Hermes home, with a Linux test of both real scripts (deploys with the release). Off-host retention, a snapshot schedule (about $1 to $6.50 a month), egress additions and key custody are in the plan's stage 4 |
+| 6. Application restore vs bare-machine recovery | **Documented** in [disaster recovery](../../stex-igor/docs/operations/disaster-recovery.md). It lists every excluded secret and its source, the external configuration, artifacts and the rebuild order. Gap: no script sets up the original Igor host; a rehearsal on a disposable VM is unproven and needs provisioning approval |
+| 7. Gates, review, branches | Both gates rerun on the final revisions; trusted CI results are in the handoff. Two independent reviews ran this round. Branches and draft PR #25 updated |
+| 8. Documentation | Root charter (release evidence rule), developer guide, this report, STATUS, the plan, disaster recovery, the runbook (Hermes egress), the inference README (document-turn context) |
+
+### Open before the first production step
+
+- **Owner:** protect the backup key (plan 4e: passphrase, password manager,
+  offline copy, delete the plain file, test a decryption).
+- **Owner decisions (approval):** the snapshot schedule, off-host retention
+  (option A or B), and the egress lockdown (only after Hermes `v0.23.4`).
+- **Not proven:** bare-machine rebuild; the studio backup's consistency and
+  restore check (plan 4a); minor knowledge-store items (directory fsync,
+  lock recovery across PID namespaces).
+
+### First production step: release Igor (deploys on merge)
+
+Preconditions:
+- Suite PR #25 green, including "Require release evidence".
+- Igor CI green on the branch head.
+- A backup taken within 24 hours that passed `stex-restore-verify.sh`.
+
+```bash
+# 1. Open and merge the Igor pull request. The merge deploys.
+gh pr create -R St-Expedite-Press/stex-igor --base main --head feat/separation-m1 \
+  --title "Separation milestone 1 and Phase I fixes" --body-file <reviewed description>
+gh pr merge <number> -R St-Expedite-Press/stex-igor --merge
+gh run watch -R St-Expedite-Press/stex-igor \
+  "$(gh run list -R St-Expedite-Press/stex-igor --workflow deploy.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+# 2. Verify on the VM (read-only, over IAP).
+cat /opt/stex/current/RELEASE.json                        # sha = the merge commit; generation 26 or higher
+systemctl is-active stex-igor stex-inference hermes-igor stex-document-relay stex-document-worker
+curl -s http://127.0.0.1:4330/igor/api/ready              # store readable, all conversations, inference ok
+sudo -u hermes git -C /var/lib/hermes/hermes-agent rev-parse HEAD   # still e76fbd80
+```
+
+Expected effects:
+- **Restarts:** `stex-inference`, `stex-igor` and the two document units
+  restart once. In-flight turns are interrupted, and stored replies resume
+  as INTERRUPTED. `hermes-igor` and the Hermes runtime are not touched.
+- **Now live:**
+  - continued working sessions with re-approved sources get document access;
+  - the knowledge resolver is present but inert (`STEX_KNOWLEDGE_URL` unset):
+    contributions resolve as unavailable, and turns still run;
+  - from the next 03:17 UTC run, the daily backup also takes the users file
+    and the Hermes home, so each backup grows to about 16 MB of raw data.
+- **Unchanged:** Pantheon and Frige (the next step), and the backup schedule.
+- **Rollback:** the runbook's manual path reinstalls the generation 25
+  release kept in `/opt/stex/releases`. The automated path refuses a lower
+  generation by design.
