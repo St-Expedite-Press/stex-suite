@@ -18,16 +18,29 @@ const base = 'http://127.0.0.1:4442'; const reference = 'stex://frige/project/fi
 /** Reads the current source and metadata for a selected graph node. */
 const node = (dir, env) => spawn(process.execPath, ['server.mjs'], { cwd: path.join(repositoryRoot, dir), windowsHide: true, env: { ...process.env, ...env } });
 const children = [];
+// --platform: the Python platform API owns the journal (STEX_KNOWLEDGE_SERVICE=platform)
+// and Pantheon only relays; otherwise Pantheon's in-process library, exactly as before.
+const viaPlatform = process.argv.includes('--platform');
+/** Starts the Python platform API that owns the journal in --platform mode. */
+// The virtual environment's interpreter directly, so stopping it stops the journal writer (uv would leave a child).
+const platformPython = path.join(repositoryRoot, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+const startPlatform = () => spawn(platformPython, ['-m', 'stex'], { cwd: repositoryRoot, windowsHide: true, env: { ...process.env, STEX_PLATFORM_PORT: '4443', STEX_FRIGE_URL: 'http://127.0.0.1:4441', STEX_KNOWLEDGE_DATA_DIR: path.join(data, 'knowledge') } });
 /** Starts Pantheon with disposable roots and waits for readiness. */
-const startPantheon = () => node('apps/pantheon', { STEX_PANTHEON_PORT: '4442', STEX_FRIGE_URL: 'http://127.0.0.1:4441', STEX_KNOWLEDGE_DATA_DIR: path.join(data, 'knowledge') });
+const startPantheon = () => node('apps/pantheon', viaPlatform
+  ? { STEX_PANTHEON_PORT: '4442', STEX_FRIGE_URL: 'http://127.0.0.1:4441', STEX_PLATFORM_URL: 'http://127.0.0.1:4443', STEX_KNOWLEDGE_SERVICE: 'platform', STEX_KNOWLEDGE_DATA_DIR: '' }
+  : { STEX_PANTHEON_PORT: '4442', STEX_FRIGE_URL: 'http://127.0.0.1:4441', STEX_KNOWLEDGE_DATA_DIR: path.join(data, 'knowledge') });
+/** Starts whichever process owns the journal (restarted to prove rebuild from disk). */
+const startOwner = () => (viaPlatform ? startPlatform() : startPantheon());
+const ownerReady = viaPlatform ? /Uvicorn running/ : /ready/i;
 children.push(node('apps/frige', { STEX_FRIGE_PORT: '4441', STEX_FRIGE_BASE_PATH: '/frige', STEX_FRIGE_BOOKS_DIR: path.join(data, 'books'), STEX_FRIGE_PROJECT_DIR: path.join(data, 'default'), STEX_PANTHEON_URL: base }));
-children.push(startPantheon());
-const report = { workflow: [], viewports: [], limits: ['Chrome only; synthetic local sources; no inference or provider calls'] };
+if (viaPlatform) children.push(startPantheon());
+children.push(startOwner());
+const report = { mode: viaPlatform ? 'platform API owns the journal; Pantheon relays' : 'Pantheon in-process journal', workflow: [], viewports: [], limits: ['Chrome only; synthetic local sources; no inference or provider calls'] };
 let browser;
 /** Sends a request to the owning HTTP API and returns its decoded result. */
 async function api(route = '', body) { const response = await fetch(base + '/api/knowledge/v1' + route, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, value: await response.json() }; }
 try {
-  await Promise.all(children.map((child) => started(child, /ready/i, 'Knowledge stack')));
+  await Promise.all(children.map((child, index) => started(child, index === children.length - 1 ? ownerReady : /ready/i, 'Knowledge stack')));
   browser = await launchBrowser(); const tab = await page(browser.devtools);
   /** Waits for the named UI or HTTP observation before asserting it. */
   const wait = async (expression) => { for (let i = 0; i < 150; i++) { if (await tab.evaluate(`Boolean(${expression})`).catch(() => false)) return; await new Promise((r) => setTimeout(r, 50)); } throw Error('Timed out: ' + expression); };
@@ -63,7 +76,7 @@ try {
   report.workflow.push('changed revisions become unavailable, stale imports fail, explicit refresh advances once and replay is idempotent');
   const exported = (await api('/export')).value; assert.ok(!JSON.stringify(exported).includes('A synthetic source')); assert.ok(!JSON.stringify(exported).includes('Accepted local revision'));
   const old = children.pop(); const exited = new Promise((r) => old.once('exit', r)); old.kill(); await exited;
-  children.push(startPantheon()); await started(children.at(-1), /ready/i, 'Restarted knowledge stack');
+  children.push(startOwner()); await started(children.at(-1), ownerReady, 'Restarted knowledge stack');
   assert.equal((await api()).value.version, accepted.value.version);
   report.workflow.push('restart rebuild preserves accepted state; export contains provenance without source text');
   await tab.go(base + '/graph/'); await wait(`document.querySelector('[name="project"]')`);
@@ -78,6 +91,11 @@ try {
   assert.equal(await readFile(path.join(manuscript, 'Source.md'), 'utf8'), source + '\nAccepted local revision.\n');
   report.workflow.push('explicit deletion clears knowledge while canonical source stays byte-for-byte intact');
   const denied = await fetch(base + '/api/knowledge/v1', { headers: { origin: 'null' } }); assert.equal(denied.status, 403);
+  if (viaPlatform) {
+    // The platform's configured directory holds the journal Pantheon never opened (Pantheon had no directory).
+    assert.ok((await readFile(path.join(data, 'knowledge', 'knowledge.v1.json'), 'utf8')).includes('stex.knowledge.projections.v1'));
+    report.workflow.push('Pantheon relayed every knowledge request; the platform API owned and rebuilt the journal');
+  }
   await tab.close(); report.result = 'PASS';
 } finally {
   await browser?.close();

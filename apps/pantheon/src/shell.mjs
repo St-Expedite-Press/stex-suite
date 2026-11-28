@@ -29,11 +29,49 @@ const loopbackHost = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 /** Checks whether a request targets a permitted local host. */
 export const isLoopbackHost = (value) => loopbackHost.test(String(value || ''));
 
-/** Accepts only an eligible loopback URL for a configured target. */
-export function localProxyTarget(value, fallback) {
+/**
+ * Parses STEX_INTERNAL_HOSTS: the fixed peer service names of a container
+ * deployment (for example `frige,platform` in deploy/compose). Each name is a
+ * single DNS label; nothing else is accepted. Empty (the native default)
+ * means loopback only, exactly as before.
+ *
+ * @param {string | undefined} value  Comma-separated service names.
+ * @returns {ReadonlySet<string>}  The permitted peer hostnames.
+ * @throws {Error} when a name is not a single lowercase DNS label.
+ */
+export function internalHosts(value) {
+  const names = String(value || '').split(',').map((name) => name.trim()).filter(Boolean);
+  for (const name of names) if (!/^[a-z][a-z0-9-]{0,62}$/.test(name) || name === 'localhost') throw new Error(`STEX_INTERNAL_HOSTS contains an invalid service name: ${name}`);
+  return Object.freeze(new Set(names));
+}
+
+/**
+ * Chooses the listen address. Native runs keep 127.0.0.1. `STEX_BIND_ALL=1`
+ * binds every interface, for use inside a container whose port is published
+ * only to the host's loopback; any other value is refused.
+ *
+ * @param {string | undefined} value  STEX_BIND_ALL.
+ * @returns {'127.0.0.1' | '0.0.0.0'}
+ */
+export function bindAddress(value) {
+  if (value === undefined || value === '' || value === '0') return '127.0.0.1';
+  if (value === '1') return '0.0.0.0';
+  throw new Error('STEX_BIND_ALL must be 1 or unset.');
+}
+
+/**
+ * Accepts only a server-configured HTTP origin on loopback or on one of the
+ * fixed internal service names. Browser input never reaches this function.
+ *
+ * @param {string | undefined} value  Configured origin.
+ * @param {string} fallback  Native default origin.
+ * @param {ReadonlySet<string>} [internal]  Permitted container peer names.
+ * @returns {URL}
+ */
+export function localProxyTarget(value, fallback, internal = new Set()) {
   let target;
   try { target = new URL(value || fallback); } catch { throw new Error('The application proxy target is invalid.'); }
-  if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(target.hostname) || target.username || target.password || target.pathname !== '/' || target.search || target.hash) {
+  if (target.protocol !== 'http:' || !(['127.0.0.1', 'localhost', '::1'].includes(target.hostname) || internal.has(target.hostname)) || target.username || target.password || target.pathname !== '/' || target.search || target.hash) {
     throw new Error('The application proxy target must be a loopback HTTP origin.');
   }
   return target;

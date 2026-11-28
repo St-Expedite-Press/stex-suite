@@ -1,0 +1,87 @@
+# Local staging slice: Pantheon, Frige and the Python platform API as separate
+# containers. Synthetic data, fake inference, no converter, no Igor, no secrets.
+#
+#   docker compose -f deploy/staging-compose/compose.yaml up -d --build
+#   open http://127.0.0.1:4300/home/
+#
+# Only Pantheon is published, and only on the host's loopback. Frige and the
+# platform API sit on an internal network with no outside access. Each service
+# names its fixed peers in STEX_INTERNAL_HOSTS; native defaults are unchanged.
+# Never point these volumes at real books, journals or a VM.
+name: stex-staging
+
+x-node-build: &node-build
+  context: ../..
+  dockerfile: deploy/staging-compose/node.Dockerfile
+
+services:
+  seed:
+    build: { <<: *node-build, target: frige }
+    command: ["node", "/srv/stex/deploy/staging-compose/seed-synthetic.mjs", "/data/frige/books"]
+    network_mode: none
+    healthcheck: { disable: true }
+    volumes:
+      - frige-data:/data/frige
+
+  frige:
+    build: { <<: *node-build, target: frige }
+    depends_on:
+      seed: { condition: service_completed_successfully }
+    environment:
+      STEX_BIND_ALL: "1"
+      STEX_INTERNAL_HOSTS: frige
+      STEX_FRIGE_PORT: "4310"
+      STEX_FRIGE_BASE_PATH: /frige
+      STEX_FRIGE_SHELL_URL: /home/
+      # The browser-facing Pantheon address (used for origin checks and redirects).
+      STEX_PANTHEON_URL: http://127.0.0.1:4300
+      STEX_FRIGE_BOOKS_DIR: /data/frige/books
+      STEX_FRIGE_PROJECT_DIR: /data/frige/local-book
+      STEX_FRIGE_PROJECTS_DIR: /data/frige/projects
+      STEX_FRIGE_INFERENCE_MODE: fake
+    volumes:
+      - frige-data:/data/frige
+    networks: [studio]
+
+  platform:
+    build:
+      context: ../..
+      dockerfile: deploy/staging-compose/platform.Dockerfile
+    environment:
+      STEX_BIND_ALL: "1"
+      # Peers it calls (frige) and its own service name, which the Host check admits from Pantheon.
+      STEX_INTERNAL_HOSTS: frige,platform
+      STEX_FRIGE_URL: http://frige:4310
+      STEX_KNOWLEDGE_DATA_DIR: /data/knowledge
+      # A synthetic Obsidian vault, mounted read-only (stex.knowledge.notes.v1 import and retrieval).
+      STEX_KNOWLEDGE_VAULT_DIR: /vault
+    volumes:
+      - knowledge-data:/data/knowledge
+      - ./fixtures/vault:/vault:ro
+    networks: [studio]
+
+  pantheon:
+    build: { <<: *node-build, target: pantheon }
+    depends_on:
+      frige: { condition: service_healthy }
+      platform: { condition: service_healthy }
+    environment:
+      STEX_BIND_ALL: "1"
+      STEX_INTERNAL_HOSTS: frige,platform
+      STEX_FRIGE_URL: http://frige:4310
+      STEX_PLATFORM_URL: http://platform:4340
+      STEX_PANTHEON_DEFERRED: seaxneat
+      # Pantheon routes knowledge to the platform API and opens no journal itself.
+      STEX_KNOWLEDGE_SERVICE: platform
+    ports:
+      - "127.0.0.1:4300:4300"
+    networks: [studio, edge]
+
+networks:
+  studio:
+    internal: true
+  edge: {}
+
+volumes:
+  frige-data: {}
+  knowledge-data: {}

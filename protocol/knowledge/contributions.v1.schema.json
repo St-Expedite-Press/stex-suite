@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stexpedite.press/protocol/knowledge/contributions.v1.schema.json",
+  "title": "Knowledge contributions v1 (stex.knowledge.contributions.v1)",
+  "description": "Private approvals of exact Frige passage revisions for Igor, and the passage routes the platform knowledge API relays. Definitions only; see protocol/knowledge/README.md, Contributions v1.",
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "idempotencyKey": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$" },
+    "version": { "type": "string", "pattern": "^[a-f0-9-]{36}:[0-9]+$" },
+    "reference": { "type": "string", "pattern": "^stex://knowledge/contribution/ctb-[a-f0-9]{16}$" },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "attachmentId", "excerptHash", "start", "end", "passageSha256"],
+      "properties": {
+        "project": { "type": "string", "pattern": "^stex://frige/project/[a-z0-9][a-z0-9-]{0,62}$" },
+        "attachmentId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+        "excerptHash": { "$ref": "#/$defs/sha256" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 },
+        "passageSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "passage": {
+      "type": "object",
+      "required": ["project", "attachmentId", "excerptHash", "start", "end", "passageSha256", "title", "originalSha256", "contribution"],
+      "properties": {
+        "project": { "type": "string" },
+        "attachmentId": { "type": "string" },
+        "excerptHash": { "$ref": "#/$defs/sha256" },
+        "start": { "type": "integer" },
+        "end": { "type": "integer" },
+        "passageSha256": { "$ref": "#/$defs/sha256" },
+        "title": { "type": "string" },
+        "originalSha256": { "type": ["string", "null"] },
+        "snippet": { "type": "string" },
+        "text": { "type": "string" },
+        "contribution": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }], "description": "The caller's own active contribution for this passage, never anyone else's." }
+      }
+    },
+    "passageSearchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "project", "passages", "truncated"],
+      "properties": {
+        "schemaVersion": { "const": "stex.frige.passages.v1" },
+        "project": { "type": "object" },
+        "passages": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/passage" } },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "passageReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "passage"],
+      "properties": {
+        "schemaVersion": { "const": "stex.frige.passages.v1" },
+        "passage": { "allOf": [{ "$ref": "#/$defs/passage" }], "type": "object", "required": ["text"] }
+      }
+    },
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reference", "project", "attachmentId", "excerptHash", "start", "end", "passageSha256", "originalSha256", "title", "audience", "status", "createdAt", "withdrawnAt"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ctb-[a-f0-9]{16}$" },
+        "reference": { "$ref": "#/$defs/reference" },
+        "project": { "type": "string" },
+        "attachmentId": { "type": "string" },
+        "excerptHash": { "$ref": "#/$defs/sha256" },
+        "start": { "type": "integer" },
+        "end": { "type": "integer" },
+        "passageSha256": { "$ref": "#/$defs/sha256" },
+        "originalSha256": { "type": ["string", "null"] },
+        "title": { "type": "string" },
+        "audience": { "const": "self" },
+        "status": { "enum": ["active", "withdrawn"] },
+        "state": { "enum": ["current", "stale", "unavailable", "withdrawn"], "description": "Present on GET /contributions: the live owner check." },
+        "createdAt": { "type": "string" },
+        "withdrawnAt": { "type": ["string", "null"] }
+      }
+    },
+    "contributionsView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "version", "contributions"],
+      "properties": {
+        "schemaVersion": { "const": "stex.knowledge.contributions.v1" },
+        "version": { "$ref": "#/$defs/version" },
+        "contributions": { "type": "array", "items": { "$ref": "#/$defs/contribution" } },
+        "replayed": { "type": "boolean" }
+      }
+    },
+    "contributeRequest": {
+      "type": "object",
+      "required": ["idempotencyKey", "expectedVersion", "citation"],
+      "properties": {
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "expectedVersion": { "type": "string" },
+        "citation": { "$ref": "#/$defs/citation" }
+      }
+    },
+    "withdrawRequest": {
+      "type": "object",
+      "required": ["idempotencyKey", "expectedVersion", "id"],
+      "properties": {
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "expectedVersion": { "type": "string" },
+        "id": { "type": "string", "pattern": "^ctb-[a-f0-9]{16}$" }
+      }
+    },
+    "resolveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference"],
+      "properties": { "reference": { "$ref": "#/$defs/reference" } }
+    },
+    "resolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "reference", "citation", "text", "trust"],
+      "properties": {
+        "schemaVersion": { "const": "stex.knowledge.contribution.v1" },
+        "reference": { "$ref": "#/$defs/reference" },
+        "citation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["project", "attachmentId", "title", "originalSha256", "excerptHash", "start", "end", "passageSha256"],
+          "properties": {
+            "project": { "type": "string" },
+            "attachmentId": { "type": "string" },
+            "title": { "type": "string" },
+            "originalSha256": { "type": ["string", "null"] },
+            "excerptHash": { "$ref": "#/$defs/sha256" },
+            "start": { "type": "integer" },
+            "end": { "type": "integer" },
+            "passageSha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "text": { "type": "string" },
+        "trust": { "const": "untrusted-source" }
+      }
+    }
+  }
+}

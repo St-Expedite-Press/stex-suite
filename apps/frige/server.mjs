@@ -14,6 +14,7 @@ import { projectContext, validateContextTree } from './src/project-context.mjs';
 import { knowledgeEvent } from './src/knowledge-event.mjs';
 import { BookStore, writeAtomic } from './src/project-store.mjs';
 import { mutateAttachments, readAttachmentManifest, storeAttachmentOriginal } from './src/attachment-manifest.mjs';
+import { readPassage, searchPassages } from './src/passages.mjs';
 import { ProjectStore } from './src/project-store-vault.mjs';
 import { LOCAL_ACTOR, actorRefused, resolveActor } from './src/actor.mjs';
 import { MAIN_CONVERSATION } from './src/editorial-sessions.mjs';
@@ -52,6 +53,16 @@ if (platformOrigin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(
 const defaultStore = new BookStore(projectDirectory);
 const projectStores = new Map();
 const port = Number(configuration('STEX_FRIGE_PORT', 'TEXGRAPH_PORT', 4310));
+// Container mode (deploy/compose): bind every interface and answer the fixed
+// peer service names in STEX_INTERNAL_HOSTS on this port. Native runs keep
+// 127.0.0.1 and loopback Host names only. Browser origins are unchanged.
+if (![undefined, '', '0', '1'].includes(process.env.STEX_BIND_ALL)) throw new Error('STEX_BIND_ALL must be 1 or unset.');
+const listenAddress = process.env.STEX_BIND_ALL === '1' ? '0.0.0.0' : '127.0.0.1';
+const internalNames = String(process.env.STEX_INTERNAL_HOSTS || '').split(',').map((name) => name.trim()).filter(Boolean);
+for (const name of internalNames) if (!/^[a-z][a-z0-9-]{0,62}$/.test(name) || name === 'localhost') throw new Error(`STEX_INTERNAL_HOSTS contains an invalid service name: ${name}`);
+const acceptedHosts = new Set(internalNames.map((name) => `${name}:${port}`));
+/** Accepts a loopback Host, or exactly `<internal name>:<this port>` in container mode. */
+const acceptedHost = (value) => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(value || '') || acceptedHosts.has(value || '');
 /** Validates the normalized mount prefix for publishing routes. */
 function basePath(value) {
   const normalized = String(value || '').trim().replace(/\/+$/, '');
@@ -690,7 +701,7 @@ const legacyBooks = legacyBooksApi(booksDirectory, { isProtected: (id) => projec
 await defaultStore.initialize();
 http.createServer(async (request, response) => {
   try {
-    if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(request.headers.host || '')) return json(response, 403, { error: 'Frige answers only on its local address.' });
+    if (!acceptedHost(request.headers.host)) return json(response, 403, { error: 'Frige answers only on its local address.' });
     const url = new URL(request.url, `http://${request.headers.host}`);
     const origin = request.headers.origin;
     if (request.headers['sec-fetch-site'] === 'cross-site' || (origin && origin !== `http://${request.headers.host}` && origin !== platformOrigin.origin)) return json(response, 403, { error: 'Foreign browser origin refused.' });
@@ -717,6 +728,18 @@ http.createServer(async (request, response) => {
       if (!match) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown project context route.' });
       if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
       return json(response, 200, await projectContext(await contextStoreFor(match[1], url), match[1], { sourceId: match[2], revision: url.searchParams.get('revision'), offset: url.searchParams.get('offset') || '0' }));
+    }
+    // stex.frige.passages.v1: read-only passages of author-approved excerpts (src/passages.mjs).
+    // Separate from the shared context export, which stays manuscript-only; same project lock rule.
+    if (url.pathname.startsWith('/api/stex/passages/v1/')) {
+      const route = /^\/api\/stex\/passages\/v1\/projects\/([a-z0-9][a-z0-9-]{0,62})\/(search|attachments\/([a-f0-9]{16}))$/.exec(url.pathname);
+      if (!route) return json(response, 404, { code: 'NOT_FOUND', error: 'Unknown passage route.' });
+      if (request.method !== 'GET') { response.setHeader('allow', 'GET'); return json(response, 405, { error: 'Method not allowed.' }); }
+      await projectAccess.assertUnlocked('book', route[1], request.headers);
+      const store = await contextStoreFor(route[1], url);
+      const project = { application: 'frige', id: route[1], reference: `stex://frige/project/${route[1]}`, title: (await store.graph()).book.title };
+      if (route[2] === 'search') return json(response, 200, await searchPassages(store, project, url.searchParams.get('q')));
+      return json(response, 200, await readPassage(store, project, route[3], url.searchParams));
     }
     // Unlock and lock a password-protected project for this browser.
     const accessRoute = /^\/api\/stex\/access\/v1\/(unlock|lock)$/.exec(url.pathname)?.[1];
@@ -783,7 +806,7 @@ http.createServer(async (request, response) => {
   } catch (error) {
     json(response, error.status || STATUS_BY_CODE[error.code] || 400, { error: error.message || 'Unexpected server error.', ...(error.code ? { code: error.code } : {}) });
   }
-}).listen(port, '127.0.0.1', () => {
+}).listen(port, listenAddress, () => {
   console.log(`Frige Studio is ready at http://127.0.0.1:${port}${mountedAt || '/'}`);
   console.log(`Book project: ${projectDirectory}`);
 });

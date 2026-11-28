@@ -7,10 +7,11 @@ import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { deferredStudioPage, homePage, projectsPage, studiosPage, tabs, unbuiltPage, developmentPage, publishingPage, directorPage, graphPage } from './src/pages.mjs';
-import { isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
+import { bindAddress, internalHosts, isLoopbackHost, localProxyTarget, mountedApplication, platformPath, proxyApplication, requestPlatform, shellApplications, validateRegistry } from './src/shell.mjs';
 import { openKnowledgeLibrary } from '../../services/knowledge/src/library.mjs';
 import { ACTOR_RECEIVERS, actorHeaders, actorSecret, stripActorHeaders } from './src/actor.mjs';
 import { knowledgeApi } from './src/knowledge-api.mjs';
+import { knowledgeRelay } from './src/knowledge-relay.mjs';
 import { createHostedGate, createIgorSessionCheck, hostedConfig, HostedRefusal, withoutIgorSession } from './src/hosted.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -32,17 +33,25 @@ catch (error) { console.warn(`Pantheon is using its built-in registry fallback: 
 const deferredHere = new Set(String(process.env.STEX_PANTHEON_DEFERRED || '').split(',').map((id) => id.trim()).filter(Boolean));
 for (const id of deferredHere) if (!applications.some((entry) => entry.id === id) || id === 'igor') throw new Error(`STEX_PANTHEON_DEFERRED names an unknown or required application: ${id}`);
 if (deferredHere.size) applications = Object.freeze(applications.map((entry) => (deferredHere.has(entry.id) ? Object.freeze({ ...entry, state: 'deferred' }) : entry)));
+// Container deployments name their fixed peers (STEX_INTERNAL_HOSTS) and bind all
+// interfaces (STEX_BIND_ALL=1); native defaults stay loopback-only.
+const internal = internalHosts(process.env.STEX_INTERNAL_HOSTS);
+const listenAddress = bindAddress(process.env.STEX_BIND_ALL);
 const proxyTargets = {
-  frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310'),
-  seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320'),
-  igor: localProxyTarget(process.env.STEX_IGOR_URL, 'http://127.0.0.1:4330'),
+  frige: localProxyTarget(process.env.STEX_FRIGE_URL, 'http://127.0.0.1:4310', internal),
+  seaxneat: localProxyTarget(process.env.STEX_SEAXNEAT_URL, 'http://127.0.0.1:4320', internal),
+  igor: localProxyTarget(process.env.STEX_IGOR_URL, 'http://127.0.0.1:4330', internal),
 };
-const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://127.0.0.1:4340');
+const platformTarget = localProxyTarget(process.env.STEX_PLATFORM_URL, 'http://127.0.0.1:4340', internal);
 // Hosted mode (STEX_PANTHEON_PUBLIC_ORIGIN): Igor's password accounts are the
 // one sign-in; every public request outside Igor's own sign-in route needs a
 // session Igor confirms. An invalid public origin stops startup.
 const hosted = hostedConfig(process.env);
-const admitHosted = hosted ? createHostedGate(hosted, { port, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
+// The hosted gate admits a loopback probe without a session on a native host only. Bound to
+// every interface (a container), a peer could claim a loopback Host, so that exemption is off
+// and health probes use /healthz, which reports liveness and nothing else.
+const containerMode = listenAddress !== '127.0.0.1';
+const admitHosted = hosted ? createHostedGate(hosted, { port, loopbackExempt: !containerMode, checkSession: createIgorSessionCheck(proxyTargets.igor, `127.0.0.1:${port}`) }) : null;
 // stex.platform.actor.v1 sender (D-028). The secret is validated here so a short
 // one refuses startup. Hosted without it sends no actor, so engines cannot
 // attribute requests to a person: that is allowed but warned about.
@@ -52,11 +61,22 @@ const mime = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2',
 };
-// Knowledge is personal state (D-028): hosted, one journal per signed-in person
-// (services/knowledge/src/library.mjs); local, the single journal exactly as before.
-const knowledge = await openKnowledgeLibrary({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '', hosted: Boolean(hosted), legacyOwner: process.env.STEX_KNOWLEDGE_LEGACY_OWNER || '' });
-// Deferred studios get no target, so the knowledge API never contacts them.
-const knowledgeRoute = knowledgeApi({ library: knowledge, targets: Object.fromEntries(Object.entries(proxyTargets).filter(([id]) => !deferredHere.has(id))) });
+// Knowledge is personal state (D-028). Two paths, chosen at startup:
+// - STEX_KNOWLEDGE_SERVICE=platform: the Python platform API owns the journals
+//   (backend/stex/knowledge). Pantheon only checks the browser origin and relays
+//   the request with the admitted actor; it never opens or writes a journal, so a
+//   journal directory configured here as well is refused (two writers).
+// - unset (native default): the in-process library, exactly as before.
+const knowledgeService = process.env.STEX_KNOWLEDGE_SERVICE || '';
+if (!['', 'platform'].includes(knowledgeService)) throw new Error('STEX_KNOWLEDGE_SERVICE must be "platform" or unset.');
+if (knowledgeService === 'platform' && process.env.STEX_KNOWLEDGE_DATA_DIR) throw new Error('STEX_KNOWLEDGE_DATA_DIR belongs to the platform API when STEX_KNOWLEDGE_SERVICE=platform; unset it for Pantheon.');
+let knowledgeRoute;
+if (knowledgeService === 'platform') knowledgeRoute = knowledgeRelay({ target: platformTarget, hosted: Boolean(hosted) });
+else {
+  const knowledge = await openKnowledgeLibrary({ directory: process.env.STEX_KNOWLEDGE_DATA_DIR || '', hosted: Boolean(hosted), legacyOwner: process.env.STEX_KNOWLEDGE_LEGACY_OWNER || '' });
+  // Deferred studios get no target, so the knowledge API never contacts them.
+  knowledgeRoute = knowledgeApi({ library: knowledge, targets: Object.fromEntries(Object.entries(proxyTargets).filter(([id]) => !deferredHere.has(id))) });
+}
 // The shared design system is served from its own package; only its public folders are reachable.
 const designSystemDirectory = path.dirname(createRequire(import.meta.url).resolve('@stex/design-system/package.json'));
 const designSystemFolders = new Set(['src', 'fonts', 'brand', 'icons', 'specimen']);
@@ -115,6 +135,8 @@ function designSystemFile(pathname) {
 http.createServer(async (request, response) => {
   // The actor headers are Pantheon's alone to set: drop any a client sent, in every mode, before routing.
   stripActorHeaders(request.headers);
+  // Container probes: liveness only, no data, no session, nothing proxied.
+  if (containerMode && request.url === '/healthz' && request.method === 'GET') { send(response, 200, { status: 'ok' }); return; }
   let user = null;
   // Refused before routing: the proxy would otherwise lend a rebound page a loopback Host.
   if (admitHosted) {
@@ -217,4 +239,4 @@ http.createServer(async (request, response) => {
     if (!file.startsWith(`${publicDirectory}${path.sep}`)) return send(response, 403, { error: 'Invalid path.' });
     await staticFile(request, response, file);
   } catch (error) { send(response, 400, { error: error.message || 'Request failed.' }); }
-}).listen(port, '127.0.0.1', () => console.log(`Pantheon is ready at http://127.0.0.1:${port}${hosted ? ` (hosted at ${hosted.publicOrigin}; Igor sign-in required)` : ''}`));
+}).listen(port, listenAddress, () => console.log(`Pantheon is ready at http://127.0.0.1:${port}${listenAddress === '127.0.0.1' ? '' : ` (bound to ${listenAddress} inside its container)`}${hosted ? ` (hosted at ${hosted.publicOrigin}; Igor sign-in required)` : ''}`));

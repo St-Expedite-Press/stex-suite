@@ -47,6 +47,1483 @@
           }
         }
       }
+    },
+    "/api/knowledge/v1": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Both knowledge views with current owner access labels",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_root",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/sources": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Owner source catalog page",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_sources",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.sources"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/knowledge/v1/export": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Detached journal and views (no source text)",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_export",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.export"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/accept": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Accept owner-verified source revisions",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_accept",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.api.v1.acceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/revoke": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Withdraw consent for a project",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_revoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.api.v1.revokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/relation": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Record an assertion or a reviewable inference",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_relation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.api.v1.relationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/revise": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Accept, reject or correct a relationship",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_revise",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.api.v1.reviseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/erase": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Erase this person's journal, contributions included",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_erase",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.api.v1.eraseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.view"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/passages/search": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Search approved Frige excerpts; marks only the caller's own approvals",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_passages_search",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.passageSearchResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/knowledge/v1/passages/read": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read one cited passage, re-verified by Frige",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_passages_read",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.passageReadResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "excerpt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "passage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/knowledge/v1/contributions": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "The caller's contributions with live state (no text)",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_contributions",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.contributionsView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Approve one passage revision for Igor (private)",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_contributions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.contributeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.contributionsView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/contributions/withdraw": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Withdraw a contribution from all future use",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_contributions_withdraw",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.withdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.contributionsView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/contributions/resolve": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Igor's pre-use check: consent and source revision",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_contributions_resolve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.resolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.contributions.v1.resolved"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/notes": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Imported notes with current/changed/missing state",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_notes",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.notes.v1.notesView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/notes/import": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Import one vault note's metadata (read-only)",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_post_notes_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/knowledge.notes.v1.importRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.notes.v1.notesView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/notes/search": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Bounded snippets from unchanged imported notes",
+        "description": "Serve one knowledge request against the caller's own journal.",
+        "operationId": "knowledge_get_notes_search",
+        "responses": {
+          "200": {
+            "description": "Success, or `{enabled:false}` when knowledge is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/knowledge.notes.v1.searchResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/knowledge.api.v1.disabled"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal with a stable code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -216,6 +1693,1017 @@
           "state"
         ],
         "title": "StudioAvailability"
+      },
+      "knowledge.api.v1.idempotencyKey": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$"
+      },
+      "knowledge.api.v1.sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "knowledge.api.v1.projectReference": {
+        "type": "string",
+        "pattern": "^stex://(frige|seaxneat)/project/[a-z0-9][a-z0-9-]{0,62}$"
+      },
+      "knowledge.api.v1.error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable code. Includes INVALID_REQUEST, SIGN_IN_REQUIRED, STALE_KNOWLEDGE, STALE_EVENT, EVENT_CONFLICT, KEY_CONFLICT, KNOWLEDGE_LIMIT, KNOWLEDGE_LOCKED, KNOWLEDGE_UNAVAILABLE, INVALID_JOURNAL, NOT_FOUND, STALE_PASSAGE, ALREADY_CONTRIBUTED, ALREADY_WITHDRAWN, CONTRIBUTION_WITHDRAWN, VAULT_LOCAL_ONLY, VAULT_DISABLED, FORBIDDEN, KNOWLEDGE_MISCONFIGURED."
+          }
+        }
+      },
+      "knowledge.api.v1.disabled": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "const": false
+          }
+        }
+      },
+      "knowledge.api.v1.view": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "version",
+          "knowledge",
+          "graph"
+        ],
+        "properties": {
+          "enabled": {
+            "const": true
+          },
+          "version": {
+            "type": "string"
+          },
+          "knowledge": {
+            "type": "object",
+            "required": [
+              "sources"
+            ],
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "reference",
+                    "revision",
+                    "project"
+                  ]
+                }
+              }
+            }
+          },
+          "graph": {
+            "type": "object",
+            "required": [
+              "projects",
+              "relations"
+            ],
+            "properties": {
+              "projects": {
+                "type": "array"
+              },
+              "relations": {
+                "type": "array"
+              }
+            }
+          },
+          "legacyJournal": {
+            "const": "unassigned"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "knowledge.api.v1.export": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "version",
+          "knowledge",
+          "graph",
+          "journal"
+        ],
+        "properties": {
+          "journal": {
+            "type": "object",
+            "required": [
+              "schemaVersion",
+              "generation",
+              "events"
+            ]
+          }
+        }
+      },
+      "knowledge.api.v1.sources": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "project",
+          "sources"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.project.context.v1"
+          },
+          "sources": {
+            "type": "array",
+            "maxItems": 50
+          }
+        }
+      },
+      "knowledge.api.v1.acceptRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "project",
+          "sources"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.api.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/knowledge.api.v1.projectReference"
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "revision"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/components/schemas/knowledge.api.v1.sha256"
+                }
+              }
+            }
+          }
+        }
+      },
+      "knowledge.api.v1.revokeRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "project"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.api.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/knowledge.api.v1.projectReference"
+          }
+        }
+      },
+      "knowledge.api.v1.relationRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "relation"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.api.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "subject",
+              "predicate",
+              "object",
+              "evidence"
+            ]
+          }
+        }
+      },
+      "knowledge.api.v1.reviseRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "id",
+          "status"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.api.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          },
+          "object": {
+            "type": "string"
+          }
+        }
+      },
+      "knowledge.api.v1.eraseRequest": {
+        "type": "object",
+        "required": [
+          "expectedVersion",
+          "confirmation"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "string"
+          },
+          "confirmation": {
+            "const": "delete-knowledge"
+          }
+        }
+      },
+      "knowledge.contributions.v1.sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "knowledge.contributions.v1.idempotencyKey": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$"
+      },
+      "knowledge.contributions.v1.version": {
+        "type": "string",
+        "pattern": "^[a-f0-9-]{36}:[0-9]+$"
+      },
+      "knowledge.contributions.v1.reference": {
+        "type": "string",
+        "pattern": "^stex://knowledge/contribution/ctb-[a-f0-9]{16}$"
+      },
+      "knowledge.contributions.v1.citation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project",
+          "attachmentId",
+          "excerptHash",
+          "start",
+          "end",
+          "passageSha256"
+        ],
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^stex://frige/project/[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "attachmentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          },
+          "excerptHash": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "passageSha256": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          }
+        }
+      },
+      "knowledge.contributions.v1.passage": {
+        "type": "object",
+        "required": [
+          "project",
+          "attachmentId",
+          "excerptHash",
+          "start",
+          "end",
+          "passageSha256",
+          "title",
+          "originalSha256",
+          "contribution"
+        ],
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "attachmentId": {
+            "type": "string"
+          },
+          "excerptHash": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          },
+          "start": {
+            "type": "integer"
+          },
+          "end": {
+            "type": "integer"
+          },
+          "passageSha256": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          },
+          "title": {
+            "type": "string"
+          },
+          "originalSha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "contribution": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.reference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The caller's own active contribution for this passage, never anyone else's."
+          }
+        }
+      },
+      "knowledge.contributions.v1.passageSearchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "project",
+          "passages",
+          "truncated"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.frige.passages.v1"
+          },
+          "project": {
+            "type": "object"
+          },
+          "passages": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/knowledge.contributions.v1.passage"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "knowledge.contributions.v1.passageReadResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "passage"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.frige.passages.v1"
+          },
+          "passage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.passage"
+              }
+            ],
+            "type": "object",
+            "required": [
+              "text"
+            ]
+          }
+        }
+      },
+      "knowledge.contributions.v1.contribution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reference",
+          "project",
+          "attachmentId",
+          "excerptHash",
+          "start",
+          "end",
+          "passageSha256",
+          "originalSha256",
+          "title",
+          "audience",
+          "status",
+          "createdAt",
+          "withdrawnAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ctb-[a-f0-9]{16}$"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.reference"
+          },
+          "project": {
+            "type": "string"
+          },
+          "attachmentId": {
+            "type": "string"
+          },
+          "excerptHash": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          },
+          "start": {
+            "type": "integer"
+          },
+          "end": {
+            "type": "integer"
+          },
+          "passageSha256": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+          },
+          "originalSha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "audience": {
+            "const": "self"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "withdrawn"
+            ]
+          },
+          "state": {
+            "enum": [
+              "current",
+              "stale",
+              "unavailable",
+              "withdrawn"
+            ],
+            "description": "Present on GET /contributions: the live owner check."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "withdrawnAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "knowledge.contributions.v1.contributionsView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "version",
+          "contributions"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.knowledge.contributions.v1"
+          },
+          "version": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.version"
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/knowledge.contributions.v1.contribution"
+            }
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "knowledge.contributions.v1.contributeRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "citation"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.citation"
+          }
+        }
+      },
+      "knowledge.contributions.v1.withdrawRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "id"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.idempotencyKey"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^ctb-[a-f0-9]{16}$"
+          }
+        }
+      },
+      "knowledge.contributions.v1.resolveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference"
+        ],
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.reference"
+          }
+        }
+      },
+      "knowledge.contributions.v1.resolved": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "reference",
+          "citation",
+          "text",
+          "trust"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.knowledge.contribution.v1"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/knowledge.contributions.v1.reference"
+          },
+          "citation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "project",
+              "attachmentId",
+              "title",
+              "originalSha256",
+              "excerptHash",
+              "start",
+              "end",
+              "passageSha256"
+            ],
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "attachmentId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "originalSha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "excerptHash": {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+              },
+              "start": {
+                "type": "integer"
+              },
+              "end": {
+                "type": "integer"
+              },
+              "passageSha256": {
+                "$ref": "#/components/schemas/knowledge.contributions.v1.sha256"
+              }
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "trust": {
+            "const": "untrusted-source"
+          }
+        }
+      },
+      "knowledge.notes.v1.sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "knowledge.notes.v1.importRequest": {
+        "type": "object",
+        "required": [
+          "idempotencyKey",
+          "expectedVersion",
+          "path"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "\\.md$",
+            "description": "Vault-relative path with forward slashes."
+          }
+        }
+      },
+      "knowledge.notes.v1.note": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "bytes",
+          "title",
+          "properties",
+          "links",
+          "importedAt"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/knowledge.notes.v1.sha256"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 262144
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "properties": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            }
+          },
+          "links": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target",
+                "resolved"
+              ],
+              "properties": {
+                "target": {
+                  "type": "string"
+                },
+                "resolved": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "importedAt": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "current",
+              "changed",
+              "missing"
+            ],
+            "description": "Present on GET /notes."
+          }
+        }
+      },
+      "knowledge.notes.v1.notesView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "version",
+          "notes"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.knowledge.notes.v1"
+          },
+          "version": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/knowledge.notes.v1.note"
+            }
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "knowledge.notes.v1.searchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "results",
+          "unavailable",
+          "truncated"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.knowledge.notes.v1"
+          },
+          "results": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "title",
+                "sha256",
+                "snippet"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "#/components/schemas/knowledge.notes.v1.sha256"
+                },
+                "snippet": {
+                  "type": "string",
+                  "maxLength": 240
+                }
+              }
+            }
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "frige.passages.v1.sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "frige.passages.v1.project": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "application",
+          "id",
+          "reference",
+          "title"
+        ],
+        "properties": {
+          "application": {
+            "const": "frige"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^stex://frige/project/[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "frige.passages.v1.citation": {
+        "type": "object",
+        "required": [
+          "reference",
+          "attachmentId",
+          "title",
+          "originalSha256",
+          "excerptHash",
+          "start",
+          "end",
+          "passageSha256"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "pattern": "^stex://frige/project/[a-z0-9][a-z0-9-]{0,62}#attachment=[a-f0-9]{16}$"
+          },
+          "attachmentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "originalSha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "excerptHash": {
+            "$ref": "#/components/schemas/frige.passages.v1.sha256"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "passageSha256": {
+            "$ref": "#/components/schemas/frige.passages.v1.sha256"
+          }
+        }
+      },
+      "frige.passages.v1.searchHit": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/frige.passages.v1.citation"
+          }
+        ],
+        "type": "object",
+        "required": [
+          "snippet"
+        ],
+        "properties": {
+          "snippet": {
+            "type": "string",
+            "maxLength": 242
+          }
+        }
+      },
+      "frige.passages.v1.searchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "project",
+          "passages",
+          "truncated"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.frige.passages.v1"
+          },
+          "project": {
+            "$ref": "#/components/schemas/frige.passages.v1.project"
+          },
+          "passages": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/frige.passages.v1.searchHit"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "frige.passages.v1.readResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "project",
+          "passage"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "stex.frige.passages.v1"
+          },
+          "project": {
+            "$ref": "#/components/schemas/frige.passages.v1.project"
+          },
+          "passage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/frige.passages.v1.citation"
+              }
+            ],
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "frige.passages.v1.error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "enum": [
+              "INVALID_REQUEST",
+              "NOT_FOUND",
+              "STALE_PASSAGE",
+              "PROJECT_LOCKED",
+              "UNAVAILABLE",
+              "FORBIDDEN"
+            ]
+          }
+        }
       }
     }
   }

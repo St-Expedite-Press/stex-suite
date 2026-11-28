@@ -7,6 +7,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx2
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from stex.config import REPOSITORY_ROOT
 
@@ -16,6 +18,13 @@ FRIGE = "http://127.0.0.1:4310"
 SEAXNEAT = "http://127.0.0.1:4320"
 ORIGINS = {"frige": FRIGE, "seaxneat": SEAXNEAT}
 PROTOCOL = REPOSITORY_ROOT / "protocol"
+#: Where a local caller addresses the API; the platform refuses foreign Host names (stex.hosts).
+LOCAL_BASE_URL = "http://127.0.0.1:4340"
+
+
+def local_client(app: FastAPI, **options: Any) -> TestClient:
+    """A test client that addresses the app by its loopback name, as Pantheon and Igor do."""
+    return TestClient(app, base_url=LOCAL_BASE_URL, **options)
 
 
 def summary(application: str, *projects: dict[str, Any]) -> dict[str, Any]:

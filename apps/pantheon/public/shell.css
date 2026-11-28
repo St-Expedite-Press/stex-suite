@@ -143,4 +143,13 @@
 .knowledge-workspace :is(p, code, label) { overflow-wrap: anywhere; min-width: 0; }
 .knowledge-workspace input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; }
 .knowledge-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Passage reader (passages.js): readable citation text, compact citation fields, no new tokens. */
+.knowledge-workspace .passage-results { display: grid; gap: var(--stex-space-3); padding-inline-start: var(--stex-space-5); }
+.knowledge-workspace .passage-results li { display: grid; gap: var(--stex-space-2); }
+.knowledge-workspace .passage-reader blockquote { margin: 0; padding: var(--stex-space-3) var(--stex-space-4); border-inline-start: 3px solid var(--stex-border-control); background: var(--stex-surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.125rem; line-height: 1.6; }
+.knowledge-workspace .passage-citation { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--stex-space-1) var(--stex-space-3); margin: 0; font-family: var(--stex-font-sans); font-size: 0.875rem; }
+.knowledge-workspace .passage-citation dd { margin: 0; overflow-wrap: anywhere; }
+.knowledge-workspace .passage-contributions article { display: grid; gap: var(--stex-space-2); padding-block: var(--stex-space-3); border-top: 1px solid var(--stex-border-decor); }
+.knowledge-workspace .passage-badge { font-family: var(--stex-font-sans); font-weight: 600; }
+@media (max-width: 599px) { .knowledge-workspace .passage-citation { grid-template-columns: minmax(0, 1fr); } }
 .knowledge-workspace :is(input:not([type="checkbox"]), select) { padding: var(--stex-space-2); background: var(--stex-surface); color: var(--stex-text); border: 1px solid var(--stex-border-control); border-radius: 2px; font-family: var(--stex-font-sans); }

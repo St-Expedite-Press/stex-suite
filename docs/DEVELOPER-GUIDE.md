@@ -116,7 +116,10 @@ runtime toolsets are empty.
 
 | Command | Purpose |
 | --- | --- |
-| `corepack pnpm test` | Full deterministic suite including charter, platform, asset and private-pin checks |
+| `corepack pnpm verify:gates` | **Canonical gate.** Runs prerequisites, the Pantheon build, every `test` step of the suite, and Igor's tests, typecheck and build as separate processes; reports each as passed, failed, skipped or unexecuted with revisions, pins and environment; exits non-zero unless all passed. Add `--repo suite` or `--repo igor` for one repository. |
+| `node scripts/verify/run-gates.mjs --check <report.json> --release` | Refuse a gate report that no longer matches the checkout's content (exit 4; a different commit with an identical tree is accepted with a NOTE), did not pass, or is not release evidence (dirty tree including skip-worktree or assume-unchanged files, Igor gitlink drift, toolchain off or missing the pins, summary fields that contradict the raw data) |
+| `node scripts/verify/verify-hermes-offline.mjs` | A5. Uncached build of the managed Hermes runtime at the candidate pin, gateway start and restart with no network, and rollback trials. Needs Docker and the pin checkout; builds need network |
+| `corepack pnpm test` | Fail-fast developer chain of the same suite steps (stops at the first failure and records nothing) |
 | `corepack pnpm test:<suite>` | Owning suite for a scoped change |
 | `corepack pnpm check:prereqs` and `test:setup` | Check the actual checkout and exercise the missing and mismatched setup cases |
 | `corepack pnpm build:pantheon` | TypeScript check and build of the Seaxneat workspace |
@@ -129,7 +132,12 @@ runtime toolsets are empty.
 | `corepack pnpm test:stex-igor-sync` | Compare suite-owned source to the pinned synchronized copies |
 | `corepack pnpm sync:stex-igor` | Refresh those copies for a separately authorized integration change |
 
-Run the owning checks first, then full regression. Browser verification uses
+Run the owning checks first, then full regression through `verify:gates`.
+Release evidence is a green trusted-CI run. Suite CI runs the gate for both
+repositories on the pinned toolchain, publishes the report in the job
+summary, and fails its "Require release evidence" step unless that report
+qualifies. Local reports are for development; a report file is unsigned data.
+Browser verification uses
 disposable data and a simulated or stub transport. See the
 [verification index](verification/README.md) for recorded coverage.
 

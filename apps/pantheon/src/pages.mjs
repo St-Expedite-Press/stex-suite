@@ -8,7 +8,7 @@ const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&
 
 /** Renders the knowledge page and its configured or disabled state. */
 export function graphPage() {
-  return shell({ active: 'graph', title: 'User Graph', scripts: ['/knowledge.js'], body: `<section class="knowledge-workspace"><p class="eyebrow">Knowledge</p><h1>User Graph and sources</h1><p>Keep explicit project knowledge with revision evidence. Source text stays with its engine; relationships never change manuscripts or website files.</p><p id="knowledge-notice" role="status">Loading knowledge…</p><div id="knowledge-content"></div></section>` });
+  return shell({ active: 'graph', title: 'User Graph', scripts: ['/knowledge.js', '/passages.js'], body: `<section class="knowledge-workspace"><p class="eyebrow">Knowledge</p><h1>User Graph and sources</h1><p>Keep explicit project knowledge with revision evidence. Source text stays with its engine; relationships never change manuscripts or website files.</p><p id="knowledge-notice" role="status">Loading knowledge…</p><div id="knowledge-content"></div><div id="passages-content"></div></section>` });
 }
 
 export const tabs = Object.freeze([

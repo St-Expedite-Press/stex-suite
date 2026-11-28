@@ -1,0 +1,42 @@
+# Build context for deploy/staging-compose. Real manuscripts, vault notes,
+# local state, secrets and the Hermes runtime never enter an image.
+.git
+**/.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/*.log
+**/.env
+**/.env.*
+!.env.example
+**/.local-*
+**/.local-data
+apps/frige/books
+apps/frige/books/**
+apps/texgraph
+apps/lab
+vault
+assets
+examples
+front-end-dev
+release
+docs
+.codex
+.github
+# Igor and its inference service are built for the hosted overlay (compose.hosted.yaml);
+# the Hermes runtime, deploy secrets and everything else in stex-igor stay out.
+stex-igor/**
+!stex-igor/apps/igor/**
+!stex-igor/services/inference/**
+# The staging Igor host reads STEX's Hermes profile script and the evaluation pins as code.
+!stex-igor/deploy/hermes/apply-igor-profile.sh
+!stex-igor/hermes/eval/pins.json
+# Re-exclude build output, local state and dependencies inside what was just re-included.
+stex-igor/apps/igor/dist
+**/node_modules
+**/.local-data
+**/.local-*
+**/*.log
