@@ -18,7 +18,48 @@ readiness and a verdict. No record content, credential or key appears here.
 | Restoration checks | On the VM, `stex-restore-verify.sh` on the newest Igor backup: PASS, 2 of 2 conversations, three databases ok (exit 0). The studio archive is readable (137 files). The baseline bundle passed the isolated full restore on 2026-11-27 |
 | Previous release artifacts | Igor generation 25 and four earlier releases in `/opt/stex/releases`; Pantheon `d3f995e` and four earlier releases in `/opt/stex-pantheon/releases` |
 | Rollback compatibility | The Igor candidate adds no store migration. Knowledge references are stored only when a client sends them, and the deployed Pantheon `d3f995e` has no passage interface. The generation 25 code reads the store unchanged |
-| **Backup key protected and decryption verified** | **NOT MET.** The private key still decrypts with an empty passphrase, and the unprotected export `stex-backup-PRIVATE.asc` is still on disk. This needs the owner (see the request below). **Every merge stage is held** |
+| **Backup key protected and decryption verified** | Not met at 00:37Z. Met at 00:45Z (see Stage 0 completion) |
+
+## Stage 0 completion: backup key custody (2026-11-28T00:45Z)
+
+At the owner's request, Claude protected the key and stored the recovery
+copies. A generated 32-character passphrase was applied to the key; it was
+written only to a file and never printed. The folder `STEX backup key` on
+the owner's OneDrive-synced desktop holds:
+- the protected private key;
+- the passphrase;
+- the public key;
+- a README on locating and decrypting the backups.
+
+OneDrive provides the online copy. The owner accepted that the key and
+passphrase sit together.
+
+Verified by gpg exit status, on the working keyring and on the desktop
+export imported into a fresh keyring:
+- an empty passphrase and a wrong passphrase are refused (exit 2);
+- the passphrase decrypts the real baseline bundle (exit 0, 485 of 485
+  entries).
+
+The unprotected `stex-backup-PRIVATE.asc` was shredded. One verification run
+wrote the decrypted archive briefly to the local temp folder and deleted
+it. **Precondition met.**
+
+## Stage 2: Igor release (2026-11-28T00:46Z to 00:51Z)
+
+| Item | Result |
+| --- | --- |
+| Revisions | `0455f82` (generation 25) → merge `b19e5b7` (generation 26). Its parents are `0455f82` and the accepted candidate `a607433`, with an identical tree (`7b490ac1…`). PR stex-igor#16 |
+| Pipeline | Deploy run [46089710246](https://github.com/St-Expedite-Press/stex-igor/actions/runs/46089710246): ci/test success, deploy success. The installer's health checks passed and the workflow verified the active release |
+| Interruption | `stex-igor`, `stex-inference` and both document units restarted at 00:48:47–53Z. `hermes-igor`, Pantheon, Frige and cloudflared were untouched |
+| Runtime | Hermes still `e76fbd80be65ea5c1b89831f8d7aaedb713f5cac` |
+| Health | Readiness: store readable, 2 conversations, inference ok. All units active |
+| Authentication | Public `/igor/login` 200 on both hostnames; signed-out `/igor/api/conversations` 401; signed-out Pantheon pages 303. The users file is byte-identical to the baseline (sha256 `e1a249b1…`); the revocation list is intact |
+| Knowledge | Inactive: no `STEX_KNOWLEDGE_URL` in `igor.env` |
+| Expanded backup | Installed. Ran once with `systemctl start stex-backup.service`: success, 342 files (333 from the Hermes home), six databases ok, 3 accounts. `stex-restore-verify.sh` on it: PASS, 2 of 2 conversations, users 3 (exit 0) |
+| Frige state | Manuscripts byte-identical to the baseline (trees `951ce12b…`, `c6218a3d…`) |
+| Not exercised in production | A real sign-in (no passwords held). Continued sessions with documents, and withdrawal (no working sessions exist in production). Both are covered by the deterministic tests in trusted CI |
+| Rollback readiness | Generation 25 kept in `/opt/stex/releases` (the runbook's manual path) |
+| **Verdict** | **ACCEPTED** |
 
 ## Protection actions taken (not gated by the merge preconditions)
 
@@ -87,20 +128,6 @@ flags any surprise.
    and logs failures to the journal, which is monitored by the
    backup-failure check in stage 7.
 
-## Request to the owner (blocks the Igor merge)
+## Owner request (resolved)
 
-Protect the backup key, then reply when it is done:
-
-1. Add a passphrase. This prompts you; choose a strong one and keep it:
-   `gpg --homedir C:\Users\rberr\stex-backups\gnupg --passwd 974025A16B6850C82F44B2B56BDE06638E411A8D`
-2. Export the protected key:
-   `gpg --homedir C:\Users\rberr\stex-backups\gnupg --armor --export-secret-keys 974025A16B6850C82F44B2B56BDE06638E411A8D > stex-backup-private-protected.asc`
-3. Store that file and the passphrase in your password manager. Keep one
-   offline copy (an encrypted USB drive or paper) somewhere other than this
-   PC and the backups.
-4. Delete the unprotected `C:\Users\rberr\stex-backups\keys\stex-backup-PRIVATE.asc`.
-
-Claude then verifies, without seeing the passphrase, that:
-- the key no longer decrypts with an empty passphrase;
-- the unprotected file is gone;
-- with your passphrase entered in your own terminal, a real bundle decrypts.
+The key-custody request was resolved by Claude at the owner's direction on 2026-11-28 (see Stage 0 completion).
