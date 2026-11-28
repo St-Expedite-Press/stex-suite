@@ -84,6 +84,18 @@ describe('gate definition', () => {
     const igorPackage = path.join(realSuiteRoot, 'stex-igor', 'package.json');
     if (existsSync(igorPackage)) parseChain(JSON.parse(readFileSync(igorPackage, 'utf8')).scripts.test);
   });
+  test('every script a package script runs is committed, so a clean checkout can run it', () => {
+    // The Pantheon packager once lived only as an ignored local file (an unanchored `release/` in .gitignore).
+    const tracked = new Set(spawnSync('git', ['ls-files'], { cwd: realSuiteRoot, encoding: 'utf8' }).stdout.split('\n').map((file) => file.replaceAll('\\', '/')));
+    const suite = JSON.parse(readFileSync(path.join(realSuiteRoot, 'package.json'), 'utf8'));
+    for (const [name, command] of Object.entries(suite.scripts)) {
+      for (const match of command.matchAll(/(?:^|\s)node\s+(?:--[\w-]+\s+)*([\w./-]+\.m?js)\b/g)) {
+        const file = match[1].replace(/^\.\//, '');
+        if (file.startsWith('stex-igor/')) continue; // the submodule's own files, checked in its repository
+        assert.ok(tracked.has(file), `script "${name}" runs ${file}, which is not committed`);
+      }
+    }
+  });
 });
 
 describe('status accounting', () => {
