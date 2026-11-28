@@ -61,6 +61,63 @@ it. **Precondition met.**
 | Rollback readiness | Generation 25 kept in `/opt/stex/releases` (the runbook's manual path) |
 | **Verdict** | **ACCEPTED** |
 
+## Stage 3: Pantheon and Frige release (2026-11-28T00:52Z to 01:08Z)
+
+| Item | Result |
+| --- | --- |
+| Suite merges | PR #25 merged as `88daf36`, whose tree equals CI-tested `d0aef28` (run 46090083116: 25/25, eligible). PR #26 merged as `782585e`; it commits the Pantheon packager (see Defects) and passed CI |
+| Revisions | Pantheon `d3f995e` (generation 3) → `782585e` (generation 4), pinning Igor `b19e5b7`. Built by the hosted-Pantheon runbook from a clean worktree of `origin/main`, with `dirty: false` |
+| Pre-change backup | `stex-studio-backup.service` ran at 01:01:54Z (success) |
+| Install | Attempt 1 at 01:03:00Z **failed safely** before any change (see Defects); generation 3 stayed active. Attempt 2 at 01:06:59Z: `installed … (generation 4)`, installer exit 0. Its gate passed twice: liveness, Frige via the proxy, signed-out redirect, API 401, foreign Host 403 |
+| Interruption | `stex-pantheon` and `stex-frige` restarted at 01:07:01Z. Igor, inference, Hermes and cloudflared were untouched |
+| Manuscripts and editorial state | Both books' manuscripts byte-identical to the baseline (trees `951ce12b…`, `c6218a3d…`). Editorial-state file counts unchanged (7, 16). The protected book is still locked |
+| Knowledge ownership | Unchanged: Pantheon's native journal (`STEX_KNOWLEDGE_SERVICE` unset, `STEX_KNOWLEDGE_DATA_DIR` set). Journal generation `1ed190d7`, 2 events |
+| Proof generation | The deployed Frige code and the VM's TeX, on a temporary copy of the unlocked book on a spare port, produced HTTP 200 and an 8,506-byte `%PDF-`. The copy was removed and production books were untouched |
+| Public gate | `/`, `/home/`, `/frige/` 303; `/api/books` 401; `/igor/login` 200 |
+| Not exercised in production | Signed-in workstation use and contextual conversations (no passwords held). Covered by trusted-CI tests |
+| Rollback readiness | Generation 3 kept in `/opt/stex-pantheon/releases`; reinstall with `--allow-downgrade` |
+| **Verdict** | **ACCEPTED** |
+
+**Defects found and fixed during the stage:**
+
+1. **The Pantheon packager was never committed.** The `.gitignore` rule
+   `release/` also matched `scripts/release`, so generations 1 to 3 were
+   built from an ignored local file. Fixed in PR #26: the packager is
+   committed byte-identical, the rule is anchored to `/release/`, and a test
+   fails if a package script runs an uncommitted file.
+2. **Windows line endings in release artifacts.** On a checkout with
+   `core.autocrlf=true`, `git archive` produced a CRLF deploy bundle, and
+   bash refused the installer (`set: pipefail: invalid option name`). The
+   packager also copied CRLF working files. The release was rebuilt from
+   LF files (`git -c core.autocrlf=false`), verified at 0 CR bytes in both
+   artifacts. The runbook needs this step; until a CI-built release
+   replaces local builds, build releases from an LF checkout.
+
+## Stage 4: platform API (HELD, 01:09Z)
+
+**Not started.** Neither repository has a production install path for the
+platform API:
+- no systemd unit, installer, release packaging or env template;
+- only the local Docker staging stack;
+- the VM has Python 3.11.2, and the backend requires 3.12;
+- Pantheon's `STEX_PLATFORM_URL` points at port 4349, where nothing listens.
+
+Creating that tooling directly on production, right before moving canonical
+knowledge ownership, would be an improvised change outside a tested
+release. The stop conditions exclude it. The next engineering increment is
+a reviewed, tested platform-API release:
+- a pinned Python 3.12 runtime installed without network at start;
+- an unprivileged unit bound to loopback;
+- an env template with `STEX_KNOWLEDGE_HOSTED=1` and both secrets;
+- packaging with the Pantheon release;
+- an exercised single-writer cutover script that stops Pantheon, switches
+  `STEX_KNOWLEDGE_SERVICE`, starts the platform on the same journal
+  directory, and verifies;
+- and its rollback, rehearsed on the VM's staging slot.
+
+Stages 5 and 6 (Igor contributions, Hermes v0.23.4) depend on it or follow
+it.
+
 ## Protection actions taken (not gated by the merge preconditions)
 
 | Action | Detail | Rollback |
