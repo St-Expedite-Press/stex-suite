@@ -31,5 +31,7 @@ apps/seaxneat/.preview-state/
 vault/.obsidian/
 vault/attachments/
 
-# Hosted release archives (scripts/release)
-release/
+# Hosted release archives built by scripts/release (only the root output folder;
+# an unanchored `release/` also ignored scripts/release itself, so the Pantheon
+# packager was never committed)
+/release/
